@@ -16,10 +16,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import java.time.Duration
 import java.util.concurrent.TimeoutException
 
-/**
- * HTTP 客户端，基于 Spring WebClient 和 Kotlin 协程
- * 提供同步和流式的 HTTP 请求功能
- */
+
 class HttpClient private constructor(
     private val webClient: WebClient,
     private val config: HttpClientConfig
@@ -28,16 +25,10 @@ class HttpClient private constructor(
     companion object {
         val logger = KotlinLogging.logger {}
 
-        /**
-         * 创建 HttpClient 实例
-         */
         fun create(baseUrl: String, apiKey: String): HttpClient {
             return create(HttpClientConfig(baseUrl, apiKey))
         }
 
-        /**
-         * 使用配置创建 HttpClient 实例
-         */
         fun create(config: HttpClientConfig): HttpClient {
             val webClient = WebClient.builder()
                 .baseUrl(config.baseUrl)
@@ -53,13 +44,10 @@ class HttpClient private constructor(
         }
     }
 
-    /**
-     * 发送 POST 请求并返回原始 JSON 字符串
-     */
     suspend fun postForString(request: DefaultRequest): Result<String> {
         return runCatching {
             val requestBody = JsonUtil.toJson(request)
-            logger.debug("Sending POST request: {}", requestBody)
+            logger.debug { "Sending POST request: $requestBody" }
 
             webClient.post()
                 .bodyValue(requestBody)
@@ -79,22 +67,16 @@ class HttpClient private constructor(
         }
     }
 
-    /**
-     * 发送 POST 请求并返回解析后的对象
-     */
     suspend inline fun <reified T : Any> postForObject(request: DefaultRequest): Result<T> {
         return postForString(request).mapCatching { jsonString ->
             JsonUtil.fromJson<T>(jsonString)
         }
     }
 
-    /**
-     * 发送 POST 请求并返回字符串流
-     */
     fun postForStringStream(request: DefaultRequest): Flow<String> {
         return try {
             val requestBody = JsonUtil.toJson(request)
-            logger.debug { "Sending POST stream request: {$requestBody}" }
+            logger.debug { "Sending POST stream request: $requestBody" }
 
             webClient.post()
                 .bodyValue(requestBody)
@@ -119,24 +101,18 @@ class HttpClient private constructor(
         }
     }
 
-    /**
-     * 发送 POST 请求并返回对象流
-     */
     inline fun <reified T : Any> postForObjectStream(request: DefaultRequest): Flow<T> {
         return postForStringStream(request)
             .map { jsonString ->
                 try {
                     JsonUtil.fromJson<T>(jsonString)
                 } catch (exception: Exception) {
-                    logger.error { "Failed to parse JSON: ${jsonString}, ${exception.message}" }
+                    logger.error { "Failed to parse JSON: $jsonString, $exception" }
                     throw JsonParseException("Failed to parse JSON response", exception)
                 }
             }
     }
 
-    /**
-     * 发送 POST 请求并使用回调处理结果
-     */
     suspend inline fun <reified T : Any> postWithCallback(
         request: DefaultRequest,
         callback: HttpCallback<T>
@@ -156,9 +132,6 @@ class HttpClient private constructor(
         }
     }
 
-    /**
-     * 发送 POST 流请求并使用回调处理结果
-     */
     suspend inline fun <reified T : Any> postStreamWithCallback(
         request: DefaultRequest,
         callback: HttpStreamCallback<T>
@@ -184,12 +157,9 @@ class HttpClient private constructor(
         }
     }
 
-    /**
-     * 发送 GET 请求
-     */
     suspend fun get(path: String = ""): Result<String> {
         return runCatching {
-            logger.debug("Sending GET request to: {}", path)
+            logger.debug { "Sending GET request to: $path" }
 
             webClient.get()
                 .uri(path)
@@ -204,23 +174,17 @@ class HttpClient private constructor(
                 .timeout(Duration.ofSeconds(config.timeoutSeconds))
                 .awaitSingle()
         }.recoverCatching { exception ->
-            logger.error("GET request failed", exception)
+            logger.error { "GET request failed, ${exception}" }
             throw mapToHttpClientException(exception)
         }
     }
 
-    /**
-     * 发送 GET 请求并返回解析后的对象
-     */
     suspend inline fun <reified T : Any> getForObject(path: String = ""): Result<T> {
         return get(path).mapCatching { jsonString ->
             JsonUtil.fromJson<T>(jsonString)
         }
     }
 
-    /**
-     * 将异常映射为 HttpClientException
-     */
     private fun mapToHttpClientException(exception: Throwable): HttpClientException {
         return when (exception) {
             is HttpClientException -> exception
@@ -236,34 +200,28 @@ class HttpClient private constructor(
             }
 
             else -> {
-                HttpClientException("Request failed: ${exception.message}", exception)
+                HttpClientException("Request failed: $exception", exception)
             }
         }
     }
 }
 
-/**
- * HTTP 客户端配置
- */
+
 data class HttpClientConfig(
     val baseUrl: String,
     val apiKey: String,
-    val timeoutSeconds: Long = 30,
+    val timeoutSeconds: Long = 60,
     val maxInMemorySize: Int = 256 * 1024,
     val streamEndMarker: String = "[DONE]"
 )
 
-/**
- * HTTP 客户端异常
- */
+
 class HttpClientException(
     message: String,
     cause: Throwable? = null
 ) : RuntimeException(message, cause)
 
-/**
- * JSON 解析异常
- */
+
 class JsonParseException(
     message: String,
     cause: Throwable? = null
