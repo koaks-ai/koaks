@@ -29,7 +29,7 @@ object ToolCallInitializer {
         isInitialized = true
     }
 
-    private fun scanTools(packageName: String): List<ToolDefinition> {
+    private fun scanTools(packageName: Array<String>): List<ToolDefinition> {
         return Reflections(packageName, Scanners.MethodsAnnotated)
             .getMethodsAnnotatedWith(Tool::class.java)
             .mapNotNull { it.kotlinFunction }

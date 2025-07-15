@@ -9,8 +9,9 @@ object EndowFramework {
     private val logger = KotlinLogging.logger {}
 
     fun init(packageName: Array<String>) {
-        Status.packageName = packageName.get(0)
+        Status.packageName = packageName
         ToolCallInitializer.init()
+        logger.info { "EndowFramework initialized" }
     }
 
 }
