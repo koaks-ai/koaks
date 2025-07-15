@@ -3,7 +3,6 @@ package org.endow.framework.entity
 import com.google.gson.annotations.SerializedName
 
 class Message {
-    //region Message getter and setter
     var content: String? = null
     var refusal: Any? = null
     var role: String? = null
@@ -19,8 +18,6 @@ class Message {
     @SerializedName("tool_call_id")
     private var toolCallID: String? = null
 
-    constructor()
-
     constructor(role: String?, content: String?) {
         this.role = role
         this.content = content
@@ -32,23 +29,6 @@ class Message {
         this.toolCallID = toolCallID
     }
 
-    fun getToolCalls(): MutableList<ChatResponse.ToolCall?>? {
-        return toolCalls
-    }
-
-    fun setToolCalls(toolCalls: MutableList<ChatResponse.ToolCall?>?) {
-        this.toolCalls = toolCalls
-    }
-
-    fun getFunctionCall(): ChatResponse.FunctionCall? {
-        return functionCall
-    }
-
-    fun setFunctionCall(functionCall: ChatResponse.FunctionCall?) {
-        this.functionCall = functionCall
-    }
-
-    //endregion
     override fun toString(): String {
         return "Message{" +
                 "content='" + content + '\'' +

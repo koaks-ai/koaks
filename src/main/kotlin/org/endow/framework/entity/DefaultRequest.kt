@@ -78,22 +78,6 @@ open class DefaultRequest {
         this.logitBias = logitBias
     }
 
-    fun getMessages(): MutableList<Message?>? {
-        return messages
-    }
-
-    fun setMessages(messages: MutableList<Message?>?) {
-        this.messages = messages
-    }
-
-    fun getTools(): MutableList<ToolDefinition?>? {
-        return tools
-    }
-
-    fun setTools(tools: MutableList<ToolDefinition?>?) {
-        this.tools = tools
-    }
-
     override fun toString(): String {
         return "ChatGPTRequest {" +
                 "model='" + model + '\'' +

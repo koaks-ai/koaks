@@ -2,9 +2,9 @@ package org.endow.framework.entity
 
 import com.google.gson.annotations.SerializedName
 
-class ChatResponse {
+open class ChatResponse {
 
-    var choices: MutableList<Choice?>? = null
+    var choices: MutableList<Choice>? = null
     var created: Long = 0
     var id: String? = null
     var model: String? = null
@@ -19,7 +19,6 @@ class ChatResponse {
     var systemFingerprint: String? = null
     var usage: Usage? = null
 
-    //endregion
     override fun toString(): String {
         return "DefaultChatResponse{" +
                 "choices=" + choices +
@@ -34,7 +33,6 @@ class ChatResponse {
     }
 
     class Choice {
-        //region Choice getter and setter
         @SerializedName("content_filter_results")
         var contentFilterResults: ContentFilterResults? = null
 
@@ -46,7 +44,6 @@ class ChatResponse {
         var logprobs: Any? = null
         var message: Message? = null
 
-        //endregion
         override fun toString(): String {
             return "Choice{" +
                     "contentFilterResults=" + contentFilterResults +
@@ -83,7 +80,6 @@ class ChatResponse {
     }
 
     class ContentFilterResults {
-        //region ContentFilterResults getter and setter
         var hate: FilterDetail? = null
 
         @SerializedName("self_harm")
@@ -91,7 +87,6 @@ class ChatResponse {
         var sexual: FilterDetail? = null
         var violence: FilterDetail? = null
 
-        //endregion
         override fun toString(): String {
             return "ContentFilterResults{" +
                     "hate=" + hate +
@@ -104,11 +99,9 @@ class ChatResponse {
 
 
     class FilterDetail {
-        //region FilterDetail getter and setter
         var isFiltered: Boolean = false
         var severity: String? = null
 
-        //endregion
         override fun toString(): String {
             return "FilterDetail{" +
                     "filtered=" + this.isFiltered +
@@ -118,7 +111,6 @@ class ChatResponse {
     }
 
     class ToolCall {
-        // Getters and Setters
         var id: String? = null
         var function: FunctionCall? = null
         var type: String? = null
@@ -135,7 +127,6 @@ class ChatResponse {
     }
 
     class FunctionCall {
-        // Getters and Setters
         var name: String? = null
         var arguments: String? = null
 
@@ -148,14 +139,12 @@ class ChatResponse {
     }
 
     class PromptFilterResult {
-        //region PromptFilterResult getter and setter
         @SerializedName("content_filter_results")
         var contentFilterResults: ContentFilterResults? = null
 
         @SerializedName("prompt_index")
         var promptIndex: Int = 0
 
-        //endregion
         override fun toString(): String {
             return "PromptFilterResult{" +
                     "contentFilterResults=" + contentFilterResults +
@@ -165,7 +154,6 @@ class ChatResponse {
     }
 
     class Usage {
-        //region Usage getter and setter
         @SerializedName("completion_tokens")
         var completionTokens: Int = 0
 
@@ -181,7 +169,6 @@ class ChatResponse {
         @SerializedName("total_tokens")
         var totalTokens: Int = 0
 
-        //endregion
         override fun toString(): String {
             return "Usage{" +
                     "completionTokens=" + completionTokens +
@@ -194,7 +181,6 @@ class ChatResponse {
     }
 
     class CompletionTokensDetails {
-        //region DefaultChatResponse getter and setter
         @SerializedName("accepted_prediction_tokens")
         var acceptedPredictionTokens: Int = 0
 
@@ -207,7 +193,6 @@ class ChatResponse {
         @SerializedName("rejected_prediction_tokens")
         var rejectedPredictionTokens: Int = 0
 
-        //endregion
         override fun toString(): String {
             return "CompletionTokensDetails{" +
                     "acceptedPredictionTokens=" + acceptedPredictionTokens +
@@ -219,14 +204,12 @@ class ChatResponse {
     }
 
     class PromptTokensDetails {
-        //region PromptTokensDetails getter and setter
         @SerializedName("audio_tokens")
         var audioTokens: Int = 0
 
         @SerializedName("cached_tokens")
         var cachedTokens: Int = 0
 
-        //endregion
         override fun toString(): String {
             return "PromptTokensDetails{" +
                     "audioTokens=" + audioTokens +
