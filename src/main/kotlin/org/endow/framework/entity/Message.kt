@@ -8,22 +8,22 @@ class Message {
     var role: String? = null
 
     @SerializedName("tool_calls")
-    private var toolCalls: MutableList<ChatResponse.ToolCall?>? = null
+    var toolCalls: MutableList<ChatResponse.ToolCall>? = null
 
     @SerializedName("function_call")
-    private var functionCall: ChatResponse.FunctionCall? = null
+    var functionCall: ChatResponse.FunctionCall? = null
+
     var audio: String? = null
 
-
     @SerializedName("tool_call_id")
-    private var toolCallID: String? = null
+    var toolCallID: String? = null
 
-    constructor(role: String?, content: String?) {
+    constructor(role: String, content: String) {
         this.role = role
         this.content = content
     }
 
-    constructor(role: String?, content: String?, toolCallID: String?) {
+    constructor(role: String, content: String, toolCallID: String?) {
         this.role = role
         this.content = content
         this.toolCallID = toolCallID
@@ -42,23 +42,23 @@ class Message {
     }
 
     companion object {
-        fun of(role: String?, content: String?): Message {
+        fun of(role: String, content: String): Message {
             return Message(role, content)
         }
 
-        fun system(content: String?): Message {
+        fun system(content: String): Message {
             return Message("system", content)
         }
 
-        fun assistant(content: String?): Message {
+        fun assistant(content: String): Message {
             return Message("assistant", content)
         }
 
-        fun user(content: String?): Message {
+        fun user(content: String): Message {
             return Message("user", content)
         }
 
-        fun tool(content: String?, toolCallID: String?): Message {
+        fun tool(content: String, toolCallID: String): Message {
             return Message("tool", content, toolCallID)
         }
     }

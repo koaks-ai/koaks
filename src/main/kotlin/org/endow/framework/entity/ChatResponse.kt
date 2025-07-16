@@ -127,7 +127,7 @@ open class ChatResponse {
     }
 
     class FunctionCall {
-        var name: String? = null
+        lateinit var name: String
         var arguments: String? = null
 
         override fun toString(): String {
