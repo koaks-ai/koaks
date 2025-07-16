@@ -44,7 +44,7 @@ class HttpClient private constructor(
         }
     }
 
-    suspend fun postForString(request: DefaultRequest): Result<String> {
+    suspend fun postAsString(request: DefaultRequest): Result<String> {
         return runCatching {
             val requestBody = JsonUtil.toJson(request)
             logger.debug { "Sending POST request: $requestBody" }
@@ -67,13 +67,13 @@ class HttpClient private constructor(
         }
     }
 
-    suspend inline fun <reified T : Any> postForObject(request: DefaultRequest): Result<T> {
-        return postForString(request).mapCatching { jsonString ->
+    suspend inline fun <reified T> postAsObject(request: DefaultRequest): Result<T> {
+        return postAsString(request).mapCatching { jsonString ->
             JsonUtil.fromJson<T>(jsonString)
         }
     }
 
-    fun postForStringStream(request: DefaultRequest): Flow<String> {
+    fun postAsStringStream(request: DefaultRequest): Flow<String> {
         return try {
             val requestBody = JsonUtil.toJson(request)
             logger.debug { "Sending POST stream request: $requestBody" }
@@ -101,8 +101,8 @@ class HttpClient private constructor(
         }
     }
 
-    inline fun <reified T : Any> postForObjectStream(request: DefaultRequest): Flow<T> {
-        return postForStringStream(request)
+    inline fun <reified T> postAsObjectStream(request: DefaultRequest): Flow<T> {
+        return postAsStringStream(request)
             .map { jsonString ->
                 try {
                     JsonUtil.fromJson<T>(jsonString)
@@ -113,13 +113,13 @@ class HttpClient private constructor(
             }
     }
 
-    suspend inline fun <reified T : Any> postWithCallback(
+    suspend inline fun <reified T> postWithCallback(
         request: DefaultRequest,
         callback: HttpCallback<T>
     ) {
         try {
             callback.onStart()
-            val result = postForObject<T>(request)
+            val result = postAsObject<T>(request)
 
             result.fold(
                 onSuccess = { data -> callback.onSuccess(data) },
@@ -132,14 +132,14 @@ class HttpClient private constructor(
         }
     }
 
-    suspend inline fun <reified T : Any> postStreamWithCallback(
+    suspend inline fun <reified T> postStreamWithCallback(
         request: DefaultRequest,
         callback: HttpStreamCallback<T>
     ) {
         try {
             callback.onStart()
 
-            postForObjectStream<T>(request)
+            postAsObjectStream<T>(request)
                 .catch { exception ->
                     callback.onError(exception)
                 }
@@ -174,12 +174,12 @@ class HttpClient private constructor(
                 .timeout(Duration.ofSeconds(config.timeoutSeconds))
                 .awaitSingle()
         }.recoverCatching { exception ->
-            logger.error { "GET request failed, ${exception}" }
+            logger.error { "GET request failed, ${exception.message}" }
             throw mapToHttpClientException(exception)
         }
     }
 
-    suspend inline fun <reified T : Any> getForObject(path: String = ""): Result<T> {
+    suspend inline fun <reified T> getAsObject(path: String = ""): Result<T> {
         return get(path).mapCatching { jsonString ->
             JsonUtil.fromJson<T>(jsonString)
         }

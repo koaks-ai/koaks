@@ -4,14 +4,15 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import org.endow.framework.toolcall.ToolInstanceContainer
 import org.endow.framework.toolcall.ToolContainer
 
-object ToolCaller : IOutCaller {
+class ToolCaller : IOutCaller {
 
     private val logger = KotlinLogging.logger {}
 
-    override fun call(toolname: String, args: Array<Any>): String {
+    override fun call(toolname: String, args: Array<Any>?): String {
         return ToolContainer.getTool(toolname)?.let {
             try {
-                it.realFunction.call(ToolInstanceContainer.getToolInstance(toolname), *args)?.toString()
+                val actualArgs = args ?: emptyArray()
+                it.realFunction.call(ToolInstanceContainer.getToolInstance(toolname), *actualArgs)?.toString()
             } catch (e: Exception) {
                 throw RuntimeException("Error when calling tool $toolname.", e)
             }
@@ -19,6 +20,10 @@ object ToolCaller : IOutCaller {
             logger.error { "Tool $toolname not found." }
             "null"
         }
+    }
+
+    override fun call(json: String): String {
+        TODO("Not yet implemented")
     }
 
 }

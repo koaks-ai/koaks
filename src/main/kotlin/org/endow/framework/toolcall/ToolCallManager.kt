@@ -19,6 +19,7 @@ object ToolCallInitializer {
 
     private val classInstanceCache = mutableMapOf<KClass<*>, Any>()
 
+    @Synchronized
     fun init() {
         if (isInitialized) return
 

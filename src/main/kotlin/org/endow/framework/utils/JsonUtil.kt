@@ -13,7 +13,8 @@ object JsonUtil {
         }
     }
 
-    inline fun <reified T> fromJson(json: String): T {
+    inline fun <reified T> fromJson(json: String?): T {
+        if (json == null) return innerJson.fromJson("{}", T::class.java)
         return innerJson.fromJson(json, T::class.java)
     }
 
@@ -21,6 +22,3 @@ object JsonUtil {
         return innerJson.fromJson<T>(json, clazz)
     }
 }
-
-inline fun <reified T> String.fromJson(): T =
-    JsonUtil.fromJson(this)

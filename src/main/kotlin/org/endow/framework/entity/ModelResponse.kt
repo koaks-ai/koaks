@@ -12,12 +12,21 @@ class ModelResponse<T> private constructor(
     private val _stream: Flow<T>?,
     private val _response: T?
 ) {
-
     private val logger = KotlinLogging.logger {}
 
     companion object {
         fun <T> fromStream(stream: Flow<T>) = ModelResponse(stream, null)
         fun <T> fromResponse(response: T) = ModelResponse(null, response)
+        fun <T> empty(response: T): ModelResponse<T> = ModelResponse(null, response)
+
+        fun <T> fromResult(result: Result<T>, fallback: () -> T): ModelResponse<T> =
+            result.fold(
+                onSuccess = { fromResponse(it) },
+                onFailure = {
+                    KotlinLogging.logger {}.error(it) { "Model response failure: ${it.message}" }
+                    empty(fallback())
+                }
+            )
     }
 
     init {
@@ -54,4 +63,3 @@ class ModelResponse<T> private constructor(
         }
     }
 }
-
