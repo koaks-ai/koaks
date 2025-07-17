@@ -111,7 +111,7 @@ open class ChatResponse {
     }
 
     class ToolCall {
-        var id: String? = null
+        lateinit var id: String
         var function: FunctionCall? = null
         var type: String? = null
         var index: Int = 0

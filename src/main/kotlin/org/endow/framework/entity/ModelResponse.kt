@@ -10,18 +10,18 @@ import kotlin.require
 
 class ModelResponse<T> private constructor(
     private val _stream: Flow<T>?,
-    private val _response: T?
+    private val _value: T?
 ) {
     private val logger = KotlinLogging.logger {}
 
     companion object {
         fun <T> fromStream(stream: Flow<T>) = ModelResponse(stream, null)
-        fun <T> fromResponse(response: T) = ModelResponse(null, response)
-        fun <T> empty(response: T): ModelResponse<T> = ModelResponse(null, response)
+        fun <T> fromValue(value: T) = ModelResponse(null, value)
+        fun <T> empty(value: T): ModelResponse<T> = ModelResponse(null, value)
 
         fun <T> fromResult(result: Result<T>, fallback: () -> T): ModelResponse<T> =
             result.fold(
-                onSuccess = { fromResponse(it) },
+                onSuccess = { fromValue(it) },
                 onFailure = {
                     KotlinLogging.logger {}.error(it) { "Model response failure: ${it.message}" }
                     empty(fallback())
@@ -30,8 +30,8 @@ class ModelResponse<T> private constructor(
     }
 
     init {
-        require((_stream != null) xor (_response != null)) {
-            "ModelResponse must have exactly one non-null value (stream or response)"
+        require((_stream != null) xor (_value != null)) {
+            "ModelResponse must have exactly one non-null value (stream or value)"
         }
     }
 
@@ -41,9 +41,9 @@ class ModelResponse<T> private constructor(
         fallback = { emptyFlow() }
     )
 
-    val response: T by LoggedProperty(
-        expectedValue = _response,
-        typeName = "response",
+    val value: T by LoggedProperty(
+        expectedValue = _value,
+        typeName = "value",
         fallback = { throw NoSuchElementException("Response is not available") }
     )
 
@@ -56,7 +56,7 @@ class ModelResponse<T> private constructor(
             return expectedValue ?: run {
                 logger.warn {
                     "Attempted to access $typeName, but this ModelResponse contains " +
-                            if (typeName == "stream") "response" else "stream"
+                            if (typeName == "stream") "value" else "stream"
                 }
                 fallback()
             }
