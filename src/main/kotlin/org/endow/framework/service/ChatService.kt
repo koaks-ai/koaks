@@ -15,6 +15,7 @@ import org.endow.framework.utils.JsonUtil
 class ChatService(val model: ChatModel) {
 
     private val logger = KotlinLogging.logger {}
+    private val MAX_TOOL_CALL_EPOCH = 30
 
     private var httpClient = HttpClient.create(
         baseUrl = model.baseUrl,
@@ -30,6 +31,8 @@ class ChatService(val model: ChatModel) {
             }
             modelName = modelName ?: model.modelName
             stream = stream ?: model.stream
+            parallelToolCalls = parallelToolCalls ?: model.parallelToolCalls
+            responseFormat = responseFormat ?: model.responseFormat
             tools = tools ?: model.tools
             maxTokens = maxTokens ?: model.maxTokens
             temperature = temperature ?: model.temperature
@@ -40,34 +43,50 @@ class ChatService(val model: ChatModel) {
             frequencyPenalty = frequencyPenalty ?: model.frequencyPenalty
             logitBias = logitBias ?: model.logitBias
         }
-        val messages = request.messages
+
         return if (request.stream == true) {
             if (request.tools?.isNotEmpty() == true) {
                 logger.warn { "Streaming is not supported for tools. Falling back to non-streaming mode." }
-                request.tools = null
+                request.stream = false
+                val initialResponse =
+                    ModelResponse.fromResult(httpClient.postAsObject<ChatResponse>(request)) { ChatResponse() }
+                handleToolCall(request, initialResponse)
             }
             ModelResponse.fromStream(httpClient.postAsObjectStream<ChatResponse>(request))
         } else {
-            var response =
+            val initialResponse =
                 ModelResponse.fromResult(httpClient.postAsObject<ChatResponse>(request)) { ChatResponse() }
-            val caller = ToolCaller()
-            while (isToolCallResponse(response.value)) {
-                val message = response.value.choices?.firstOrNull()?.message
-                message?.let { messages.add(it) }
-
-                message?.toolCalls.orEmpty().forEach { tool ->
-                    val toolName = tool.function?.name.orEmpty()
-                    val argsJson = tool.function?.arguments
-                    val args = parseToolArguments(toolName, argsJson)
-                    val result = caller.call(toolName, args.toTypedArray())
-                    logger.info { "tool call: $toolName, args: $args" }
-                    messages.add(Message.tool(result, tool.id))
-                }
-
-                response = ModelResponse.fromResult(httpClient.postAsObject<ChatResponse>(request)) { ChatResponse() }
-            }
-            response
+            handleToolCall(request, initialResponse)
         }
+    }
+
+    private suspend fun handleToolCall(
+        request: DefaultRequest,
+        initialResponse: ModelResponse<ChatResponse>,
+    ): ModelResponse<ChatResponse> {
+        val messages = request.messages
+        var response = initialResponse
+        var toolCallCount = 0
+        val caller = ToolCaller()
+
+        while (isToolCallResponse(response.value) && toolCallCount < MAX_TOOL_CALL_EPOCH) {
+            val message = response.value.choices?.firstOrNull()?.message
+            message?.let { messages.add(it) }
+
+            message?.toolCalls.orEmpty().forEach { tool ->
+                val toolName = tool.function?.name.orEmpty()
+                val argsJson = tool.function?.arguments
+                val args = parseToolArguments(toolName, argsJson)
+                val result = caller.call(toolName, args.toTypedArray())
+                logger.info { "tool call: $toolName, args: $args" }
+                messages.add(Message.tool(result, tool.id))
+            }
+
+            toolCallCount++
+            response = ModelResponse.fromResult(httpClient.postAsObject<ChatResponse>(request)) { ChatResponse() }
+        }
+
+        return response
     }
 
     private fun parseToolArguments(toolName: String, rawJson: String?): List<Any> {

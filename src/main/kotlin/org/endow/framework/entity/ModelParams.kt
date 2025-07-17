@@ -8,6 +8,10 @@ open class ModelParams {
     // 工具
     var tools: MutableList<ToolDefinition>? = null
 
+    // 可选参数：是否允许并行调用工具
+    @SerializedName("parallel_tool_calls")
+    var parallelToolCalls: Boolean? = null
+
     var systemMessage: String? = null
 
     // 可选参数：生成文本的最大 token 数量
@@ -44,5 +48,9 @@ open class ModelParams {
     // 可选参数：修改指定标记出现在完成中的可能性
     @SerializedName("logit_bias")
     var logitBias: String? = null
+
+    // 可选参数：返回结果的格式,强制Json请设置 {"type": "json_object"}
+    @SerializedName("response_format")
+    var responseFormat: Map<String, String>? = null
 
 }
