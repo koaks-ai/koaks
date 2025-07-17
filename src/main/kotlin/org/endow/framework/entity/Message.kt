@@ -58,8 +58,8 @@ class Message {
             return Message("user", content)
         }
 
-        fun tool(content: String, toolCallID: String): Message {
-            return Message("tool", content, toolCallID)
+        fun tool(content: String, toolCallId: String): Message {
+            return Message("tool", content, toolCallId)
         }
     }
 }

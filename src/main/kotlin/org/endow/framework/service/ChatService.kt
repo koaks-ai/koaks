@@ -9,7 +9,6 @@ import org.endow.framework.entity.ModelResponse
 import org.endow.framework.model.ChatModel
 import org.endow.framework.net.HttpClient
 import org.endow.framework.toolcall.ToolContainer
-import org.endow.framework.toolcall.ToolDefinition
 import org.endow.framework.toolcall.caller.ToolCaller
 import org.endow.framework.utils.JsonUtil
 
@@ -44,7 +43,7 @@ class ChatService(val model: ChatModel) {
         val messages = request.messages
         return if (request.stream == true) {
             if (request.tools?.isNotEmpty() == true) {
-                logger.error { "Streaming is not supported for tools. Falling back to non-streaming mode." }
+                logger.warn { "Streaming is not supported for tools. Falling back to non-streaming mode." }
                 request.tools = null
             }
             ModelResponse.fromStream(httpClient.postAsObjectStream<ChatResponse>(request))
@@ -52,27 +51,37 @@ class ChatService(val model: ChatModel) {
             var response =
                 ModelResponse.fromResult(httpClient.postAsObject<ChatResponse>(request)) { ChatResponse() }
             val caller = ToolCaller()
-            while (isToolCallResponse(response.response)) {
-                response.response.choices?.firstOrNull()?.message?.let { messages.add(it) }
-                val toolCalls = response.response.choices?.firstOrNull()?.message?.toolCalls
-                val keys = mutableListOf<Any>()
-                toolCalls?.forEach {
-                    val toolname = it.function?.name!!
-                    it.function?.arguments.apply {
-                        val jsonObject: JsonObject = JsonUtil.fromJson<JsonObject>(this)
-                        val toolEntity: ToolDefinition? = ToolContainer.getTool(toolname)
-                        toolEntity?.function?.parameters?.properties?.forEach { key, property ->
-                            if (jsonObject.has(key)) {
-                                keys.add(jsonObject.get(key).toString())
-                            }
-                        }
-                    }
-                    logger.debug { "tool call: $toolname, args: $keys" }
-                    messages.add(Message.tool(caller.call(toolname, keys.toTypedArray()), it.id!!))
+            while (isToolCallResponse(response.value)) {
+                val message = response.value.choices?.firstOrNull()?.message
+                message?.let { messages.add(it) }
+
+                message?.toolCalls.orEmpty().forEach { tool ->
+                    val toolName = tool.function?.name.orEmpty()
+                    val argsJson = tool.function?.arguments
+                    val args = parseToolArguments(toolName, argsJson)
+                    val result = caller.call(toolName, args.toTypedArray())
+                    logger.info { "tool call: $toolName, args: $args" }
+                    messages.add(Message.tool(result, tool.id))
                 }
+
                 response = ModelResponse.fromResult(httpClient.postAsObject<ChatResponse>(request)) { ChatResponse() }
             }
             response
+        }
+    }
+
+    private fun parseToolArguments(toolName: String, rawJson: String?): List<Any> {
+        if (rawJson.isNullOrBlank()) return emptyList()
+
+        return try {
+            val jsonObject = JsonUtil.fromJson<JsonObject>(rawJson)
+            val tool = ToolContainer.getTool(toolName)
+            tool?.function?.parameters?.properties?.mapNotNull { (key, _) ->
+                jsonObject.get(key)?.toString()
+            } ?: emptyList()
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to parse arguments for $toolName" }
+            emptyList()
         }
     }
 
