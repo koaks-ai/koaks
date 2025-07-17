@@ -50,7 +50,7 @@ class ChatService(val model: ChatModel) {
                 request.stream = false
                 val initialResponse =
                     ModelResponse.fromResult(httpClient.postAsObject<ChatResponse>(request)) { ChatResponse() }
-                handleToolCall(request, initialResponse)
+                return handleToolCall(request, initialResponse)
             }
             ModelResponse.fromStream(httpClient.postAsObjectStream<ChatResponse>(request))
         } else {
