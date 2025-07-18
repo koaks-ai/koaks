@@ -4,7 +4,7 @@ import org.endow.framework.api.ChatClient
 import org.endow.framework.memory.DefaultMemoryStorage
 import org.endow.framework.memory.IMemoryStorage
 import org.endow.framework.model.ChatModel
-import org.endow.framework.model.ChatModelBuilder
+import org.endow.framework.model.ChatModel.ChatModelBuilder
 
 class ChatClientBuilder {
     private lateinit var model: ChatModel
@@ -23,16 +23,17 @@ class ChatClientBuilder {
     fun build(): ChatClient {
         return ChatClient(model, memory)
     }
-}
 
-class MemoryBuilder {
-    private var storage: IMemoryStorage = DefaultMemoryStorage
+    class MemoryBuilder {
+        private var storage: IMemoryStorage = DefaultMemoryStorage
 
-    fun default() {
-        storage = DefaultMemoryStorage
+        fun default() {
+            storage = DefaultMemoryStorage
+        }
+
+        fun build(): IMemoryStorage = storage
     }
 
-    fun build(): IMemoryStorage = storage
 }
 
 fun createChatClient(block: ChatClientBuilder.() -> Unit): ChatClient {
