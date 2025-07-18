@@ -2,6 +2,8 @@ package org.endow.framework.service
 
 import com.google.gson.JsonObject
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onEach
 import org.endow.framework.entity.ChatMessage
 import org.endow.framework.entity.ChatRequest
 import org.endow.framework.entity.inner.InnerChatRequest
@@ -67,7 +69,22 @@ class ChatService(
                 logger.error { "Streaming is not supported for tools. Falling back to non-streaming mode." }
                 throw UnsupportedOperationException("Streaming is not supported for tools.")
             }
-            ModelResponse.fromStream(httpClient.postAsObjectStream<ChatMessage>(request))
+            val responseContent = StringBuilder()
+
+            val streamFlow = httpClient.postAsObjectStream<ChatMessage>(request)
+                .onEach { data ->
+                    val chunk = data.choices?.getOrNull(0)?.delta?.content
+                    if (!chunk.isNullOrEmpty()) {
+                        responseContent.append(chunk)
+                    }
+                }
+
+            ModelResponse.fromStream(
+                streamFlow.onCompletion {
+                    val assistantMessage = Message.assistant(responseContent.toString())
+                    saveMessage(assistantMessage, memoryId, request.messages)
+                }
+            )
         } else {
             val initialResponse =
                 ModelResponse.fromResult(httpClient.postAsObject<ChatMessage>(request)) { ChatMessage() }
@@ -75,6 +92,7 @@ class ChatService(
             initialResponse.value.apply {
                 choices?.forEach { it.message?.id = this.id }
             }
+            saveMessage(initialResponse.value.choices?.firstOrNull()?.message, memoryId, request.messages)
             handleToolCall(request, initialResponse)
         }
     }
@@ -83,6 +101,7 @@ class ChatService(
         request: InnerChatRequest,
         initialResponse: ModelResponse<ChatMessage>,
     ): ModelResponse<ChatMessage> {
+        if (!isToolCallResponse(initialResponse.value)) return initialResponse
         val messages = request.messages
         var response = initialResponse
         var toolCallCount = 0
@@ -90,10 +109,6 @@ class ChatService(
 
         while (isToolCallResponse(response.value) && toolCallCount < MAX_TOOL_CALL_EPOCH) {
             val responseMessage = response.value.choices?.firstOrNull()?.message
-            responseMessage?.let {
-                saveMessage(it, request.messageId, messages)
-            }
-
             responseMessage?.toolCalls.orEmpty().forEach { tool ->
                 val toolName = tool.function?.name.orEmpty()
                 val argsJson = tool.function?.arguments
@@ -105,6 +120,9 @@ class ChatService(
 
             toolCallCount++
             response = ModelResponse.fromResult(httpClient.postAsObject<ChatMessage>(request)) { ChatMessage() }
+            response.value.choices?.getOrNull(0)?.message.let {
+                saveMessage(it, request.messageId, messages)
+            }
         }
 
         return response
@@ -131,7 +149,8 @@ class ChatService(
     }
 
     @Synchronized
-    private fun saveMessage(message: Message, messageId: String?, messages: MutableList<Message>) {
+    private fun saveMessage(message: Message?, messageId: String?, messages: MutableList<Message>) {
+        if (message == null) return
         try {
             messages.addLast(message)
             messageId?.let {
@@ -144,10 +163,16 @@ class ChatService(
     }
 
     private fun chatRequest2innerRequest(chatRequest: ChatRequest, messageId: String?): InnerChatRequest {
-        val messages = (messageId?.let {
-            memoryStorage.getMessageList(it)
-        } ?: mutableListOf()).apply {
-            add(Message.user(chatRequest.message))
+        val messages = messageId?.let {
+            // need to call toMutableList() to create a copy, avoiding modification of the original reference
+            memoryStorage.getMessageList(messageId).toMutableList()
+        } ?: mutableListOf()
+
+        val userMessage = Message.user(chatRequest.message)
+        messages.add(userMessage)
+
+        messageId?.let {
+            memoryStorage.addMessage(userMessage, messageId)
         }
 
         return InnerChatRequest(
