@@ -6,10 +6,10 @@ object DefaultMemoryStorage : IMemoryStorage {
 
     private val messageContainer: HashMap<String, MutableList<Message>> = HashMap()
 
-    override fun getMessageList(msgId: String): MutableList<Message> {
-        return messageContainer[msgId] ?: run {
+    override fun getMessageList(memoryId: String): MutableList<Message> {
+        return messageContainer[memoryId] ?: run {
             val newList = mutableListOf<Message>()
-            messageContainer[msgId] = newList
+            messageContainer[memoryId] = newList
             newList
         }
     }
@@ -18,8 +18,8 @@ object DefaultMemoryStorage : IMemoryStorage {
         getMessageList(msgId).addLast(message)
     }
 
-    override fun deleteMessageList(msgId: String) {
-        messageContainer.remove(msgId)
+    override fun deleteMessageList(memoryId: String) {
+        messageContainer.remove(memoryId)
     }
 
 }
