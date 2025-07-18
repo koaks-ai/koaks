@@ -1,7 +1,7 @@
 package org.endow.framework.toolcall
 
 import org.endow.framework.annotation.Tool
-import org.endow.framework.context.Status
+import org.endow.framework.context.EndowContext
 import org.reflections.Reflections
 import org.reflections.scanners.Scanners
 import kotlin.collections.forEach
@@ -23,7 +23,7 @@ object ToolCallInitializer {
     fun init() {
         if (isInitialized) return
 
-        val tools = scanTools(Status.packageName)
+        val tools = scanTools(EndowContext.packageName)
         registerTools(tools)
         instanceToolClass(tools)
 

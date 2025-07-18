@@ -2,20 +2,19 @@ package org.endow.framework.test
 
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
-import org.endow.framework.entity.DefaultRequest
+import kotlinx.coroutines.runBlocking
+import org.endow.framework.entity.ChatMessage
+import org.endow.framework.entity.inner.InnerChatRequest
 import org.endow.framework.entity.Message
 import org.endow.framework.net.HttpClient
 
-import kotlinx.coroutines.runBlocking
-import org.endow.framework.entity.ChatResponse
-
 val client = HttpClient.create(
     baseUrl = "base-url",
-    apiKey = "api-key"
+    apiKey = "api-key",
 )
 
 fun testSyncRequest() = runBlocking {
-    val request = DefaultRequest(
+    val request = InnerChatRequest(
         modelName = "qwen-plus",
         messages = mutableListOf(
             Message.user("What is the meaning of life?")
@@ -24,7 +23,7 @@ fun testSyncRequest() = runBlocking {
         stream = false
     }
 
-    val stringResult = client.postAsObject<ChatResponse>(request)
+    val stringResult = client.postAsObject<ChatMessage>(request)
 
     stringResult.fold(
         onSuccess = { result ->
@@ -38,7 +37,7 @@ fun testSyncRequest() = runBlocking {
 }
 
 fun testStreamRequest() = runBlocking {
-    val request = DefaultRequest(
+    val request = InnerChatRequest(
         modelName = "qwen-plus",
         messages = mutableListOf(
             Message.user("what's the meaning of life？")
@@ -47,9 +46,8 @@ fun testStreamRequest() = runBlocking {
         stream = true
     }
 
-
     var chunkCount = 0
-    client.postAsObjectStream<ChatResponse>(request)
+    client.postAsObjectStream<ChatMessage>(request)
         .map { data ->
             chunkCount++
             print("${data.choices?.get(0)?.delta?.content}")

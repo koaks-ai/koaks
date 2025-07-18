@@ -3,6 +3,7 @@ package org.endow.framework.entity
 import com.google.gson.annotations.SerializedName
 
 class Message {
+    var id: String? = null
     var content: String? = null
     var refusal: Any? = null
     var role: String? = null

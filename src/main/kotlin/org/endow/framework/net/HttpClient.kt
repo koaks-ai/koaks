@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.reactor.awaitSingle
-import org.endow.framework.entity.DefaultRequest
+import org.endow.framework.entity.inner.InnerChatRequest
 import org.endow.framework.utils.JsonUtil
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
@@ -44,7 +44,7 @@ class HttpClient private constructor(
         }
     }
 
-    suspend fun postAsString(request: DefaultRequest): Result<String> {
+    suspend fun postAsString(request: InnerChatRequest): Result<String> {
         return runCatching {
             val requestBody = JsonUtil.toJson(request)
             logger.debug { "Sending POST request: $requestBody" }
@@ -67,13 +67,13 @@ class HttpClient private constructor(
         }
     }
 
-    suspend inline fun <reified T> postAsObject(request: DefaultRequest): Result<T> {
+    suspend inline fun <reified T> postAsObject(request: InnerChatRequest): Result<T> {
         return postAsString(request).mapCatching { jsonString ->
             JsonUtil.fromJson<T>(jsonString)
         }
     }
 
-    fun postAsStringStream(request: DefaultRequest): Flow<String> {
+    fun postAsStringStream(request: InnerChatRequest): Flow<String> {
         return try {
             val requestBody = JsonUtil.toJson(request)
             logger.debug { "Sending POST stream request: $requestBody" }
@@ -101,7 +101,7 @@ class HttpClient private constructor(
         }
     }
 
-    inline fun <reified T> postAsObjectStream(request: DefaultRequest): Flow<T> {
+    inline fun <reified T> postAsObjectStream(request: InnerChatRequest): Flow<T> {
         return postAsStringStream(request)
             .map { jsonString ->
                 try {
@@ -114,7 +114,7 @@ class HttpClient private constructor(
     }
 
     suspend inline fun <reified T> postWithCallback(
-        request: DefaultRequest,
+        request: InnerChatRequest,
         callback: HttpCallback<T>
     ) {
         try {
@@ -133,7 +133,7 @@ class HttpClient private constructor(
     }
 
     suspend inline fun <reified T> postStreamWithCallback(
-        request: DefaultRequest,
+        request: InnerChatRequest,
         callback: HttpStreamCallback<T>
     ) {
         try {
