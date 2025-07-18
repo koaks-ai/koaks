@@ -167,12 +167,7 @@ class ChatService(
             memoryStorage.getMessageList(messageId).toMutableList()
         } ?: mutableListOf()
 
-        val userMessage = Message.user(chatRequest.message)
-        messages.add(userMessage)
-
-        messageId?.let {
-            memoryStorage.addMessage(userMessage, messageId)
-        }
+        saveMessage(Message.user(chatRequest.message), messageId, messages)
 
         return InnerChatRequest(
             modelName = chatRequest.modelName,
