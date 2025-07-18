@@ -101,7 +101,6 @@ class ChatService(
         request: InnerChatRequest,
         initialResponse: ModelResponse<ChatMessage>,
     ): ModelResponse<ChatMessage> {
-        if (!isToolCallResponse(initialResponse.value)) return initialResponse
         val messages = request.messages
         var response = initialResponse
         var toolCallCount = 0
