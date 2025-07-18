@@ -9,7 +9,7 @@ interface IMemoryStorage {
      * @param msgId Message ID, this is the unique identifier for a particular continuous conversation, it should be unique.
      * @return MutableList<Message>
      */
-    fun getMessageList(msgId: String): MutableList<Message>
+    fun getMessageList(memoryId: String): MutableList<Message>
 
     /**
      * add message to message list by message id.
@@ -22,6 +22,6 @@ interface IMemoryStorage {
      * delete message list by message id.
      * @param msgId Message ID, this is the unique identifier for a particular continuous conversation, it should be unique.
      */
-    fun deleteMessageList(msgId: String)
+    fun deleteMessageList(memoryId: String)
 
 }
