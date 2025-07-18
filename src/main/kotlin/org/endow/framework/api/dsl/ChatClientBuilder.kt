@@ -24,16 +24,16 @@ class ChatClientBuilder {
         return ChatClient(model, memory)
     }
 
-    class MemoryBuilder {
-        private var storage: IMemoryStorage = DefaultMemoryStorage
+}
 
-        fun default() {
-            storage = DefaultMemoryStorage
-        }
+class MemoryBuilder {
+    private var storage: IMemoryStorage = DefaultMemoryStorage
 
-        fun build(): IMemoryStorage = storage
+    fun default() {
+        storage = DefaultMemoryStorage
     }
 
+    fun build(): IMemoryStorage = storage
 }
 
 fun createChatClient(block: ChatClientBuilder.() -> Unit): ChatClient {
