@@ -20,7 +20,7 @@ open class ChatMessage {
     var usage: Usage? = null
 
     override fun toString(): String {
-        return "DefaultChatResponse{" +
+        return "ChatMessage{" +
                 "choices=" + choices +
                 ", created=" + created +
                 ", id='" + id + '\'' +

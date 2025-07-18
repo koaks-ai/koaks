@@ -4,10 +4,10 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import org.endow.framework.EndowFramework
-import org.endow.framework.entity.DefaultRequest
-import org.endow.framework.entity.Message
+import org.endow.framework.entity.ChatRequest
 import org.endow.framework.model.ChatModel
 import org.endow.framework.service.ChatService
+import org.endow.framework.toolcall.ToolContainer
 
 fun main() {
     EndowFramework.init(arrayOf("org.endow.framework.test"))
@@ -16,24 +16,23 @@ fun main() {
             ChatModel(
                 baseUrl = "base-url",
                 apiKey = "api-key",
-                modelName = "deepseek-v3"
+                modelName = "qwen-plus"
             )
         )
 
-        val defaultRequest = DefaultRequest(
-            messages = mutableListOf(
-                Message.of("user", "生命的意义是什么？")
-            )
+        val chatRequest = ChatRequest(
+            message = "What is the weather like in the four municipalities?"
         ).apply {
-            stream = true
-//            tools = ToolContainer.getTools("default")
+            params.stream = false
+            params.tools = ToolContainer.getTools("default")
+            params.parallelToolCalls = true
         }
-//        println(chatService.execChat(defaultRequest).value)
-        chatService.execChat(defaultRequest).stream
-            .map { data ->
-                print("${data.choices?.get(0)?.delta?.content}")
-            }
-            .collect()
+        println(chatService.execChat(chatRequest).value)
+//        chatService.execChat(chatRequest).stream
+//            .map { data ->
+//                print("${data.choices?.getOrNull(0)?.delta?.content}")
+//            }
+//            .collect()
     }
 
 }

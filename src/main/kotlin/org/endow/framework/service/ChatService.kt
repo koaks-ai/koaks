@@ -3,7 +3,8 @@ package org.endow.framework.service
 import com.google.gson.JsonObject
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.endow.framework.entity.ChatMessage
-import org.endow.framework.entity.DefaultRequest
+import org.endow.framework.entity.ChatRequest
+import org.endow.framework.entity.inner.InnerChatRequest
 import org.endow.framework.entity.Message
 import org.endow.framework.entity.ModelResponse
 import org.endow.framework.memory.DefaultMemoryStorage
@@ -27,7 +28,19 @@ class ChatService(
         apiKey = model.apiKey
     )
 
-    suspend fun execChat(request: DefaultRequest): ModelResponse<ChatMessage> {
+    /**
+     * This method is used to execute chat requests. It converts the user's request into an internal request
+     * and call httpClient to send the request, and handles operations such as tool_call.
+     * @param chatRequest chat request parameters
+     * @param memoryId This is the unique identifier for whether continuous conversation is enabled.
+     * The `InnerChatRequest` has a `memoryId` property, but the developer-facing `ChatRequest` does not.
+     * This is intentional; the external system must explicitly pass the `memoryId`.
+     * This is to avoid errors that could result from ignoring the initialization of this field if it were placed inside the `ChatRequest`.
+     *
+     * @return `ModelResponse` object containing the response from the chat service.
+     */
+    suspend fun execChat(chatRequest: ChatRequest, memoryId: String? = null): ModelResponse<ChatMessage> {
+        val request = chatRequest2innerRequest(chatRequest, memoryId)
 
         with(request) {
             systemMessage = systemMessage ?: model.defaultSystemMessage
@@ -51,22 +64,23 @@ class ChatService(
 
         return if (request.stream == true) {
             if (request.tools?.isNotEmpty() == true) {
-                logger.warn { "Streaming is not supported for tools. Falling back to non-streaming mode." }
-                request.stream = false
-                val initialResponse =
-                    ModelResponse.fromResult(httpClient.postAsObject<ChatMessage>(request)) { ChatMessage() }
-                return handleToolCall(request, initialResponse)
+                logger.error { "Streaming is not supported for tools. Falling back to non-streaming mode." }
+                throw UnsupportedOperationException("Streaming is not supported for tools.")
             }
             ModelResponse.fromStream(httpClient.postAsObjectStream<ChatMessage>(request))
         } else {
             val initialResponse =
                 ModelResponse.fromResult(httpClient.postAsObject<ChatMessage>(request)) { ChatMessage() }
+            // mapper ChatMessage.id to Message.id
+            initialResponse.value.apply {
+                choices?.forEach { it.message?.id = this.id }
+            }
             handleToolCall(request, initialResponse)
         }
     }
 
     private suspend fun handleToolCall(
-        request: DefaultRequest,
+        request: InnerChatRequest,
         initialResponse: ModelResponse<ChatMessage>,
     ): ModelResponse<ChatMessage> {
         val messages = request.messages
@@ -75,16 +89,18 @@ class ChatService(
         val caller = ToolCaller()
 
         while (isToolCallResponse(response.value) && toolCallCount < MAX_TOOL_CALL_EPOCH) {
-            val message = response.value.choices?.firstOrNull()?.message
-            message?.let { messages.add(it) }
+            val responseMessage = response.value.choices?.firstOrNull()?.message
+            responseMessage?.let {
+                saveMessage(it, request.messageId, messages)
+            }
 
-            message?.toolCalls.orEmpty().forEach { tool ->
+            responseMessage?.toolCalls.orEmpty().forEach { tool ->
                 val toolName = tool.function?.name.orEmpty()
                 val argsJson = tool.function?.arguments
                 val args = parseToolArguments(toolName, argsJson)
                 val result = caller.call(toolName, args.toTypedArray())
                 logger.info { "tool call: $toolName, args: $args" }
-                messages.add(Message.tool(result, tool.id))
+                saveMessage(Message.tool(result, tool.id), request.messageId, messages)
             }
 
             toolCallCount++
@@ -112,6 +128,47 @@ class ChatService(
     private fun isToolCallResponse(chatMessage: ChatMessage): Boolean {
         return (chatMessage.choices?.firstOrNull()?.finishReason == "tool_calls")
                 && (chatMessage.choices?.firstOrNull()?.message?.toolCalls != null)
+    }
+
+    @Synchronized
+    private fun saveMessage(message: Message, messageId: String?, messages: MutableList<Message>) {
+        try {
+            messages.addLast(message)
+            messageId?.let {
+                memoryStorage.addMessage(message, messageId)
+            }
+        } catch (e: Exception) {
+            messages.removeLastOrNull()
+            throw e
+        }
+    }
+
+    private fun chatRequest2innerRequest(chatRequest: ChatRequest, messageId: String?): InnerChatRequest {
+        val messages = (messageId?.let {
+            memoryStorage.getMessageList(it)
+        } ?: mutableListOf()).apply {
+            add(Message.user(chatRequest.message))
+        }
+
+        return InnerChatRequest(
+            modelName = chatRequest.modelName,
+            messages = messages
+        ).apply {
+            systemMessage = chatRequest.params.systemMessage
+            tools = chatRequest.params.tools
+            parallelToolCalls = chatRequest.params.parallelToolCalls
+            stop = chatRequest.params.stop
+            responseFormat = chatRequest.params.responseFormat
+            maxTokens = chatRequest.params.maxTokens
+            temperature = chatRequest.params.temperature
+            topP = chatRequest.params.topP
+            n = chatRequest.params.n
+            stream = chatRequest.params.stream
+            useMcp = chatRequest.params.useMcp
+            presencePenalty = chatRequest.params.presencePenalty
+            frequencyPenalty = chatRequest.params.frequencyPenalty
+            logitBias = chatRequest.params.logitBias
+        }
     }
 
 }

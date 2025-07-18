@@ -1,6 +1,6 @@
 package org.endow.framework.context
 
-object Status {
+object EndowContext {
 
     lateinit var packageName: Array<String>
 

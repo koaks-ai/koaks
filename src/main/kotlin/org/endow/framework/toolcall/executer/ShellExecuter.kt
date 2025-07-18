@@ -5,7 +5,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.*
 import java.util.*
 
-class ShellExecuter : Executer {
+object ShellExecuter : Executer {
 
     private val logger = KotlinLogging.logger {}
 
@@ -73,9 +73,4 @@ class ShellExecuter : Executer {
                 "bash -c "
             }
         }
-}
-
-fun main() {
-    val executer = ShellExecuter()
-    println(executer.exec("ls"))
 }

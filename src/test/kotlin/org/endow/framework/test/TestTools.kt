@@ -17,7 +17,7 @@ class TestTools {
 
     @Tool(description = "getUserCity")
     fun getCity(): String {
-        return "Taian"
+        return "上海"
     }
 
 }
