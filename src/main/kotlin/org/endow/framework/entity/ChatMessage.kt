@@ -2,7 +2,7 @@ package org.endow.framework.entity
 
 import com.google.gson.annotations.SerializedName
 
-open class ChatResponse {
+open class ChatMessage {
 
     var choices: MutableList<Choice>? = null
     var created: Long = 0

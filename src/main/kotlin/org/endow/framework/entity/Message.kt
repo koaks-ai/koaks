@@ -8,10 +8,10 @@ class Message {
     var role: String? = null
 
     @SerializedName("tool_calls")
-    var toolCalls: MutableList<ChatResponse.ToolCall>? = null
+    var toolCalls: MutableList<ChatMessage.ToolCall>? = null
 
     @SerializedName("function_call")
-    var functionCall: ChatResponse.FunctionCall? = null
+    var functionCall: ChatMessage.FunctionCall? = null
 
     var audio: String? = null
 

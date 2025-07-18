@@ -2,17 +2,22 @@ package org.endow.framework.service
 
 import com.google.gson.JsonObject
 import io.github.oshai.kotlinlogging.KotlinLogging
-import org.endow.framework.entity.ChatResponse
+import org.endow.framework.entity.ChatMessage
 import org.endow.framework.entity.DefaultRequest
 import org.endow.framework.entity.Message
 import org.endow.framework.entity.ModelResponse
+import org.endow.framework.memory.DefaultMemoryStorage
+import org.endow.framework.memory.IMemoryStorage
 import org.endow.framework.model.ChatModel
 import org.endow.framework.net.HttpClient
 import org.endow.framework.toolcall.ToolContainer
 import org.endow.framework.toolcall.caller.ToolCaller
 import org.endow.framework.utils.JsonUtil
 
-class ChatService(val model: ChatModel) {
+class ChatService(
+    val model: ChatModel,
+    val memoryStorage: IMemoryStorage = DefaultMemoryStorage,
+) {
 
     private val logger = KotlinLogging.logger {}
     private val MAX_TOOL_CALL_EPOCH = 30
@@ -22,7 +27,7 @@ class ChatService(val model: ChatModel) {
         apiKey = model.apiKey
     )
 
-    suspend fun execChat(request: DefaultRequest): ModelResponse<ChatResponse> {
+    suspend fun execChat(request: DefaultRequest): ModelResponse<ChatMessage> {
 
         with(request) {
             systemMessage = systemMessage ?: model.defaultSystemMessage
@@ -49,21 +54,21 @@ class ChatService(val model: ChatModel) {
                 logger.warn { "Streaming is not supported for tools. Falling back to non-streaming mode." }
                 request.stream = false
                 val initialResponse =
-                    ModelResponse.fromResult(httpClient.postAsObject<ChatResponse>(request)) { ChatResponse() }
+                    ModelResponse.fromResult(httpClient.postAsObject<ChatMessage>(request)) { ChatMessage() }
                 return handleToolCall(request, initialResponse)
             }
-            ModelResponse.fromStream(httpClient.postAsObjectStream<ChatResponse>(request))
+            ModelResponse.fromStream(httpClient.postAsObjectStream<ChatMessage>(request))
         } else {
             val initialResponse =
-                ModelResponse.fromResult(httpClient.postAsObject<ChatResponse>(request)) { ChatResponse() }
+                ModelResponse.fromResult(httpClient.postAsObject<ChatMessage>(request)) { ChatMessage() }
             handleToolCall(request, initialResponse)
         }
     }
 
     private suspend fun handleToolCall(
         request: DefaultRequest,
-        initialResponse: ModelResponse<ChatResponse>,
-    ): ModelResponse<ChatResponse> {
+        initialResponse: ModelResponse<ChatMessage>,
+    ): ModelResponse<ChatMessage> {
         val messages = request.messages
         var response = initialResponse
         var toolCallCount = 0
@@ -83,7 +88,7 @@ class ChatService(val model: ChatModel) {
             }
 
             toolCallCount++
-            response = ModelResponse.fromResult(httpClient.postAsObject<ChatResponse>(request)) { ChatResponse() }
+            response = ModelResponse.fromResult(httpClient.postAsObject<ChatMessage>(request)) { ChatMessage() }
         }
 
         return response
@@ -104,9 +109,9 @@ class ChatService(val model: ChatModel) {
         }
     }
 
-    private fun isToolCallResponse(chatResponse: ChatResponse): Boolean {
-        return (chatResponse.choices?.firstOrNull()?.finishReason == "tool_calls")
-                && (chatResponse.choices?.firstOrNull()?.message?.toolCalls != null)
+    private fun isToolCallResponse(chatMessage: ChatMessage): Boolean {
+        return (chatMessage.choices?.firstOrNull()?.finishReason == "tool_calls")
+                && (chatMessage.choices?.firstOrNull()?.message?.toolCalls != null)
     }
 
 }
