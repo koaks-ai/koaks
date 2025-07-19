@@ -7,14 +7,12 @@ import org.endow.framework.entity.ModelResponse
 import org.endow.framework.memory.IMemoryStorage
 import org.endow.framework.model.ChatModel
 import org.endow.framework.service.ChatService
-import org.endow.framework.websearch.ISearch
 
 class ChatClient(
     private val model: ChatModel,
     private val memory: IMemoryStorage,
-    private val searchEngine: ISearch
 ) {
-    private val chatService = ChatService(model, memory, searchEngine)
+    private val chatService = ChatService(model, memory)
 
     fun generate(message: String): String {
         return runBlocking {
