@@ -39,9 +39,7 @@ class ChatModel(
             5. Avoid simply repeating the raw data
         """
 
-        const val DEFAULT_SYSTEM_MESSAGE = """
-            You are a helpful assistant.
-        """
+        const val DEFAULT_SYSTEM_MESSAGE = "You are a helpful assistant."
     }
 
     class ChatModelBuilder : ModelParams() {
