@@ -46,8 +46,8 @@ class ChatModel(
         var baseUrl: String? = null
         var apiKey: String? = null
         var modelName: String? = null
-        var defaultSystemMessage: String = ChatModel.DEFAULT_SYSTEM_MESSAGE
-        var mcpSystemMessage: String = ChatModel.DEFAULT_MCP_SYSTEM_MESSAGE
+        var defaultSystemMessage: String = DEFAULT_SYSTEM_MESSAGE
+        var mcpSystemMessage: String = DEFAULT_MCP_SYSTEM_MESSAGE
 
         fun build(): ChatModel {
             return ChatModel(
