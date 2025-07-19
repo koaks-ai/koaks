@@ -16,10 +16,13 @@ import org.endow.framework.net.HttpClient
 import org.endow.framework.toolcall.ToolContainer
 import org.endow.framework.toolcall.caller.ToolCaller
 import org.endow.framework.utils.JsonUtil
+import org.endow.framework.websearch.BingSearch
+import org.endow.framework.websearch.ISearch
 
 class ChatService(
     val model: ChatModel,
     val memoryStorage: IMemoryStorage = DefaultMemoryStorage,
+    val searchEngine: ISearch = BingSearch()
 ) {
 
     private val logger = KotlinLogging.logger {}

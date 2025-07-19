@@ -23,7 +23,7 @@ object ToolCallInitializer {
     fun init() {
         if (isInitialized) return
 
-        val tools = scanTools(EndowContext.packageName)
+        val tools = scanTools(EndowContext.getPackageName())
         registerTools(tools)
         instanceToolClass(tools)
 
