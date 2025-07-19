@@ -2,4 +2,4 @@
 
 ### Connect your tools, compose your logic, rule your agents.
 
-A LLM development framework written in Kotlin, featuring global memory. It could be an alternative to LangChain4j and Spring AI.
+A lightweight LLM development framework in JVM. It‘s another choice to langchain4j and spring-ai.
