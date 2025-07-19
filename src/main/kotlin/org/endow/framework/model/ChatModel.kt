@@ -44,7 +44,7 @@ class ChatModel(
         """
     }
 
-    class ChatModelBuilder {
+    class ChatModelBuilder : ModelParams() {
         var baseUrl: String? = null
         var apiKey: String? = null
         var modelName: String? = null
@@ -53,12 +53,27 @@ class ChatModel(
 
         fun build(): ChatModel {
             return ChatModel(
-                baseUrl = requireNotNull(baseUrl) { "baseUrl is required" },
-                apiKey = requireNotNull(apiKey) { "apiKey is required" },
-                modelName = requireNotNull(modelName) { "modelName is required" },
+                baseUrl = requireNotNull(baseUrl),
+                apiKey = requireNotNull(apiKey),
+                modelName = requireNotNull(modelName),
                 defaultSystemMessage = defaultSystemMessage,
                 mcpSystemMessage = mcpSystemMessage
-            )
+            ).also {
+                it.tools = this.tools
+                it.parallelToolCalls = this.parallelToolCalls
+                it.systemMessage = this.systemMessage
+                it.maxTokens = this.maxTokens
+                it.temperature = this.temperature
+                it.topP = this.topP
+                it.n = this.n
+                it.stream = this.stream
+                it.useMcp = this.useMcp
+                it.stop = this.stop
+                it.presencePenalty = this.presencePenalty
+                it.frequencyPenalty = this.frequencyPenalty
+                it.logitBias = this.logitBias
+                it.responseFormat = this.responseFormat
+            }
         }
     }
 }
