@@ -1,4 +1,4 @@
-package org.endow.framework.net
+package org.endowx.framework.net
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.flow.Flow
@@ -7,8 +7,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.reactor.awaitSingle
-import org.endow.framework.entity.inner.InnerChatRequest
-import org.endow.framework.utils.JsonUtil
+import org.endowx.framework.entity.inner.InnerChatRequest
+import org.endowx.framework.utils.JsonUtil
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.web.reactive.function.client.WebClient

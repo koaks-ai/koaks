@@ -1,6 +1,6 @@
-package org.endow.framework.toolcall
+package org.endowx.framework.toolcall
 
-import org.endow.framework.utils.JsonUtil
+import org.endowx.framework.utils.JsonUtil
 
 fun ToolDefinition.toJson() = JsonUtil.toJson(this)
 

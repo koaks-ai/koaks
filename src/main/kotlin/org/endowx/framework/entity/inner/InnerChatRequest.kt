@@ -1,8 +1,8 @@
-package org.endow.framework.entity.inner
+package org.endowx.framework.entity.inner
 
 import com.google.gson.annotations.SerializedName
-import org.endow.framework.entity.Message
-import org.endow.framework.entity.ModelParams
+import org.endowx.framework.entity.Message
+import org.endowx.framework.entity.ModelParams
 
 class InnerChatRequest(
     var user: String? = null,

@@ -1,11 +1,11 @@
-package org.endow.framework.api.dsl
+package org.endowx.framework.api.dsl
 
 import io.github.oshai.kotlinlogging.KotlinLogging
-import org.endow.framework.api.ChatClient
-import org.endow.framework.memory.DefaultMemoryStorage
-import org.endow.framework.memory.IMemoryStorage
-import org.endow.framework.model.ChatModel
-import org.endow.framework.model.ChatModel.ChatModelBuilder
+import org.endowx.framework.api.ChatClient
+import org.endowx.framework.memory.DefaultMemoryStorage
+import org.endowx.framework.memory.IMemoryStorage
+import org.endowx.framework.model.ChatModel
+import org.endowx.framework.model.ChatModel.ChatModelBuilder
 
 
 class ChatClientBuilder {

@@ -1,7 +1,7 @@
-package org.endow.framework.toolcall
+package org.endowx.framework.toolcall
 
-import org.endow.framework.annotation.Tool
-import org.endow.framework.context.EndowContext
+import org.endowx.framework.annotation.Tool
+import org.endowx.framework.context.EndowContext
 import org.reflections.Reflections
 import org.reflections.scanners.Scanners
 import kotlin.collections.forEach

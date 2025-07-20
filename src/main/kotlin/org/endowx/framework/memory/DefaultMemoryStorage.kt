@@ -1,6 +1,6 @@
-package org.endow.framework.memory
+package org.endowx.framework.memory
 
-import org.endow.framework.entity.Message
+import org.endowx.framework.entity.Message
 
 object DefaultMemoryStorage : IMemoryStorage {
 

@@ -1,4 +1,4 @@
-package org.endow.framework.entity
+package org.endowx.framework.entity
 
 import com.google.gson.annotations.SerializedName
 

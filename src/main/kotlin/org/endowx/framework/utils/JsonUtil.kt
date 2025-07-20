@@ -1,4 +1,4 @@
-package org.endow.framework.utils
+package org.endowx.framework.utils
 
 import com.google.gson.Gson
 

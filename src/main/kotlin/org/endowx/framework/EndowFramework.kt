@@ -1,8 +1,8 @@
-package org.endow.framework
+package org.endowx.framework
 
 import io.github.oshai.kotlinlogging.KotlinLogging
-import org.endow.framework.context.EndowContext
-import org.endow.framework.toolcall.ToolCallInitializer
+import org.endowx.framework.context.EndowContext
+import org.endowx.framework.toolcall.ToolCallInitializer
 
 object EndowFramework {
 

@@ -1,21 +1,21 @@
-package org.endow.framework.service
+package org.endowx.framework.service
 
 import com.google.gson.JsonObject
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
-import org.endow.framework.entity.ChatMessage
-import org.endow.framework.entity.ChatRequest
-import org.endow.framework.entity.inner.InnerChatRequest
-import org.endow.framework.entity.Message
-import org.endow.framework.entity.ModelResponse
-import org.endow.framework.memory.DefaultMemoryStorage
-import org.endow.framework.memory.IMemoryStorage
-import org.endow.framework.model.ChatModel
-import org.endow.framework.net.HttpClient
-import org.endow.framework.toolcall.ToolContainer
-import org.endow.framework.toolcall.caller.ToolCaller
-import org.endow.framework.utils.JsonUtil
+import org.endowx.framework.entity.ChatMessage
+import org.endowx.framework.entity.ChatRequest
+import org.endowx.framework.entity.inner.InnerChatRequest
+import org.endowx.framework.entity.Message
+import org.endowx.framework.entity.ModelResponse
+import org.endowx.framework.memory.DefaultMemoryStorage
+import org.endowx.framework.memory.IMemoryStorage
+import org.endowx.framework.model.ChatModel
+import org.endowx.framework.net.HttpClient
+import org.endowx.framework.toolcall.ToolContainer
+import org.endowx.framework.toolcall.caller.ToolCaller
+import org.endowx.framework.utils.JsonUtil
 
 
 class ChatService(

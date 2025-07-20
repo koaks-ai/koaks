@@ -1,4 +1,4 @@
-package org.endow.framework.annotation
+package org.endowx.framework.annotation
 
 @Retention(AnnotationRetention.RUNTIME)
 annotation class Param(
