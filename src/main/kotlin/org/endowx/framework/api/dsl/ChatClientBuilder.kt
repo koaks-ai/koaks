@@ -10,8 +10,6 @@ import org.endow.framework.model.ChatModel.ChatModelBuilder
 
 class ChatClientBuilder {
 
-    val logger = KotlinLogging.logger {}
-
     private lateinit var model: ChatModel
     private var memory: IMemoryStorage = DefaultMemoryStorage
 
@@ -24,6 +22,7 @@ class ChatClientBuilder {
         builder.block()
         memory = builder.build()
     }
+
 
     fun build(): ChatClient {
         return ChatClient(model, memory)
