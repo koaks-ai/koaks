@@ -1,12 +1,12 @@
-package org.endow.framework.api
+package org.endowx.framework.api
 
 import kotlinx.coroutines.runBlocking
-import org.endow.framework.entity.ChatMessage
-import org.endow.framework.entity.ChatRequest
-import org.endow.framework.entity.ModelResponse
-import org.endow.framework.memory.IMemoryStorage
-import org.endow.framework.model.ChatModel
-import org.endow.framework.service.ChatService
+import org.endowx.framework.entity.ChatMessage
+import org.endowx.framework.entity.ChatRequest
+import org.endowx.framework.entity.ModelResponse
+import org.endowx.framework.memory.IMemoryStorage
+import org.endowx.framework.model.ChatModel
+import org.endowx.framework.service.ChatService
 
 class ChatClient(
     private val model: ChatModel,

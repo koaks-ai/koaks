@@ -1,4 +1,4 @@
-package org.endow.framework.entity
+package org.endowx.framework.entity
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.flow.Flow

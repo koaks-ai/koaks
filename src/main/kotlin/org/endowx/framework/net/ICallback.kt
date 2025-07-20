@@ -1,4 +1,4 @@
-package org.endow.framework.net
+package org.endowx.framework.net
 
 interface ICallback<R> {
 

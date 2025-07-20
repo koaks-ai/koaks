@@ -1,4 +1,4 @@
-package org.endow.framework.toolcall
+package org.endowx.framework.toolcall
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 

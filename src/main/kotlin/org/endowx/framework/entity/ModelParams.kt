@@ -1,7 +1,7 @@
-package org.endow.framework.entity
+package org.endowx.framework.entity
 
 import com.google.gson.annotations.SerializedName
-import org.endow.framework.toolcall.ToolDefinition
+import org.endowx.framework.toolcall.ToolDefinition
 
 open class ModelParams {
 

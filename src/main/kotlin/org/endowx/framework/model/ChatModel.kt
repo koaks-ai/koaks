@@ -1,7 +1,7 @@
-package org.endow.framework.model
+package org.endowx.framework.model
 
 import com.google.gson.annotations.SerializedName
-import org.endow.framework.entity.ModelParams
+import org.endowx.framework.entity.ModelParams
 
 class ChatModel(
     val baseUrl: String,

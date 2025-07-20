@@ -1,11 +1,11 @@
-package org.endow.framework.context
+package org.endowx.framework.context
 
 object EndowContext {
 
     private var scanPackageName: MutableList<String> = mutableListOf()
 
     init {
-        this.scanPackageName.add("org.endow.framework")
+        this.scanPackageName.add("org.endowx.framework")
     }
 
     fun getPackageName(): Array<String> {
