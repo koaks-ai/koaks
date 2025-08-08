@@ -1,4 +1,6 @@
-# endow-ai
+# dnammoc-ai
+
+> The name “dnammoc” is the word “command” spelled backwards.
 
 ### Connect your tools, compose your logic, rule your agents.
 
