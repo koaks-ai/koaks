@@ -127,7 +127,7 @@ class WeatherTools {
 
 
 fun main() {
-    KoaksFramework.init(arrayOf("your package"))
+    Koaks.init(arrayOf("your package"))
     runBlocking {
         val client = createChatClient {
             model {
