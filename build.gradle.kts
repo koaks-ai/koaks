@@ -3,7 +3,7 @@ plugins {
     kotlin("plugin.serialization") version "2.1.21"
 }
 
-group = "org.endowx.framework"
+group = "org.koaks.framework"
 version = "0.0.1-SNAPSHOT"
 
 
