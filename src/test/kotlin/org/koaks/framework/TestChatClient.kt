@@ -1,4 +1,4 @@
-package org.koaks.framework.test
+package org.koaks.framework
 
 import org.koaks.framework.api.dsl.createChatClient
 

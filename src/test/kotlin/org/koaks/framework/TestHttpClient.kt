@@ -1,4 +1,4 @@
-package org.koaks.framework.test
+package org.koaks.framework
 
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
