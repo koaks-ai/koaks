@@ -30,7 +30,7 @@ implementation("io.github.mynna404:koaks:0.0.1-beta1")
 </dependency>
 ```
 
-### Simple
+### 3. Simple
 
 #### Connect to ChatGPT and Send a Message
 
