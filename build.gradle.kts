@@ -1,16 +1,17 @@
 plugins {
+    id("tech.medivh.plugin.publisher") version "1.2.5"
     kotlin("jvm") version "2.1.21"
     kotlin("plugin.serialization") version "2.1.21"
 }
 
-group = "org.koaks.framework"
-version = "0.0.1-SNAPSHOT"
+// only test publish
+group = "io.github.mynna404"
+version = "0.0.1-beta1"
 
 
 repositories {
     mavenCentral()
 }
-
 
 dependencies {
     implementation("ch.qos.logback:logback-classic:1.5.13")
@@ -31,4 +32,33 @@ tasks.test {
 }
 kotlin {
     jvmToolchain(21)
+}
+
+medivhPublisher {
+    groupId = project.group.toString()
+    artifactId = project.name
+    version = project.version.toString()
+    pom {
+        name = "koaks"
+        description =
+            "A lightweight LLM development framework in JVM. It‘s another choice to langchain4j and spring-ai."
+        url = "https://github.com/koaks-ai/koaks"
+        licenses {
+            license {
+                name = "Apache-2.0 license"
+                url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+            }
+        }
+        developers {
+            developer {
+                id = "mynna404"
+                name = "mynna404"
+                email = "gemingjia0201@163.com"
+            }
+        }
+        scm {
+            connection = "scm:git:"
+            url = "https://github.com/koaks-ai/koakst"
+        }
+    }
 }
