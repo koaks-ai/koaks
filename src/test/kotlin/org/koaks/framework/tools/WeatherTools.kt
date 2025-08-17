@@ -1,9 +1,9 @@
-package org.koaks.framework
+package org.koaks.framework.tools
 
 import org.koaks.framework.annotation.Param
 import org.koaks.framework.annotation.Tool
 
-class TestTools {
+class WeatherTools {
 
     @Tool(
         params = [
