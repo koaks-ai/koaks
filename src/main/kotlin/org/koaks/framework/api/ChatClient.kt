@@ -7,10 +7,12 @@ import org.koaks.framework.entity.ModelResponse
 import org.koaks.framework.memory.IMemoryStorage
 import org.koaks.framework.model.ChatModel
 import org.koaks.framework.service.ChatService
+import org.koaks.framework.toolcall.ToolDefinition
 
 class ChatClient(
     private val model: ChatModel,
     private val memory: IMemoryStorage,
+    private val tools: List<ToolDefinition>
 ) {
     private val chatService = ChatService(model, memory)
 
@@ -23,6 +25,7 @@ class ChatClient(
     }
 
     suspend fun chat(chatRequest: ChatRequest): ModelResponse<ChatMessage> {
+        handleToolList(chatRequest)
         return chatService.execChat(chatRequest)
     }
 
@@ -31,7 +34,14 @@ class ChatClient(
     }
 
     suspend fun chatWithMemory(chatRequest: ChatRequest, memoryId: String): ModelResponse<ChatMessage> {
+        handleToolList(chatRequest)
         return chatService.execChat(chatRequest, memoryId)
+    }
+
+    private fun handleToolList(chatRequest: ChatRequest) {
+        with(chatRequest) {
+            params.tools = (params.tools.orEmpty() + tools).distinct()
+        }
     }
 
 }

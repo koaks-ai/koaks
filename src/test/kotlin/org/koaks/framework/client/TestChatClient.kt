@@ -14,29 +14,27 @@ import kotlin.test.Test
 
 class TestChatClient {
 
-    val globalBaseUrl: String = EnvTools.loadValue("BASE_URL")
-    val globalApiKey: String = EnvTools.loadValue("API_KEY")
-
     companion object {
         @BeforeAll
         @JvmStatic
         fun initKoaks() {
-            Koaks.init(arrayOf("org.koaks.framework"))
+            Koaks.init("org.koaks.framework")
         }
-    }
 
-    @Test
-    fun testChatWithMemory() = runBlocking {
         val client = createChatClient {
             model {
-                baseUrl = globalBaseUrl
-                apiKey = globalApiKey
+                baseUrl = EnvTools.loadValue("BASE_URL")
+                apiKey = EnvTools.loadValue("API_KEY")
                 modelName = "qwen-plus"
             }
             memory {
                 default()
             }
         }
+    }
+
+    @Test
+    fun testChatWithMemory() = runBlocking {
         val resp0 =
             client.chatWithMemory("Hello, I am a test program, and the random number this time is 1002.", "1001")
         print(resp0.value.choices?.getOrNull(0)?.message?.content)
@@ -51,14 +49,6 @@ class TestChatClient {
 
     @Test
     fun testStreamRequest() = runBlocking {
-        val client = createChatClient {
-            model {
-                baseUrl = globalBaseUrl
-                apiKey = globalApiKey
-                modelName = "qwen-plus"
-            }
-        }
-
         val chatRequest = ChatRequest(
             message = "What's the meaning of life?"
         ).apply {
@@ -73,17 +63,6 @@ class TestChatClient {
 
     @Test
     fun testToolCall() = runBlocking {
-        val client = createChatClient {
-            model {
-                baseUrl = globalBaseUrl
-                apiKey = globalApiKey
-                modelName = "qwen-plus"
-            }
-            memory {
-                default()
-            }
-        }
-
         val chatRequest = ChatRequest(
             message = "What's the weather like?"
         ).apply {
@@ -98,4 +77,32 @@ class TestChatClient {
 
         println(result.value.choices?.getOrNull(0)?.message?.content)
     }
+
+    @Test
+    fun testToolCallDsl() = runBlocking {
+        val clientWithDsl = createChatClient {
+            model {
+                baseUrl = EnvTools.loadValue("BASE_URL")
+                apiKey = EnvTools.loadValue("API_KEY")
+                modelName = "qwen-plus"
+            }
+            memory {
+                default()
+            }
+            tools {
+                groups("weather")
+            }
+        }
+
+        val chatRequest = ChatRequest(
+            message = "What's the weather like?"
+        ).apply {
+            params.parallelToolCalls = true
+        }
+
+        val result = clientWithDsl.chat(chatRequest)
+
+        println(result.value.choices?.getOrNull(0)?.message?.content)
+    }
+
 }
