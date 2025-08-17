@@ -114,7 +114,7 @@ class ChatService(
                 val argsJson = tool.function?.arguments
                 val args = parseToolArguments(toolName, argsJson)
                 val result = caller.call(toolName, args.toTypedArray())
-                logger.info { "tool call: $toolName, args: $args" }
+                logger.info { "tool_call: id=${tool.id}, name=$toolName, args=$argsJson" }
                 saveMessage(Message.tool(result, tool.id), request.messageId, messages)
             }
 
