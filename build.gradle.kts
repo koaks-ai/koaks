@@ -6,7 +6,7 @@ plugins {
 
 // only test publish
 group = "io.github.mynna404"
-version = "0.0.1-beta1"
+version = "0.0.1-beta2"
 
 
 repositories {
