@@ -25,7 +25,7 @@ class ChatClient(
     }
 
     suspend fun chat(chatRequest: ChatRequest): ModelResponse<ChatMessage> {
-        handleToolList(chatRequest)
+        mergeToolList(chatRequest)
         return chatService.execChat(chatRequest)
     }
 
@@ -34,11 +34,11 @@ class ChatClient(
     }
 
     suspend fun chatWithMemory(chatRequest: ChatRequest, memoryId: String): ModelResponse<ChatMessage> {
-        handleToolList(chatRequest)
+        mergeToolList(chatRequest)
         return chatService.execChat(chatRequest, memoryId)
     }
 
-    private fun handleToolList(chatRequest: ChatRequest) {
+    private fun mergeToolList(chatRequest: ChatRequest) {
         with(chatRequest) {
             params.tools = (params.tools.orEmpty() + tools).distinct()
         }
