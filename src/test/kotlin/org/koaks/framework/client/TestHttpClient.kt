@@ -3,6 +3,7 @@ package org.koaks.framework.client
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
+import org.koaks.framework.EnvTools
 import org.koaks.framework.entity.ChatMessage
 import org.koaks.framework.entity.inner.InnerChatRequest
 import org.koaks.framework.entity.Message
@@ -13,8 +14,8 @@ import kotlin.test.Test
 class TestHttpClient {
 
     val client = HttpClient.create(
-        baseUrl = "base-url",
-        apiKey = "api-key",
+        baseUrl = EnvTools.loadValue("BASE_URL"),
+        apiKey = EnvTools.loadValue("API_KEY"),
     )
 
     @Test
