@@ -8,7 +8,7 @@ object Koaks {
 
     private val logger = KotlinLogging.logger {}
 
-    fun init(packageName: Array<String>) {
+    fun init(vararg packageName: String) {
         packageName.forEach {
             KoaksContext.addPackageName(it)
         }

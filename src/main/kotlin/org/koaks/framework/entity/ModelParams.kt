@@ -6,7 +6,7 @@ import org.koaks.framework.toolcall.ToolDefinition
 open class ModelParams {
 
     // 工具
-    var tools: MutableList<ToolDefinition>? = null
+    var tools: List<ToolDefinition>? = null
 
     // 可选参数：是否允许并行调用工具
     @SerializedName("parallel_tool_calls")
