@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.BeforeAll
+import org.koaks.framework.EnvTools
 import org.koaks.framework.Koaks
 import org.koaks.framework.api.dsl.createChatClient
 import org.koaks.framework.entity.ChatRequest
@@ -13,8 +14,8 @@ import kotlin.test.Test
 
 class TestChatClient {
 
-    val globalBaseUrl: String = "base-url"
-    val globalApiKey: String = "api-key"
+    val globalBaseUrl: String = EnvTools.loadValue("BASE_URL")
+    val globalApiKey: String = EnvTools.loadValue("API_KEY")
 
     companion object {
         @BeforeAll
