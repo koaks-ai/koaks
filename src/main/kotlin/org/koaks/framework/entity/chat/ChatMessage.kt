@@ -3,7 +3,7 @@ package org.koaks.framework.entity.chat
 import com.google.gson.annotations.SerializedName
 import org.koaks.framework.entity.Message
 
-open class ChatMessage {
+class ChatMessage {
 
     var choices: MutableList<Choice>? = null
     var created: Long = 0

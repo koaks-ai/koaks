@@ -21,8 +21,8 @@ class TestResponsesClient {
                 apiKey = EnvTools.loadValue("API_KEY")
                 modelName = "qwen-plus"
             }
-            memory {
-                default()
+            tools {
+
             }
         }
     }
