@@ -63,5 +63,9 @@ class Message {
         fun tool(content: String, toolCallId: String): Message {
             return Message("tool", content, toolCallId)
         }
+
+        fun developer(content: String): Message {
+            return Message("developer", content)
+        }
     }
 }
