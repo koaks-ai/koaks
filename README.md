@@ -37,6 +37,8 @@ implementation("io.github.mynna404:koaks:0.0.1-beta2")
 
 ### 3. Simple
 
+> **Warning: The current project is in a rapid iteration phase, and the API may change at any time.**
+
 #### Connect to ChatGPT and Send a Message
 
 ```kotlin
