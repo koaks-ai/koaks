@@ -1,8 +1,8 @@
 package org.koaks.framework.api
 
 import kotlinx.coroutines.runBlocking
-import org.koaks.framework.entity.ChatMessage
-import org.koaks.framework.entity.ChatRequest
+import org.koaks.framework.entity.chat.ChatMessage
+import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.entity.ModelResponse
 import org.koaks.framework.memory.IMemoryStorage
 import org.koaks.framework.model.ChatModel

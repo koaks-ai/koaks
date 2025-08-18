@@ -1,6 +1,7 @@
-package org.koaks.framework.entity
+package org.koaks.framework.entity.chat
 
 import com.google.gson.annotations.SerializedName
+import org.koaks.framework.entity.Message
 
 open class ChatMessage {
 

@@ -7,7 +7,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.koaks.framework.EnvTools
 import org.koaks.framework.Koaks
 import org.koaks.framework.api.dsl.createChatClient
-import org.koaks.framework.entity.ChatRequest
+import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.toolcall.ToolContainer
 import kotlin.test.Test
 

@@ -4,8 +4,8 @@ import com.google.gson.JsonObject
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
-import org.koaks.framework.entity.ChatMessage
-import org.koaks.framework.entity.ChatRequest
+import org.koaks.framework.entity.chat.ChatMessage
+import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.entity.inner.InnerChatRequest
 import org.koaks.framework.entity.Message
 import org.koaks.framework.entity.ModelResponse
@@ -23,8 +23,10 @@ class ChatService(
     val memoryStorage: IMemoryStorage = DefaultMemoryStorage,
 ) {
 
-    private val logger = KotlinLogging.logger {}
-    private val MAX_TOOL_CALL_EPOCH = 30
+    companion object {
+        private val logger = KotlinLogging.logger {}
+        private const val MAX_TOOL_CALL_EPOCH = 30
+    }
 
     private var httpClient = HttpClient.create(
         baseUrl = model.baseUrl,
@@ -128,6 +130,7 @@ class ChatService(
         return response
     }
 
+    // todo: need refactoring
     private fun parseToolArguments(toolName: String, rawJson: String?): List<Any> {
         if (rawJson.isNullOrBlank()) return emptyList()
 

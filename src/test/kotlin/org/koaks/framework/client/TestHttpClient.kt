@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import org.koaks.framework.EnvTools
-import org.koaks.framework.entity.ChatMessage
+import org.koaks.framework.entity.chat.ChatMessage
 import org.koaks.framework.entity.inner.InnerChatRequest
 import org.koaks.framework.entity.Message
 import org.koaks.framework.net.HttpClient
