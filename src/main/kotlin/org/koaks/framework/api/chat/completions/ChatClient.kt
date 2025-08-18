@@ -1,13 +1,14 @@
-package org.koaks.framework.api
+package org.koaks.framework.api.chat.completions
 
 import kotlinx.coroutines.runBlocking
+import org.koaks.framework.entity.ModelResponse
 import org.koaks.framework.entity.chat.ChatMessage
 import org.koaks.framework.entity.chat.ChatRequest
-import org.koaks.framework.entity.ModelResponse
 import org.koaks.framework.memory.IMemoryStorage
 import org.koaks.framework.model.ChatModel
 import org.koaks.framework.service.ChatService
 import org.koaks.framework.toolcall.ToolDefinition
+
 
 class ChatClient(
     private val model: ChatModel,
