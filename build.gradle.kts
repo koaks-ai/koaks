@@ -6,7 +6,7 @@ plugins {
 
 // only test publish
 group = "io.github.mynna404"
-version = "0.0.1-beta2"
+version = "0.0.1-beta3"
 
 
 repositories {
@@ -20,7 +20,6 @@ dependencies {
     api("org.jetbrains.kotlin:kotlin-reflect")
     api("org.springframework:spring-webflux:6.2.3")
     api("org.jsoup:jsoup:1.21.1")
-//    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     api("com.google.code.gson:gson:2.13.1")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:1.10.2")
