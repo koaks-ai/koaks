@@ -1,6 +1,7 @@
 package org.koaks.framework.entity
 
 import com.google.gson.annotations.SerializedName
+import org.koaks.framework.entity.chat.ChatMessage
 
 class Message {
     var id: String? = null
