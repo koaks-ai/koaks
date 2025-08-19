@@ -18,7 +18,7 @@ dependencies {
     api("io.github.oshai:kotlin-logging-jvm:7.0.3")
     api("org.reflections:reflections:0.10.2")
     api("org.jetbrains.kotlin:kotlin-reflect")
-    api("org.springframework:spring-webflux:6.2.3")
+    api("com.squareup.okhttp3:okhttp:5.1.0")
     api("com.google.code.gson:gson:2.13.1")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:1.10.2")

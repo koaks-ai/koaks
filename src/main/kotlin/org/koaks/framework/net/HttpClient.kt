@@ -1,24 +1,27 @@
 package org.koaks.framework.net
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
-import kotlinx.coroutines.reactive.asFlow
-import kotlinx.coroutines.reactor.awaitSingle
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import okio.BufferedSource
 import org.koaks.framework.entity.inner.InnerChatRequest
 import org.koaks.framework.utils.JsonUtil
-import org.springframework.http.HttpHeaders
-import org.springframework.http.MediaType
-import org.springframework.web.reactive.function.client.WebClient
-import org.springframework.web.reactive.function.client.WebClientResponseException
-import java.time.Duration
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
-
 class HttpClient private constructor(
-    private val webClient: WebClient,
+    private val okHttpClient: OkHttpClient,
     private val config: HttpClientConfig
 ) {
 
@@ -30,18 +33,27 @@ class HttpClient private constructor(
         }
 
         fun create(config: HttpClientConfig): HttpClient {
-            val webClient = WebClient.builder()
-                .baseUrl(config.baseUrl)
-                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
-                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer ${config.apiKey}")
-                .codecs { configurer ->
-                    configurer.defaultCodecs().maxInMemorySize(config.maxInMemorySize)
-                }
+            val okHttpClient = OkHttpClient.Builder()
+                .connectTimeout(config.timeoutSeconds, TimeUnit.SECONDS)
+                .readTimeout(config.timeoutSeconds, TimeUnit.SECONDS)
+                .writeTimeout(config.timeoutSeconds, TimeUnit.SECONDS)
+                .callTimeout(config.timeoutSeconds, TimeUnit.SECONDS)
                 .build()
 
-            return HttpClient(webClient, config)
+            return HttpClient(okHttpClient, config)
         }
+    }
+
+    private fun buildRequest(
+        url: String,
+        block: Request.Builder.() -> Unit
+    ): Request {
+        return Request.Builder()
+            .url(url)
+            .addHeader("Accept", "application/json")
+            .addHeader("Authorization", "Bearer ${config.apiKey}")
+            .apply(block)
+            .build()
     }
 
     suspend fun postAsString(request: InnerChatRequest): Result<String> {
@@ -49,20 +61,18 @@ class HttpClient private constructor(
             val requestBody = JsonUtil.toJson(request)
             logger.debug { "Sending POST request: $requestBody" }
 
-            webClient.post()
-                .bodyValue(requestBody)
-                .retrieve()
-                .onStatus({ status -> status.isError }) { clientResponse ->
-                    clientResponse.bodyToMono(String::class.java)
-                        .map { body ->
-                            HttpClientException("HTTP ${clientResponse.statusCode()}: $body")
-                        }
+            val httpRequest = buildRequest(config.baseUrl) {
+                addHeader("Content-Type", "application/json")
+                post(requestBody.toRequestBody("application/json".toMediaType()))
+            }
+
+            withContext(Dispatchers.IO) {
+                okHttpClient.newCall(httpRequest).execute().use { response ->
+                    handleResponse(response)
                 }
-                .bodyToMono(String::class.java)
-                .timeout(Duration.ofSeconds(config.timeoutSeconds))
-                .awaitSingle()
+            }
         }.recoverCatching { exception ->
-            logger.error { "POST request failed ${exception.message}" }
+            logger.error { "POST request failed: ${exception.message}" }
             throw mapToHttpClientException(exception)
         }
     }
@@ -74,29 +84,33 @@ class HttpClient private constructor(
     }
 
     fun postAsStringStream(request: InnerChatRequest): Flow<String> {
-        return try {
+        return flow {
             val requestBody = JsonUtil.toJson(request)
-            logger.debug { "Sending POST stream request: $requestBody" }
+            logger.debug { "sending POST stream request: $requestBody" }
 
-            webClient.post()
-                .bodyValue(requestBody)
-                .retrieve()
-                .onStatus({ status -> status.isError }) { clientResponse ->
-                    clientResponse.bodyToMono(String::class.java)
-                        .map { body ->
-                            HttpClientException("HTTP ${clientResponse.statusCode()}: $body")
-                        }
+            val httpRequest = buildRequest(config.baseUrl) {
+                addHeader("Content-Type", "application/json")
+                post(requestBody.toRequestBody("application/json".toMediaType()))
+            }
+
+            okHttpClient.newCall(httpRequest).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw HttpClientException("HTTP ${response.code}: ${response.body.string()}")
                 }
-                .bodyToFlux(String::class.java)
-                .timeout(Duration.ofSeconds(config.timeoutSeconds))
-                .filter { it.isNotEmpty() && it != config.streamEndMarker }
-                .asFlow()
-                .catch { exception ->
-                    logger.error { "POST stream request failed, ${exception.message}" }
-                    throw mapToHttpClientException(exception)
+                response.body.use { body ->
+                    val source: BufferedSource = body.source()
+                    while (!source.exhausted()) {
+                        val rawLine = source.readUtf8Line()?.trim()
+                        if (rawLine.isNullOrEmpty() || !rawLine.startsWith("data:")) continue
+
+                        val content = rawLine.removePrefix("data:").trim()
+                        if (content == config.streamEndMarker) break
+                        emit(content)
+                    }
                 }
-        } catch (exception: Exception) {
-            logger.error { "Failed to create POST stream request, ${exception.message}" }
+            }
+        }.catch { exception ->
+            logger.error { "POST stream request failed: ${exception.message}" }
             throw mapToHttpClientException(exception)
         }
     }
@@ -107,8 +121,8 @@ class HttpClient private constructor(
                 try {
                     JsonUtil.fromJson<T>(jsonString)
                 } catch (exception: Exception) {
-                    logger.error { "Failed to parse JSON: $jsonString, $exception" }
-                    throw JsonParseException("Failed to parse JSON response", exception)
+                    logger.error { "failed to parse json: $jsonString, $exception" }
+                    throw JsonParseException("failed to parse json response", exception)
                 }
             }
     }
@@ -157,74 +171,66 @@ class HttpClient private constructor(
         }
     }
 
-    suspend fun get(path: String = ""): Result<String> {
+    suspend fun get(path: String): Result<String> {
         return runCatching {
-            logger.debug { "Sending GET request to: $path" }
+            val url = if (path.startsWith("http")) path else "${config.baseUrl}$path"
+            logger.debug { "sending GET request to: $url" }
 
-            webClient.get()
-                .uri(path)
-                .retrieve()
-                .onStatus({ status -> status.isError }) { clientResponse ->
-                    clientResponse.bodyToMono(String::class.java)
-                        .map { body ->
-                            HttpClientException("HTTP ${clientResponse.statusCode()}: $body")
-                        }
+            val httpRequest = Request.Builder()
+                .url(url)
+                .addHeader("Accept", "application/json")
+                .addHeader("Authorization", "Bearer ${config.apiKey}")
+                .get()
+                .build()
+
+            withContext(Dispatchers.IO) {
+                okHttpClient.newCall(httpRequest).execute().use { response ->
+                    handleResponse(response)
                 }
-                .bodyToMono(String::class.java)
-                .timeout(Duration.ofSeconds(config.timeoutSeconds))
-                .awaitSingle()
+            }
         }.recoverCatching { exception ->
             logger.error { "GET request failed, ${exception.message}" }
             throw mapToHttpClientException(exception)
         }
     }
 
-    suspend inline fun <reified T> getAsObject(path: String = ""): Result<T> {
+    suspend inline fun <reified T> getAsObject(path: String): Result<T> {
         return get(path).mapCatching { jsonString ->
             JsonUtil.fromJson<T>(jsonString)
         }
     }
 
+    private fun handleResponse(response: Response): String {
+        val bodyStr = response.body.string()
+        if (!response.isSuccessful) {
+            throw HttpClientException("HTTP ${response.code}: $bodyStr")
+        }
+        return bodyStr
+    }
+
     private fun mapToHttpClientException(exception: Throwable): HttpClientException {
         return when (exception) {
             is HttpClientException -> exception
-            is WebClientResponseException -> {
-                HttpClientException(
-                    "HTTP ${exception.statusCode}: ${exception.responseBodyAsString}",
-                    exception
-                )
+
+            is JsonParseException -> {
+                HttpClientException("response parsing failed, please check server response format.", exception)
+                    .also { logger.debug(exception) { "JSON parse error details" } }
+            }
+
+            is IOException -> {
+                HttpClientException("network error, please check your connection.", exception)
+                    .also { logger.debug(exception) { "I/O error details" } }
             }
 
             is TimeoutException -> {
-                HttpClientException("Request timeout", exception)
+                HttpClientException("request timed out after ${config.timeoutSeconds}s.", exception)
+                    .also { logger.debug(exception) { "timeout details" } }
             }
 
             else -> {
-                HttpClientException("Request failed: $exception", exception)
+                HttpClientException("unexpected error: ${exception.message}", exception)
+                    .also { logger.debug(exception) { "unexpected error details" } }
             }
         }
     }
 }
-
-
-data class HttpClientConfig(
-    val baseUrl: String,
-    val apiKey: String,
-    val timeoutSeconds: Long = 60,
-    val maxInMemorySize: Int = 256 * 1024,
-    val streamEndMarker: String = "[DONE]"
-)
-
-
-class HttpClientException(
-    message: String,
-    cause: Throwable? = null
-) : RuntimeException(message, cause)
-
-
-class JsonParseException(
-    message: String,
-    cause: Throwable? = null
-) : RuntimeException(message, cause)
-
-
