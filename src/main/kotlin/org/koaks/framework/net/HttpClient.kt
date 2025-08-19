@@ -17,6 +17,7 @@ import okio.BufferedSource
 import org.koaks.framework.entity.inner.InnerChatRequest
 import org.koaks.framework.utils.JsonUtil
 import java.io.IOException
+import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
@@ -34,10 +35,10 @@ class HttpClient private constructor(
 
         fun create(config: HttpClientConfig): HttpClient {
             val okHttpClient = OkHttpClient.Builder()
-                .connectTimeout(config.timeoutSeconds, TimeUnit.SECONDS)
-                .readTimeout(config.timeoutSeconds, TimeUnit.SECONDS)
-                .writeTimeout(config.timeoutSeconds, TimeUnit.SECONDS)
-                .callTimeout(config.timeoutSeconds, TimeUnit.SECONDS)
+                .connectTimeout(config.connectTimeout, TimeUnit.SECONDS)
+                .readTimeout(config.readTimeout, TimeUnit.SECONDS)
+                .writeTimeout(config.writeTimeout, TimeUnit.SECONDS)
+                .callTimeout(config.callTimeout, TimeUnit.SECONDS)
                 .build()
 
             return HttpClient(okHttpClient, config)
@@ -217,14 +218,21 @@ class HttpClient private constructor(
                     .also { logger.debug(exception) { "JSON parse error details" } }
             }
 
-            is IOException -> {
-                HttpClientException("network error, please check your connection.", exception)
-                    .also { logger.debug(exception) { "I/O error details" } }
+            is SocketTimeoutException -> {
+                // maybe connectTimeout / readTimeout / writeTimeout
+                HttpClientException("socket timeout (connect/read/write).", exception)
+                    .also { logger.debug(exception) { "socket timeout details" } }
             }
 
             is TimeoutException -> {
-                HttpClientException("request timed out after ${config.timeoutSeconds}s.", exception)
-                    .also { logger.debug(exception) { "timeout details" } }
+                // only callTimeout
+                HttpClientException("request exceeded total callTimeout=${config.callTimeout}s.", exception)
+                    .also { logger.debug(exception) { "call timeout details" } }
+            }
+
+            is IOException -> {
+                HttpClientException("network error, please check your connection.", exception)
+                    .also { logger.debug(exception) { "I/O error details" } }
             }
 
             else -> {
@@ -233,4 +241,5 @@ class HttpClient private constructor(
             }
         }
     }
+
 }
