@@ -40,7 +40,7 @@ class ChatClient(
     }
 
     private fun mergeToolList(chatRequest: ChatRequest) {
-        if (chatRequest.params.tools.isNullOrEmpty()) return
+        if (chatRequest.params.tools.isNullOrEmpty() && tools.isEmpty()) return
         with(chatRequest) {
             params.tools = (params.tools.orEmpty() + tools).distinct()
         }
