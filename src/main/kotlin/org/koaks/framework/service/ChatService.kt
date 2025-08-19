@@ -2,8 +2,14 @@ package org.koaks.framework.service
 
 import com.google.gson.JsonObject
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.koaks.framework.entity.chat.ChatMessage
 import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.entity.inner.InnerChatRequest
@@ -111,13 +117,21 @@ class ChatService(
 
         while (isToolCallResponse(response.value) && toolCallCount < MAX_TOOL_CALL_EPOCH) {
             val responseMessage = response.value.choices?.firstOrNull()?.message
-            responseMessage?.toolCalls.orEmpty().forEach { tool ->
-                val toolName = tool.function?.name.orEmpty()
-                val argsJson = tool.function?.arguments
-                val args = parseToolArguments(toolName, argsJson)
-                val result = caller.call(toolName, args.toTypedArray())
-                logger.info { "tool_call: id=${tool.id}, name=$toolName, args=$argsJson" }
-                saveMessage(Message.tool(result, tool.id), request.messageId, messages)
+            val toolCalls = responseMessage?.toolCalls.orEmpty()
+            val semaphore = Semaphore(MAX_TOOL_CALL_EPOCH)
+
+            if (toolCalls.size <= 1) {
+                executeToolCall(toolCalls[0], caller, request, messages)
+            } else {
+                coroutineScope {
+                    toolCalls.map { tool ->
+                        async(Dispatchers.IO) {
+                            semaphore.withPermit {
+                                executeToolCall(tool, caller, request, messages)
+                            }
+                        }
+                    }.awaitAll()
+                }
             }
 
             toolCallCount++
@@ -128,6 +142,22 @@ class ChatService(
         }
 
         return response
+    }
+
+
+    private fun executeToolCall(
+        tool: ChatMessage.ToolCall,
+        caller: ToolCaller,
+        request: InnerChatRequest,
+        messages: MutableList<Message>
+    ) {
+        val toolName = tool.function?.name.orEmpty()
+        val argsJson = tool.function?.arguments
+        val args = parseToolArguments(toolName, argsJson)
+        val result = caller.call(toolName, args.toTypedArray())
+
+        logger.info { "tool_call: id=${tool.id}, name=$toolName, args=$argsJson" }
+        saveMessage(Message.tool(result, tool.id), request.messageId, messages)
     }
 
     // todo: need refactoring

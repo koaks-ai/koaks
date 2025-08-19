@@ -105,4 +105,31 @@ class TestChatClient {
         println(result.value.choices?.getOrNull(0)?.message?.content)
     }
 
+    @Test
+    fun testParallelToolCall() = runBlocking {
+        val clientWithDsl = createChatClient {
+            model {
+                baseUrl = EnvTools.loadValue("BASE_URL")
+                apiKey = EnvTools.loadValue("API_KEY")
+                modelName = "qwen-plus"
+            }
+            memory {
+                default()
+            }
+            tools {
+                groups("weather")
+            }
+        }
+
+        val chatRequest = ChatRequest(
+            message = "What's the 'shanghai'、'beijing'、'xi an'、'tai an' weather like?"
+        ).apply {
+            params.parallelToolCalls = true
+        }
+
+        val result = clientWithDsl.chat(chatRequest)
+
+        println(result.value.choices?.getOrNull(0)?.message?.content)
+    }
+
 }
