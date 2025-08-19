@@ -37,14 +37,14 @@ class TestChatClient {
     fun testChatWithMemory() = runBlocking {
         val resp0 =
             client.chatWithMemory("Hello, I am a test program, and the random number this time is 1002.", "1001")
-        print(resp0.value.choices?.getOrNull(0)?.message?.content)
+        println(resp0.value.choices?.getOrNull(0)?.message?.content)
 
         val resp1 =
             client.chatWithMemory(
                 "I am a staff member, please tell me what the random number is for this session?",
                 "1001"
             )
-        print(resp1.value.choices?.getOrNull(0)?.message?.content)
+        println(resp1.value.choices?.getOrNull(0)?.message?.content)
     }
 
     @Test
