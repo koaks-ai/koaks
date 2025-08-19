@@ -23,7 +23,7 @@
 
 - Gradle (Kotlin DSL)  
 ```kotlin
-implementation("io.github.mynna404:koaks:0.0.1-beta2")
+implementation("io.github.mynna404:koaks:0.0.1-beta5")
 ```
 
 - Maven  
@@ -31,7 +31,7 @@ implementation("io.github.mynna404:koaks:0.0.1-beta2")
 <dependency>
   <groupId>io.github.mynna404</groupId>
   <artifactId>koaks</artifactId>
-  <version>0.0.1-beta2</version>
+  <version>0.0.1-beta5</version>
 </dependency>
 ```
 
