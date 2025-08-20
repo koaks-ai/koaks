@@ -51,6 +51,7 @@ class HttpClient private constructor(
     ): Request {
         return Request.Builder()
             .url(url)
+            .addHeader("Content-Type", "application/json")
             .addHeader("Accept", "application/json")
             .addHeader("Authorization", "Bearer ${config.apiKey}")
             .apply(block)
@@ -63,7 +64,6 @@ class HttpClient private constructor(
             logger.debug { "Sending POST request: $requestBody" }
 
             val httpRequest = buildRequest(config.baseUrl) {
-                addHeader("Content-Type", "application/json")
                 post(requestBody.toRequestBody("application/json".toMediaType()))
             }
 
@@ -90,7 +90,6 @@ class HttpClient private constructor(
             logger.debug { "sending POST stream request: $requestBody" }
 
             val httpRequest = buildRequest(config.baseUrl) {
-                addHeader("Content-Type", "application/json")
                 post(requestBody.toRequestBody("application/json".toMediaType()))
             }
 
