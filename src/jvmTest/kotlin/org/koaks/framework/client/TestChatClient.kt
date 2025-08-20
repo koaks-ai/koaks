@@ -9,6 +9,7 @@ import org.koaks.framework.Koaks
 import org.koaks.framework.api.dsl.createChatClient
 import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.toolcall.ToolContainer
+import kotlin.jvm.JvmStatic
 import kotlin.test.Test
 
 
@@ -25,7 +26,7 @@ class TestChatClient {
             model {
                 baseUrl = EnvTools.loadValue("BASE_URL")
                 apiKey = EnvTools.loadValue("API_KEY")
-                modelName = "qwen-plus"
+                modelName = "qwen3-235b-a22b-instruct-2507"
             }
             memory {
                 default()
@@ -58,6 +59,52 @@ class TestChatClient {
         val result = client.chat(chatRequest)
         result.stream.map { data ->
             print(data.choices?.get(0)?.delta?.content)
+        }.collect()
+    }
+
+    @Test
+    fun testThinkingStreamRequest() = runBlocking {
+
+        val thinkingClient = createChatClient {
+            model {
+                baseUrl = EnvTools.loadValue("BASE_URL")
+                apiKey = EnvTools.loadValue("API_KEY")
+                modelName = "qwen3-235b-a22b-thinking-2507"
+            }
+            memory {
+                default()
+            }
+        }
+
+        val chatRequest = ChatRequest(
+            message = "What's the meaning of life?？"
+        ).apply {
+            params.stream = true
+        }
+
+        val result = thinkingClient.chat(chatRequest)
+        var hasPrintedThinkingHeader = false
+        var hasPrintedContentHeader = false
+
+        result.stream.map { data ->
+            val reasoning = data.choices?.get(0)?.delta?.reasoningContent
+            val content = data.choices?.get(0)?.delta?.content
+
+            if (reasoning != null) {
+                if (!hasPrintedThinkingHeader) {
+                    println("\n========= Thinking =========")
+                    hasPrintedThinkingHeader = true
+                }
+                print(reasoning)
+            }
+
+            if (content != null) {
+                if (!hasPrintedContentHeader) {
+                    println("\n\n========= Content =========")
+                    hasPrintedContentHeader = true
+                }
+                print(content)
+            }
         }.collect()
     }
 
