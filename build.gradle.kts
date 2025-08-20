@@ -27,8 +27,6 @@ kotlin {
 //        nodejs()
 //    }
 
-    macosArm64()
-
     sourceSets {
         val commonMain by getting {
             dependencies {

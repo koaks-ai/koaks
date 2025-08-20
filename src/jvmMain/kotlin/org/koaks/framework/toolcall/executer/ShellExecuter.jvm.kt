@@ -1,15 +1,19 @@
 package org.koaks.framework.toolcall.executer
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.io.BufferedReader
+import java.io.File
+import java.io.FileReader
+import java.io.FileWriter
+import java.io.InputStreamReader
+import java.util.Locale
 
-import java.io.*
-import java.util.*
-
-object ShellExecuter : Executer {
+@Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING", "DEPRECATION")
+actual object ShellExecuter : Executer {
 
     private val logger = KotlinLogging.logger {}
 
-    override fun exec(cmd: String): String {
+    actual override fun exec(cmd: String): String? {
         val output = StringBuilder()
         try {
             val command: String? = if (isFile(cmd)) readFile(cmd) else cmd
@@ -27,7 +31,7 @@ object ShellExecuter : Executer {
         return output.toString().trim { it <= ' ' }
     }
 
-    override fun exec(cmd: String, outPath: String): Boolean {
+    actual override fun exec(cmd: String, outPath: String): Boolean {
         try {
             FileWriter(outPath).use { writer ->
                 val command: String? = if (isFile(cmd)) readFile(cmd) else cmd

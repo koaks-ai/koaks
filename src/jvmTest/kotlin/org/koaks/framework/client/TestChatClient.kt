@@ -64,7 +64,6 @@ class TestChatClient {
 
     @Test
     fun testThinkingStreamRequest() = runBlocking {
-
         val thinkingClient = createChatClient {
             model {
                 baseUrl = EnvTools.loadValue("BASE_URL")

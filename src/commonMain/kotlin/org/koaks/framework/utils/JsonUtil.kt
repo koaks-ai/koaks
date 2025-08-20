@@ -4,6 +4,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer
 
+
 object JsonUtil {
 
     val json = Json {
@@ -21,10 +22,11 @@ object JsonUtil {
     }
 
     inline fun <reified T> fromJson(jsonStr: String?): T {
-        if (jsonStr == null) {
-            return json.decodeFromString(serializer(), "{}")
+        return if (jsonStr == null) {
+            json.decodeFromString(serializer(), "{}")
+        } else {
+            json.decodeFromString(serializer(), jsonStr)
         }
-        return json.decodeFromString(serializer(), jsonStr)
     }
 
     fun <T> fromJson(jsonStr: String?, deserializer: KSerializer<T>): T {
@@ -34,4 +36,5 @@ object JsonUtil {
             json.decodeFromString(deserializer, jsonStr)
         }
     }
+
 }

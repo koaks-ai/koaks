@@ -4,7 +4,6 @@ import org.koaks.framework.annotation.Tool
 import org.koaks.framework.context.KoaksContext
 import org.reflections.Reflections
 import org.reflections.scanners.Scanners
-import kotlin.collections.forEach
 import kotlin.reflect.KClass
 import kotlin.reflect.KParameter
 import kotlin.reflect.full.createInstance
@@ -12,7 +11,8 @@ import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.jvm.javaMethod
 import kotlin.reflect.jvm.kotlinFunction
 
-object ToolCallInitializer {
+@Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING")
+actual object ToolInitializer {
 
     @Volatile
     private var isInitialized = false
@@ -20,7 +20,7 @@ object ToolCallInitializer {
     private val classInstanceCache = mutableMapOf<KClass<*>, Any>()
 
     @Synchronized
-    fun init() {
+    actual fun init() {
         if (isInitialized) return
 
         val tools = scanTools(KoaksContext.getPackageName())
@@ -30,7 +30,7 @@ object ToolCallInitializer {
         isInitialized = true
     }
 
-    private fun scanTools(packageName: Array<String>): List<ToolDefinition> {
+    actual fun scanTools(packageName: Array<String>): List<ToolDefinition> {
         return Reflections(packageName, Scanners.MethodsAnnotated)
             .getMethodsAnnotatedWith(Tool::class.java)
             .mapNotNull { it.kotlinFunction }
@@ -85,7 +85,7 @@ object ToolCallInitializer {
             }
     }
 
-    private fun registerTools(tools: List<ToolDefinition>) {
+    actual fun registerTools(tools: List<ToolDefinition>) {
         tools.forEach {
             ToolContainer.addTool(it)
         }
@@ -103,5 +103,4 @@ object ToolCallInitializer {
             ToolInstanceContainer.addToolInstance(tool.toolname, instance)
         }
     }
-
 }

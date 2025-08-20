@@ -8,15 +8,20 @@ import org.koaks.framework.entity.Message
 import org.koaks.framework.entity.chat.ChatMessage
 import org.koaks.framework.entity.inner.InnerChatRequest
 import org.koaks.framework.net.HttpClient
+import org.koaks.framework.net.HttpClientConfig
+import org.koaks.framework.net.postAsObject
+import org.koaks.framework.net.postAsObjectStream
 
 import kotlin.test.Test
 
 
 class TestHttpClient {
 
-    val client = HttpClient.create(
-        baseUrl = EnvTools.loadValue("BASE_URL"),
-        apiKey = EnvTools.loadValue("API_KEY"),
+    val client = HttpClient(
+        HttpClientConfig(
+            baseUrl = EnvTools.loadValue("BASE_URL"),
+            apiKey = EnvTools.loadValue("API_KEY"),
+        )
     )
 
     @Test

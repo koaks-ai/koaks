@@ -2,7 +2,7 @@ package org.koaks.framework
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koaks.framework.context.KoaksContext
-import org.koaks.framework.toolcall.ToolCallInitializer
+import org.koaks.framework.toolcall.ToolInitializer
 
 object Koaks {
 
@@ -12,7 +12,7 @@ object Koaks {
         packageName.forEach {
             KoaksContext.addPackageName(it)
         }
-        ToolCallInitializer.init()
+        ToolInitializer.init()
         logger.info { "Koaks initialized" }
     }
 
