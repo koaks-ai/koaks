@@ -5,7 +5,7 @@ import io.github.cdimascio.dotenv.dotenv
 object EnvTools {
 
     val dotenv = dotenv {
-        directory = "src/test/kotlin/org/koaks/framework"
+        directory = "src/jvmTest/kotlin/org/koaks/framework"
         ignoreIfMalformed = true
         ignoreIfMissing = true
     }
