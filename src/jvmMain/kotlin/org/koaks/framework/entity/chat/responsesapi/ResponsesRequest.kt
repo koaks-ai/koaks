@@ -1,9 +1,11 @@
 package org.koaks.framework.entity.chat.responsesapi
 
-import com.google.gson.annotations.SerializedName
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import org.koaks.framework.entity.enums.IncludeEnum
 import org.koaks.framework.toolcall.ToolDefinition
 
+@Serializable
 data class ResponsesRequest(
 
     /**
@@ -46,7 +48,7 @@ data class ResponsesRequest(
      *
      * `optional`
      */
-    @SerializedName("max_output_tokens")
+    @SerialName("max_output_tokens")
     val maxOutputTokens: Int? = null,
 
     /**
@@ -56,7 +58,7 @@ data class ResponsesRequest(
      *
      * `optional`
      */
-    @SerializedName("max_tool_calls")
+    @SerialName("max_tool_calls")
     val maxToolCalls: Int? = null,
 
 
@@ -76,7 +78,7 @@ data class ResponsesRequest(
      *
      * `optional`
      */
-    @SerializedName("model")
+    @SerialName("model")
     val model: String? = null,
 
     /**
@@ -84,7 +86,7 @@ data class ResponsesRequest(
      *
      * `optional` default: `true`
      */
-    @SerializedName("parallel_tool_calls")
+    @SerialName("parallel_tool_calls")
     val parallelToolCalls: Boolean = true,
 
     /**
@@ -92,7 +94,7 @@ data class ResponsesRequest(
      *
      * `optional`
      */
-    @SerializedName("previous_response_id")
+    @SerialName("previous_response_id")
     val previousResponseId: String? = null,
 
     /**
@@ -108,7 +110,7 @@ data class ResponsesRequest(
      *
      * `optional`
      */
-    @SerializedName("prompt_cache_key")
+    @SerialName("prompt_cache_key")
     val promptCacheKey: String? = null,
 
     /**
@@ -127,7 +129,7 @@ data class ResponsesRequest(
      *
      * `optional`
      */
-    @SerializedName("safety_identifier")
+    @SerialName("safety_identifier")
     val safetyIdentifier: String? = null,
 
     /**
@@ -143,7 +145,7 @@ data class ResponsesRequest(
      *
      * `optional`
      */
-    @SerializedName("service_tier")
+    @SerialName("service_tier")
     val serviceTier: String = "default",
 
     /**
@@ -165,7 +167,7 @@ data class ResponsesRequest(
      *
      * `optional`
      */
-    @SerializedName("stream_options")
+    @SerialName("stream_options")
     val streamOptions: StreamOptions? = null,
 
     /**
@@ -190,7 +192,7 @@ data class ResponsesRequest(
      *
      * `optional`
      */
-    @SerializedName("tool_choice")
+    @SerialName("tool_choice")
     val toolChoice: ToolChoice? = null,
 
     /**
@@ -207,7 +209,7 @@ data class ResponsesRequest(
      *
      * `optional`
      */
-    @SerializedName("top_logprobs")
+    @SerialName("top_logprobs")
     val topLogprobs: Int? = null,
 
     /**
@@ -219,7 +221,7 @@ data class ResponsesRequest(
      *
      * `optional` default: `1.0`
      */
-    @SerializedName("top_p")
+    @SerialName("top_p")
     val topP: Double = 1.0,
 
     /**
@@ -232,7 +234,7 @@ data class ResponsesRequest(
      *
      * `optional` default: `disabled`
      */
-    @SerializedName("truncation")
+    @SerialName("truncation")
     val truncation: String = "disabled",
 
     @Deprecated("This field is being replaced by safety_identifier and prompt_cache_key.")
@@ -248,18 +250,19 @@ sealed class InputItem {
     data class ImageInput(
         val type: String = "image",
 
-        @SerializedName("image_url")
+        @SerialName("image_url")
         val imageUrl: String
     ) : InputItem()
 
     data class FileInput(
         val type: String = "file",
 
-        @SerializedName("file_id")
+        @SerialName("file_id")
         val fileId: String
     ) : InputItem()
 }
 
+@Serializable
 data class PromptConfig(
     /**
      * The unique identifier of the prompt template to use.
@@ -284,6 +287,7 @@ data class PromptConfig(
     val version: String? = null
 )
 
+@Serializable
 data class ReasoningConfig(
     /**
      * Constrains effort on reasoning for reasoning models.
@@ -301,10 +305,11 @@ data class ReasoningConfig(
      *
      * `optional`
      */
-    @SerializedName("summary")
+    @SerialName("summary")
     val summary: String? = null
 )
 
+@Serializable
 data class StreamOptions(
     /**
      * When true, stream obfuscation will be enabled.
@@ -316,10 +321,11 @@ data class StreamOptions(
      *
      * `optional`
      */
-    @SerializedName("include_usage")
+    @SerialName("include_usage")
     val includeUsage: Boolean? = null
 )
 
+@Serializable
 data class TextConfig(
     // TODO: add support for text config
     /**
@@ -341,6 +347,7 @@ data class TextConfig(
     val verbosity: String = "medium"
 )
 
+@Serializable
 data class ToolChoice(
 
     // todo： Actually, I didn't quite figure out what OpenAI's documentation is trying to convey here.
@@ -354,6 +361,6 @@ data class ToolChoice(
      *
      * `required` means the model must call one or more tools.
      */
-    @SerializedName("tool_choice_mode")
+    @SerialName("tool_choice_mode")
     val toolChoiceModeL: String? = null
 )

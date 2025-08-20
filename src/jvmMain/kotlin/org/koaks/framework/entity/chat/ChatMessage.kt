@@ -1,8 +1,10 @@
 package org.koaks.framework.entity.chat
 
-import com.google.gson.annotations.SerializedName
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import org.koaks.framework.entity.Message
 
+@Serializable
 class ChatMessage {
 
     var choices: MutableList<Choice>? = null
@@ -10,13 +12,13 @@ class ChatMessage {
     var id: String? = null
     var model: String? = null
 
-    @SerializedName("object")
+    @SerialName("object")
     var chatObject: String? = null
 
-    @SerializedName("prompt_filter_results")
+    @SerialName("prompt_filter_results")
     var promptFilterResults: MutableList<PromptFilterResult?>? = null
 
-    @SerializedName("system_fingerprint")
+    @SerialName("system_fingerprint")
     var systemFingerprint: String? = null
     var usage: Usage? = null
 
@@ -33,16 +35,19 @@ class ChatMessage {
                 '}'
     }
 
+    @Serializable
     class Choice {
-        @SerializedName("content_filter_results")
+        @SerialName("content_filter_results")
         var contentFilterResults: ContentFilterResults? = null
 
-        @SerializedName("finish_reason")
+        @SerialName("finish_reason")
         var finishReason: String? = null
         var delta: Delta? = null
         var text: String? = null
         var index: Int = 0
-        var logprobs: Any? = null
+
+        // TODO: logprobs
+//        var logprobs: Any? = null
         var message: Message? = null
 
         override fun toString(): String {
@@ -50,7 +55,7 @@ class ChatMessage {
                     "contentFilterResults=" + contentFilterResults +
                     ", finishReason='" + finishReason + '\'' +
                     ", index=" + index +
-                    ", logprobs=" + logprobs +
+//                    ", logprobs=" + logprobs +
                     ", message=" + message +
                     ", delta=" + delta +
                     ", text='" + text + '\'' +
@@ -58,15 +63,16 @@ class ChatMessage {
         }
     }
 
+    @Serializable
     class Delta {
         var role: String? = null
         var content: String? = null
         var refusal: String? = null
 
-        @SerializedName("tool_calls")
+        @SerialName("tool_calls")
         var toolCalls: MutableList<ToolCall?>? = null
 
-        @SerializedName("reasoning_content")
+        @SerialName("reasoning_content")
         var reasoningContent: String? = null
 
         override fun toString(): String {
@@ -80,10 +86,11 @@ class ChatMessage {
         }
     }
 
+    @Serializable
     class ContentFilterResults {
         var hate: FilterDetail? = null
 
-        @SerializedName("self_harm")
+        @SerialName("self_harm")
         var selfHarm: FilterDetail? = null
         var sexual: FilterDetail? = null
         var violence: FilterDetail? = null
@@ -98,7 +105,7 @@ class ChatMessage {
         }
     }
 
-
+    @Serializable
     class FilterDetail {
         var isFiltered: Boolean = false
         var severity: String? = null
@@ -111,6 +118,7 @@ class ChatMessage {
         }
     }
 
+    @Serializable
     class ToolCall {
         lateinit var id: String
         var function: FunctionCall? = null
@@ -127,6 +135,7 @@ class ChatMessage {
         }
     }
 
+    @Serializable
     class FunctionCall {
         lateinit var name: String
         var arguments: String? = null
@@ -139,11 +148,12 @@ class ChatMessage {
         }
     }
 
+    @Serializable
     class PromptFilterResult {
-        @SerializedName("content_filter_results")
+        @SerialName("content_filter_results")
         var contentFilterResults: ContentFilterResults? = null
 
-        @SerializedName("prompt_index")
+        @SerialName("prompt_index")
         var promptIndex: Int = 0
 
         override fun toString(): String {
@@ -154,20 +164,21 @@ class ChatMessage {
         }
     }
 
+    @Serializable
     class Usage {
-        @SerializedName("completion_tokens")
+        @SerialName("completion_tokens")
         var completionTokens: Int = 0
 
-        @SerializedName("completion_tokens_details")
+        @SerialName("completion_tokens_details")
         var completionTokensDetails: CompletionTokensDetails? = null
 
-        @SerializedName("prompt_tokens")
+        @SerialName("prompt_tokens")
         var promptTokens: Int = 0
 
-        @SerializedName("prompt_tokens_details")
+        @SerialName("prompt_tokens_details")
         var promptTokensDetails: PromptTokensDetails? = null
 
-        @SerializedName("total_tokens")
+        @SerialName("total_tokens")
         var totalTokens: Int = 0
 
         override fun toString(): String {
@@ -181,17 +192,18 @@ class ChatMessage {
         }
     }
 
+    @Serializable
     class CompletionTokensDetails {
-        @SerializedName("accepted_prediction_tokens")
+        @SerialName("accepted_prediction_tokens")
         var acceptedPredictionTokens: Int = 0
 
-        @SerializedName("audio_tokens")
+        @SerialName("audio_tokens")
         var audioTokens: Int = 0
 
-        @SerializedName("reasoning_tokens")
+        @SerialName("reasoning_tokens")
         var reasoningTokens: Int = 0
 
-        @SerializedName("rejected_prediction_tokens")
+        @SerialName("rejected_prediction_tokens")
         var rejectedPredictionTokens: Int = 0
 
         override fun toString(): String {
@@ -204,11 +216,12 @@ class ChatMessage {
         }
     }
 
+    @Serializable
     class PromptTokensDetails {
-        @SerializedName("audio_tokens")
+        @SerialName("audio_tokens")
         var audioTokens: Int = 0
 
-        @SerializedName("cached_tokens")
+        @SerialName("cached_tokens")
         var cachedTokens: Int = 0
 
         override fun toString(): String {

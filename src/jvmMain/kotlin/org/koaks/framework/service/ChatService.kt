@@ -1,6 +1,5 @@
 package org.koaks.framework.service
 
-import com.google.gson.JsonObject
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -10,6 +9,7 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.serialization.json.JsonObject
 import org.koaks.framework.entity.chat.ChatMessage
 import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.entity.inner.InnerChatRequest
@@ -168,7 +168,7 @@ class ChatService(
             val jsonObject = JsonUtil.fromJson<JsonObject>(rawJson)
             val tool = ToolContainer.getTool(toolName)
             tool?.function?.parameters?.properties?.mapNotNull { (key, _) ->
-                jsonObject.get(key)?.toString()
+                jsonObject[key]?.toString()
             } ?: emptyList()
         } catch (e: Exception) {
             logger.error(e) { "Failed to parse arguments for $toolName" }

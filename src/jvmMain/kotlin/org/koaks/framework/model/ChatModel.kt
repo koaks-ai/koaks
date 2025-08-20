@@ -1,12 +1,15 @@
 package org.koaks.framework.model
 
-import com.google.gson.annotations.SerializedName
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import org.koaks.framework.entity.ModelParams
 
+@Serializable
 class ChatModel(
     val baseUrl: String,
     val apiKey: String,
-    @SerializedName("model")
+    @SerialName("model")
     var modelName: String,
     @Transient
     var defaultSystemMessage: String = DEFAULT_SYSTEM_MESSAGE,

@@ -4,10 +4,12 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.flow.Flow
 
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.serialization.Serializable
 import kotlin.properties.ReadOnlyProperty
 import kotlin.reflect.KProperty
 import kotlin.require
 
+@Serializable
 class ModelResponse<T> private constructor(
     private val _stream: Flow<T>?,
     private val _value: T?

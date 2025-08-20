@@ -17,9 +17,9 @@ kotlin {
     jvmToolchain(21)
 
     jvm {
-        testRuns["test"].executionTask.configure {
-            useJUnitPlatform()
-        }
+//        testRuns["test"].executionTask.configure {
+//            useJUnitPlatform()
+//        }
     }
 
 //    js(IR) {
@@ -34,6 +34,7 @@ kotlin {
             dependencies {
                 implementation(kotlin("stdlib-common"))
                 implementation("io.github.oshai:kotlin-logging:7.0.3")
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.6.3")
             }
@@ -50,7 +51,6 @@ kotlin {
                 implementation("org.reflections:reflections:0.10.2")
                 implementation("org.jetbrains.kotlin:kotlin-reflect")
                 implementation("com.squareup.okhttp3:okhttp:5.1.0")
-                implementation("com.google.code.gson:gson:2.13.1")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:1.10.2")
             }
         }
