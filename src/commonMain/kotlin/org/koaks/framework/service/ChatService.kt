@@ -19,6 +19,9 @@ import org.koaks.framework.memory.DefaultMemoryStorage
 import org.koaks.framework.memory.IMemoryStorage
 import org.koaks.framework.model.ChatModel
 import org.koaks.framework.net.HttpClient
+import org.koaks.framework.net.HttpClientConfig
+import org.koaks.framework.net.postAsObject
+import org.koaks.framework.net.postAsObjectStream
 import org.koaks.framework.toolcall.ToolContainer
 import org.koaks.framework.toolcall.caller.ToolCaller
 import org.koaks.framework.utils.JsonUtil
@@ -34,9 +37,11 @@ class ChatService(
         private const val MAX_TOOL_CALL_EPOCH = 30
     }
 
-    private var httpClient = HttpClient.create(
-        baseUrl = model.baseUrl,
-        apiKey = model.apiKey
+    private var httpClient = HttpClient(
+        HttpClientConfig(
+            baseUrl = model.baseUrl,
+            apiKey = model.apiKey
+        )
     )
 
     /**
@@ -181,11 +186,11 @@ class ChatService(
                 && (chatMessage.choices?.firstOrNull()?.message?.toolCalls != null)
     }
 
-    @Synchronized
+    //    @Synchronized
     private fun saveMessage(message: Message?, messageId: String?, messages: MutableList<Message>) {
         if (message == null) return
         try {
-            messages.addLast(message)
+            messages.add(message)
             messageId?.let {
                 memoryStorage.addMessage(message, messageId)
             }
