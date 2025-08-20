@@ -1,11 +1,11 @@
 package org.koaks.framework.entity.chat
 
-import com.google.gson.annotations.SerializedName
+import kotlinx.serialization.SerialName
 import org.koaks.framework.entity.ModelParams
 
 class ChatRequest(
     var message: String,
-    @SerializedName("model")
+    @SerialName("model")
     var modelName: String? = null,
     var params: ModelParams = ModelParams()
 )

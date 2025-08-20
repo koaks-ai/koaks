@@ -1,23 +1,26 @@
 package org.koaks.framework.entity
 
-import com.google.gson.annotations.SerializedName
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import org.koaks.framework.entity.chat.ChatMessage
 
+@Serializable
 class Message {
     var id: String? = null
     var content: String? = null
-    var refusal: Any? = null
+    // TODO: add refusal
+//    var refusal: Any? = null
     var role: String? = null
 
-    @SerializedName("tool_calls")
+    @SerialName("tool_calls")
     var toolCalls: MutableList<ChatMessage.ToolCall>? = null
 
-    @SerializedName("function_call")
+    @SerialName("function_call")
     var functionCall: ChatMessage.FunctionCall? = null
 
     var audio: String? = null
 
-    @SerializedName("tool_call_id")
+    @SerialName("tool_call_id")
     var toolCallID: String? = null
 
     constructor(role: String, content: String) {
@@ -34,7 +37,7 @@ class Message {
     override fun toString(): String {
         return "Message{" +
                 "content='" + content + '\'' +
-                ", refusal=" + refusal +
+//                ", refusal=" + refusal +
                 ", role='" + role + '\'' +
                 ", toolCalls=" + toolCalls +
                 ", functionCall=" + functionCall +

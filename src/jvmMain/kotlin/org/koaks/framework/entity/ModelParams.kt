@@ -1,28 +1,30 @@
 package org.koaks.framework.entity
 
-import com.google.gson.annotations.SerializedName
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import org.koaks.framework.toolcall.ToolDefinition
 
+@Serializable
 open class ModelParams {
 
     // 工具
     var tools: List<ToolDefinition>? = null
 
     // 可选参数：是否允许并行调用工具
-    @SerializedName("parallel_tool_calls")
+    @SerialName("parallel_tool_calls")
     var parallelToolCalls: Boolean? = null
 
     var systemMessage: String? = null
 
     // 可选参数：生成文本的最大 token 数量
-    @SerializedName("max_tokens")
+    @SerialName("max_tokens")
     var maxTokens: Int? = null
 
     // 可选参数：控制生成文本的随机性，0 表示完全确定性
     var temperature: Double? = null
 
     // 可选参数： nucleus sampling 参数，通常取值 0-1
-    @SerializedName("top_p")
+    @SerialName("top_p")
     var topP: Double? = null
 
     // 可选参数：一次请求返回多少个候选结果
@@ -38,19 +40,19 @@ open class ModelParams {
     var stop: String? = null
 
     // 可选参数：生成时对话重复内容的惩罚，默认 0
-    @SerializedName("presence_penalty")
+    @SerialName("presence_penalty")
     var presencePenalty: Double? = null
 
     // 可选参数：生成时对话重复使用同一 token 的惩罚，默认 0
-    @SerializedName("frequency_penalty")
+    @SerialName("frequency_penalty")
     var frequencyPenalty: Double? = null
 
     // 可选参数：修改指定标记出现在完成中的可能性
-    @SerializedName("logit_bias")
+    @SerialName("logit_bias")
     var logitBias: String? = null
 
     // 可选参数：返回结果的格式,强制Json请设置 {"type": "json_object"}
-    @SerializedName("response_format")
+    @SerialName("response_format")
     var responseFormat: Map<String, String>? = null
 
 }

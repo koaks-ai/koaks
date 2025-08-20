@@ -1,7 +1,10 @@
 package org.koaks.framework.toolcall
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlin.reflect.KFunction
 
+@Serializable
 data class ToolDefinition(
     val type: String = "function",
     val function: Function,
@@ -15,12 +18,14 @@ data class ToolDefinition(
     @Transient
     var group: String = "default"
 
+    @Serializable
     data class Function(
         val name: String,
         val description: String,
         val parameters: ToolParameters? = null
     )
 
+    @Serializable
     data class ToolParameters(
         val type: String = "object",
         val properties: Map<String, Property> = emptyMap(),
@@ -47,5 +52,6 @@ data class ToolDefinition(
         }
     }
 
+    @Serializable
     data class Property(val type: String, val description: String)
 }
