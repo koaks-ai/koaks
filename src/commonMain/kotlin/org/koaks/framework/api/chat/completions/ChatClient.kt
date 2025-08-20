@@ -21,7 +21,7 @@ class ChatClient(
         return runBlocking {
             chatService.execChat(
                 ChatRequest(message = message)
-            ).value.choices?.getOrNull(0)?.message?.content ?: String()
+            ).value.choices?.getOrNull(0)?.message?.content as String
         }
     }
 
