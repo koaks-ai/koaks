@@ -31,9 +31,17 @@ data class ToolDefinition(
         val properties: Map<String, Property> = emptyMap(),
         val required: Array<String> = emptyArray()
     ) {
+
+        override fun hashCode(): Int {
+            var result = type.hashCode()
+            result = 31 * result + properties.hashCode()
+            result = 31 * result + required.contentHashCode()
+            return result
+        }
+
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
-            if (javaClass != other?.javaClass) return false
+            if (other == null || this::class != other::class) return false
 
             other as ToolParameters
 
@@ -42,13 +50,6 @@ data class ToolDefinition(
             if (!required.contentEquals(other.required)) return false
 
             return true
-        }
-
-        override fun hashCode(): Int {
-            var result = type.hashCode()
-            result = 31 * result + properties.hashCode()
-            result = 31 * result + required.contentHashCode()
-            return result
         }
     }
 
