@@ -5,6 +5,7 @@ import io.github.cdimascio.dotenv.dotenv
 object EnvTools {
 
     val dotenv = dotenv {
+        directory = "../"
         ignoreIfMalformed = true
         ignoreIfMissing = true
     }
