@@ -23,15 +23,19 @@
 
 - Gradle (Kotlin DSL)  
 ```kotlin
-implementation("io.github.mynna404:koaks:0.0.1-beta6")
+// 对于 Gradle 项目, 无论是 JVM 项目还是 Kotlin Multiplatform 项目
+// 你只需要添加如下内容即可, Gradle 会自动处理不同平台的适配
+implementation("io.github.mynna404:koaks:0.0.1-preview1")
 ```
 
 - Maven  
 ```xml
+<!-- 对于 Maven 项目来说，你需要自己区分不同的平台。 
+     当然，如果你不清楚我在说什么，那么你只需要将以下内容添加到 pom.xml 中即可。 -->
 <dependency>
-  <groupId>io.github.mynna404</groupId>
-  <artifactId>koaks</artifactId>
-  <version>0.0.1-beta6</version>
+    <groupId>io.github.mynna404</groupId>
+    <artifactId>koaks-jvm</artifactId>
+    <version>0.0.1-preview1</version>
 </dependency>
 ```
 
@@ -118,7 +122,7 @@ class WeatherTools {
     }
 
     @Tool(
-        group = "weather",
+        group = "location",
         description = "获取用户所在的城市"
     )
     fun getCity(): String {
@@ -140,6 +144,11 @@ fun main() {
             memory {
                 default()
             }
+            tools {
+                // 如果没有对工具进行分组，则默认会是为 'default' 的组中的工具
+                default()
+                groups("weather", "location")
+            }
         }
 
         val chatRequest = ChatRequest(
@@ -147,8 +156,6 @@ fun main() {
         ).apply {
             // 在使用 tool_call 时, 暂不支持流式模式
             params.stream = false
-            // 如果没有对工具进行分组，则默认会是为 'default' 的组中的工具
-            params.tools = ToolContainer.getTools("weather")
             params.parallelToolCalls = true
         }
 
@@ -176,7 +183,6 @@ fun main() {
 | Project | Description |
 |---------|-------------|
 | [Kotlin](https://github.com/JetBrains/kotlin) | The Kotlin Programming Language. |
-| [medivh-publisher](https://github.com/medivh-project/medivh-publisher) | A Gradle plugin that publishes Gradle projects to Sonatype. |
 | [format-print](https://github.com/mynna404/format-print) | A tool for Java and Kotlin developers to enable more readable and structured printing of object contents. |
 | [kotlin-logging](https://github.com/oshai/kotlin-logging) | Lightweight multiplatform logging framework for Kotlin. A convenient and performant logging facade. |
 
