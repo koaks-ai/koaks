@@ -1,0 +1,42 @@
+[versions]
+# Kotlin & Plugins
+kotlin = "2.1.21"
+serialization = "2.1.21"
+mavenPublish = "0.34.0"
+
+# Libraries
+kotlinLogging = "7.0.3"
+ktor = "3.2.3"
+serializationJson = "1.9.0"
+serializationCore = "1.6.3"
+coroutines = "1.10.2"
+
+logback = "1.5.13"
+reflections = "0.10.2"
+dotenv = "6.5.1"
+junit = "5.13.4"
+
+[plugins]
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "serialization" }
+maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "mavenPublish" }
+
+[libraries]
+# commonMain
+kotlin-logging = { module = "io.github.oshai:kotlin-logging", version.ref = "kotlinLogging" }
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serializationJson" }
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "serializationCore" }
+
+# jvmMain
+ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+reflections = { module = "org.reflections:reflections", version.ref = "reflections" }
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
+coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactor", version.ref = "coroutines" }
+
+# jvmTest
+dotenv-kotlin = { module = "io.github.cdimascio:dotenv-kotlin", version.ref = "dotenv" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5", version.ref = "kotlin" }
