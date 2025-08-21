@@ -136,7 +136,7 @@ class TestChatClient {
                 default()
             }
             tools {
-                groups("weather")
+                groups("weather", "location")
             }
         }
 
@@ -163,7 +163,7 @@ class TestChatClient {
                 default()
             }
             tools {
-                groups("weather")
+                groups("weather", "location")
             }
         }
 
