@@ -6,7 +6,7 @@ plugins {
 
 // only test publish
 group = "io.github.mynna404"
-version = "0.0.1-kmp-preview"
+version = "0.0.1-preview1"
 
 
 repositories {
@@ -26,12 +26,11 @@ kotlin {
 
         val commonMain by getting {
             dependencies {
-                implementation(kotlin("stdlib-common"))
-                implementation("io.github.oshai:kotlin-logging:7.0.3")
-                implementation("io.ktor:ktor-client-core:3.2.3")
-                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
-                implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.6.3")
+                api("io.github.oshai:kotlin-logging:7.0.3")
+                api("io.ktor:ktor-client-core:3.2.3")
+                api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+                api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+                api("org.jetbrains.kotlinx:kotlinx-serialization-core:1.6.3")
             }
         }
 
@@ -43,12 +42,11 @@ kotlin {
 
         val jvmMain by getting {
             dependencies {
-                implementation("io.ktor:ktor-client-cio:3.2.3")
-                implementation("ch.qos.logback:logback-classic:1.5.13")
-                implementation("io.github.oshai:kotlin-logging-jvm:7.0.3")
-                implementation("org.reflections:reflections:0.10.2")
-                implementation("org.jetbrains.kotlin:kotlin-reflect")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:1.10.2")
+                api("io.ktor:ktor-client-cio:3.2.3")
+                api("ch.qos.logback:logback-classic:1.5.13")
+                api("org.reflections:reflections:0.10.2")
+                api("org.jetbrains.kotlin:kotlin-reflect")
+                api("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:1.10.2")
             }
         }
 
@@ -63,7 +61,6 @@ kotlin {
 //        val jsMain by getting {
 //            dependencies {
 //                implementation("io.ktor:ktor-client-js:3.2.3")
-//                implementation("io.github.oshai:kotlin-logging-js:7.0.3")
 //            }
 //        }
 //
