@@ -118,7 +118,7 @@ class ChatService(
         val messages = request.messages
         var response = initialResponse
         var toolCallCount = 0
-        val caller = ToolCaller()
+        val caller = ToolCaller
 
         while (isToolCallResponse(response.value) && toolCallCount < MAX_TOOL_CALL_EPOCH) {
             val responseMessage = response.value.choices?.firstOrNull()?.message
