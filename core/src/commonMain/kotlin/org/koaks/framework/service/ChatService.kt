@@ -7,7 +7,9 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.json.JsonObject
 import org.koaks.framework.entity.chat.ChatMessage
@@ -35,6 +37,7 @@ class ChatService(
     companion object {
         private val logger = KotlinLogging.logger {}
         private const val MAX_TOOL_CALL_EPOCH = 30
+
     }
 
     private var httpClient = HttpClient(
@@ -150,7 +153,7 @@ class ChatService(
     }
 
 
-    private fun executeToolCall(
+    private suspend fun executeToolCall(
         tool: ChatMessage.ToolCall,
         caller: ToolCaller,
         request: InnerChatRequest,
@@ -186,21 +189,24 @@ class ChatService(
                 && (chatMessage.choices?.firstOrNull()?.message?.toolCalls != null)
     }
 
-    //    @Synchronized
-    private fun saveMessage(message: Message?, messageId: String?, messages: MutableList<Message>) {
-        if (message == null) return
-        try {
-            messages.add(message)
-            messageId?.let {
-                memoryStorage.addMessage(message, messageId)
+    private val mutex = Mutex()
+
+    private suspend fun saveMessage(message: Message?, messageId: String?, messages: MutableList<Message>) {
+        mutex.withLock {
+            if (message == null) return
+            try {
+                messages.add(message)
+                messageId?.let {
+                    memoryStorage.addMessage(message, messageId)
+                }
+            } catch (e: Exception) {
+                messages.removeLastOrNull()
+                throw e
             }
-        } catch (e: Exception) {
-            messages.removeLastOrNull()
-            throw e
         }
     }
 
-    private fun chatRequest2innerRequest(chatRequest: ChatRequest, messageId: String?): InnerChatRequest {
+    private suspend fun chatRequest2innerRequest(chatRequest: ChatRequest, messageId: String?): InnerChatRequest {
         val messages = messageId?.let {
             // need to call toMutableList() to create a copy, avoiding modification of the original reference
             memoryStorage.getMessageList(messageId).toMutableList()
