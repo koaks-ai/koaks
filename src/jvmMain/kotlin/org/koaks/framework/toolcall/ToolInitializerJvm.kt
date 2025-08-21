@@ -91,7 +91,7 @@ actual object ToolInitializer {
         }
     }
 
-    private fun instanceToolClass(tools: List<ToolDefinition>) {
+    actual fun instanceToolClass(tools: List<ToolDefinition>) {
         tools.forEach { tool ->
             val function = tool.realFunction
             val klass = function.javaMethod?.declaringClass?.kotlin ?: return@forEach

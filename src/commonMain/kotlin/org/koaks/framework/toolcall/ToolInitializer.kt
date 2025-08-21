@@ -10,4 +10,6 @@ expect object ToolInitializer {
 
     fun registerTools(tools: List<ToolDefinition>)
 
+    fun instanceToolClass(tools: List<ToolDefinition>)
+
 }
