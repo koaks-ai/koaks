@@ -1,6 +1,5 @@
 package org.koaks.framework.api.chat.completions
 
-import kotlinx.coroutines.runBlocking
 import org.koaks.framework.entity.ModelResponse
 import org.koaks.framework.entity.chat.ChatMessage
 import org.koaks.framework.entity.chat.ChatRequest
@@ -17,12 +16,10 @@ class ChatClient(
 ) {
     private val chatService = ChatService(model, memory)
 
-    fun generate(message: String): String {
-        return runBlocking {
-            chatService.execChat(
-                ChatRequest(message = message)
-            ).value.choices?.getOrNull(0)?.message?.content as String
-        }
+    suspend fun generate(message: String): String {
+        return chatService.execChat(
+            ChatRequest(message = message)
+        ).value.choices?.getOrNull(0)?.message?.content as String
     }
 
     suspend fun chat(chatRequest: ChatRequest): ModelResponse<ChatMessage> {
