@@ -23,15 +23,20 @@
 
 - Gradle (Kotlin DSL)  
 ```kotlin
-implementation("io.github.mynna404:koaks:0.0.1-beta6")
+// For Gradle projects, whether it's a JVM project or a Kotlin Multiplatform project, 
+// you only need to add the following. Gradle will automatically handle platform adaptation.
+implementation("io.github.mynna404:koaks:0.0.1-preview1")
+
 ```
 
 - Maven  
 ```xml
+<!-- For Maven projects, you need to distinguish between different platforms yourself. 
+     Of course, if you’re not sure what that means, you can simply add the following to your pom.xml. -->
 <dependency>
   <groupId>io.github.mynna404</groupId>
-  <artifactId>koaks</artifactId>
-  <version>0.0.1-beta6</version>
+  <artifactId>koaks-jvm</artifactId>
+  <version>0.0.1-preview1</version>
 </dependency>
 ```
 
@@ -118,7 +123,7 @@ class WeatherTools {
     }
 
     @Tool(
-        group = "weather",
+        group = "location",
         description = "Get the city where the user is located"
     )
     fun getCity(): String {
@@ -140,6 +145,10 @@ fun main() {
             memory {
                 default()
             }
+            tools {
+                default()
+                groups("weather", "location")
+            }
         }
 
         val chatRequest = ChatRequest(
@@ -147,8 +156,6 @@ fun main() {
         ).apply {
             // when using tool_call, stream mode is currently not supported
             params.stream = false
-            // if the tools are not grouped, the tools in the 'default' group will be used by default.
-            params.tools = ToolContainer.getTools("weather")
             params.parallelToolCalls = true
         }
 
