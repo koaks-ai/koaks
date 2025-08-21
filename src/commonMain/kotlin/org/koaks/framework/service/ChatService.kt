@@ -130,7 +130,7 @@ class ChatService(
             } else {
                 coroutineScope {
                     toolCalls.map { tool ->
-                        async(Dispatchers.IO) {
+                        async(Dispatchers.Default) {
                             semaphore.withPermit {
                                 executeToolCall(tool, caller, request, messages)
                             }
