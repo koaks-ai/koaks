@@ -1,12 +1,12 @@
 plugins {
-//    id("tech.medivh.plugin.publisher") version "1.2.5"
     kotlin("multiplatform") version "2.1.21"
     kotlin("plugin.serialization") version "2.1.21"
+    id("com.vanniktech.maven.publish") version "0.34.0"
 }
 
 // only test publish
 group = "io.github.mynna404"
-version = "0.0.1-kmp-preview1"
+version = "0.0.1-kmp-preview"
 
 
 repositories {
@@ -16,11 +16,11 @@ repositories {
 kotlin {
     jvmToolchain(21)
 
-    jvm {}
+    jvm()
 
-    js(IR) {
-        nodejs()
-    }
+//    js(IR) {
+//        nodejs()
+//    }
 
     sourceSets {
 
@@ -85,31 +85,41 @@ tasks.withType<Test> {
     }
 }
 
-//medivhPublisher {
-//    groupId = project.group.toString()
-//    artifactId = project.name
-//    version = project.version.toString()
-//    pom {
-//        name = "koaks"
-//        description =
-//            "A lightweight LLM development framework in JVM. It‘s another choice to langchain4j and spring-ai."
-//        url = "https://github.com/koaks-ai/koaks"
-//        licenses {
-//            license {
-//                name = "Apache-2.0 license"
-//                url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
-//            }
-//        }
-//        developers {
-//            developer {
-//                id = "mynna404"
-//                name = "mynna404"
-//                email = "gemingjia0201@163.com"
-//            }
-//        }
-//        scm {
-//            connection = "scm:git:"
-//            url = "https://github.com/koaks-ai/koakst"
-//        }
-//    }
-//}
+mavenPublishing {
+    publishToMavenCentral()
+
+    signAllPublications()
+
+    coordinates(
+        groupId = group.toString(),
+        artifactId = "koaks",
+        version = version.toString()
+    )
+
+    pom {
+        name = "koaks"
+        description =
+            "A LLM development framework for kotlin multiplatform. It's also a lightweight alternative to langchain4j and spring-ai on JVM."
+        inceptionYear = "2025"
+        url = "https://github.com/koaks-ai/koaks"
+        licenses {
+            license {
+                name = "The Apache License, Version 2.0"
+                url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                distribution = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+            }
+        }
+        developers {
+            developer {
+                id = "mynna404"
+                name = "TruE"
+                url = "https://github.com/mynna404"
+            }
+        }
+        scm {
+            url = "https://github.com/koaks-ai/koaks"
+            connection = "scm:git:git:https://github.com/koaks-ai/koaks.git"
+            developerConnection = "scm:git:https://github.com/koaks-ai/koaks.git"
+        }
+    }
+}
