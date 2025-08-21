@@ -29,7 +29,6 @@ kotlin {
                 implementation(kotlin("stdlib-common"))
                 implementation("io.github.oshai:kotlin-logging:7.0.3")
                 implementation("io.ktor:ktor-client-core:3.2.3")
-
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.6.3")
@@ -61,18 +60,18 @@ kotlin {
             }
         }
 
-        val jsMain by getting {
-            dependencies {
-                implementation("io.ktor:ktor-client-js:3.2.3")
-                implementation("io.github.oshai:kotlin-logging-js:7.0.3")
-            }
-        }
-
-        val jsTest by getting {
-            dependencies {
-                implementation("org.jetbrains.kotlin:kotlin-test-js")
-            }
-        }
+//        val jsMain by getting {
+//            dependencies {
+//                implementation("io.ktor:ktor-client-js:3.2.3")
+//                implementation("io.github.oshai:kotlin-logging-js:7.0.3")
+//            }
+//        }
+//
+//        val jsTest by getting {
+//            dependencies {
+//                implementation("org.jetbrains.kotlin:kotlin-test-js")
+//            }
+//        }
 
     }
 
