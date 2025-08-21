@@ -18,11 +18,11 @@ kotlin {
 
         val commonMain by getting {
             dependencies {
-                api("io.github.oshai:kotlin-logging:7.0.3")
-                api("io.ktor:ktor-client-core:3.2.3")
-                api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
-                api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
-                api("org.jetbrains.kotlinx:kotlinx-serialization-core:1.6.3")
+                api(libs.kotlin.logging)
+                api(libs.ktor.client.core)
+                api(libs.serialization.json)
+                api(libs.coroutines.core)
+                api(libs.serialization.core)
             }
         }
 
@@ -34,19 +34,21 @@ kotlin {
 
         val jvmMain by getting {
             dependencies {
-                api("io.ktor:ktor-client-cio:3.2.3")
-                api("ch.qos.logback:logback-classic:1.5.13")
-                api("org.reflections:reflections:0.10.2")
-                api("org.jetbrains.kotlin:kotlin-reflect")
-                api("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:1.10.2")
+                api(libs.ktor.client.cio)
+                api(libs.logback.classic)
+                api(libs.reflections)
+                api(libs.kotlin.reflect)
+                api(libs.coroutines.reactor)
             }
         }
 
         val jvmTest by getting {
             dependencies {
-                implementation("io.github.cdimascio:dotenv-kotlin:6.5.1")
-                implementation("org.junit.jupiter:junit-jupiter:5.13.4")
-                implementation("org.jetbrains.kotlin:kotlin-test-junit5")
+                dependencies {
+                    implementation(libs.dotenv.kotlin)
+                    implementation(libs.junit.jupiter)
+                    implementation(libs.kotlin.test.junit5)
+                }
             }
         }
 
