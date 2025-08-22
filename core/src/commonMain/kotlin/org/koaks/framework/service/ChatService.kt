@@ -37,7 +37,6 @@ class ChatService(
     companion object {
         private val logger = KotlinLogging.logger {}
         private const val MAX_TOOL_CALL_EPOCH = 30
-
     }
 
     private var httpClient = HttpClient(
@@ -81,13 +80,8 @@ class ChatService(
             logitBias = logitBias ?: model.logitBias
         }
 
-        return if (request.stream == true) {
-            if (request.tools?.isNotEmpty() == true) {
-                logger.error { "Streaming is not supported for tools. Falling back to non-streaming mode." }
-                throw UnsupportedOperationException("Streaming is not supported for tools.")
-            }
+        return if (request.stream == true && request.tools.isNullOrEmpty()) {
             val responseContent = StringBuilder()
-
             val streamFlow = httpClient.postAsObjectStream<ChatMessage>(request)
                 .onEach { data ->
                     val chunk = data.choices?.getOrNull(0)?.delta?.content
@@ -103,6 +97,10 @@ class ChatService(
                 }
             )
         } else {
+            if (request.stream == true) {
+                request.stream = false
+                logger.warn { "Streaming is not supported for tools. Falling back to non-streaming mode." }
+            }
             val initialResponse =
                 ModelResponse.fromResult(httpClient.postAsObject<ChatMessage>(request)) { ChatMessage() }
             // mapper ChatMessage.id to Message.id
