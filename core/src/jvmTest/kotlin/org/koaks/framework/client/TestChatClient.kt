@@ -3,25 +3,16 @@ package org.koaks.framework.client
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.BeforeAll
 import org.koaks.framework.EnvTools
-import org.koaks.framework.Koaks
 import org.koaks.framework.api.dsl.createChatClient
 import org.koaks.framework.entity.chat.ChatRequest
-import org.koaks.framework.toolcall.ToolContainer
-import kotlin.jvm.JvmStatic
+import org.koaks.framework.toolcall.ToolManager
 import kotlin.test.Test
 
 
 class TestChatClient {
 
     companion object {
-        @BeforeAll
-        @JvmStatic
-        fun initKoaks() {
-            Koaks.init("org.koaks.framework")
-        }
-
         val client = createChatClient {
             model {
                 baseUrl = EnvTools.loadValue("BASE_URL")
@@ -115,7 +106,7 @@ class TestChatClient {
             // when using tool_call, stream mode is currently not supported
             params.stream = false
             // if the tools are not grouped, the tools in the 'default' group will be used by default.
-            params.tools = ToolContainer.getTools("weather")
+            params.tools = ToolManager.getTools("weather", "location")
             params.parallelToolCalls = true
         }
 

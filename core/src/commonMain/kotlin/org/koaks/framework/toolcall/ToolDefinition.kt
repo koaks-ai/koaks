@@ -2,6 +2,8 @@ package org.koaks.framework.toolcall
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import org.koaks.framework.platform.PlatformTools
+import org.koaks.framework.platform.PlatformType
 import kotlin.reflect.KFunction
 
 @Serializable
@@ -9,8 +11,22 @@ data class ToolDefinition(
     val type: String = "function",
     val function: Function,
 ) {
+
     @Transient
-    lateinit var realFunction: KFunction<*>
+    val platform: PlatformType = PlatformTools.platformType()
+
+    @Transient
+    var toolType: ToolType = ToolType.ANNOTATION
+
+    /** only jvm */
+    @Transient
+    var realFunction: KFunction<*>? = null
+
+    /**
+     * only implemented using the interface need
+     */
+    @Transient
+    var toolImplementation: Tool<*>? = null
 
     @Transient
     val toolname: String = function.name
@@ -55,4 +71,5 @@ data class ToolDefinition(
 
     @Serializable
     data class Property(val type: String, val description: String)
+
 }

@@ -2,15 +2,26 @@ package org.koaks.framework.toolcall
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 
-object ToolContainer {
+object ToolManager {
 
     private val logger = KotlinLogging.logger {}
 
+    // tool implemented using the annotation and interface
     private val container: HashMap<String, ToolDefinition> = HashMap()
+
+    // tool implemented using the tool interface
+    private val interfaceContainer: HashMap<String, Tool<*>> = HashMap()
 
     fun addTool(tool: ToolDefinition) {
         logger.debug { tool.toJson() }
         container[tool.toolname] = tool
+    }
+
+    fun addInterfaceTools(vararg tool: Tool<*>) {
+        tool.forEach {
+            logger.debug { "add tool ${it.name}" }
+            container[it.name] = it.toDefinition()
+        }
     }
 
     fun getTool(toolname: String): ToolDefinition? = container[toolname]
@@ -29,6 +40,9 @@ object ToolContainer {
 
 }
 
+/**
+ * only implemented using the annotation need
+ */
 object ToolInstanceContainer {
 
     private val logger = KotlinLogging.logger {}
