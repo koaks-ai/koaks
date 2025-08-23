@@ -11,7 +11,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
-import kotlinx.serialization.json.JsonObject
 import org.koaks.framework.entity.chat.ChatMessage
 import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.entity.inner.InnerChatRequest
@@ -24,9 +23,7 @@ import org.koaks.framework.net.HttpClient
 import org.koaks.framework.net.HttpClientConfig
 import org.koaks.framework.net.postAsObject
 import org.koaks.framework.net.postAsObjectStream
-import org.koaks.framework.toolcall.ToolContainer
 import org.koaks.framework.toolcall.caller.ToolCaller
-import org.koaks.framework.utils.JsonUtil
 
 
 class ChatService(
@@ -158,29 +155,13 @@ class ChatService(
         messages: MutableList<Message>
     ) {
         val toolName = tool.function?.name.orEmpty()
-        val argsJson = tool.function?.arguments
-        val args = parseToolArguments(toolName, argsJson)
-        val result = caller.call(toolName, args.toTypedArray())
+        val argsJson = tool.function?.arguments ?: ""
+        val result = caller.call(toolName, argsJson)
 
         logger.info { "tool_call: id=${tool.id}, name=$toolName, args=$argsJson" }
         saveMessage(Message.tool(result, tool.id), request.messageId, messages)
     }
 
-    // todo: need refactoring
-    private fun parseToolArguments(toolName: String, rawJson: String?): List<Any> {
-        if (rawJson.isNullOrBlank()) return emptyList()
-
-        return try {
-            val jsonObject = JsonUtil.fromJson<JsonObject>(rawJson)
-            val tool = ToolContainer.getTool(toolName)
-            tool?.function?.parameters?.properties?.mapNotNull { (key, _) ->
-                jsonObject[key]?.toString()
-            } ?: emptyList()
-        } catch (e: Exception) {
-            logger.error(e) { "Failed to parse arguments for $toolName" }
-            emptyList()
-        }
-    }
 
     private fun isToolCallResponse(chatMessage: ChatMessage): Boolean {
         return (chatMessage.choices?.firstOrNull()?.finishReason == "tool_calls")
