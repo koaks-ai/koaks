@@ -25,7 +25,7 @@
 ```kotlin
 // For Gradle projects, whether it's a JVM project or a Kotlin Multiplatform project, 
 // you only need to add the following. Gradle will automatically handle platform adaptation.
-implementation("io.github.mynna404:koaks:0.0.1-preview1")
+implementation("io.github.mynna404:koaks-core:0.0.1-preview2")
 
 ```
 
@@ -35,8 +35,8 @@ implementation("io.github.mynna404:koaks:0.0.1-preview1")
      Of course, if you’re not sure what that means, you can simply add the following to your pom.xml. -->
 <dependency>
   <groupId>io.github.mynna404</groupId>
-  <artifactId>koaks-jvm</artifactId>
-  <version>0.0.1-preview1</version>
+  <artifactId>koaks-core-jvm</artifactId>
+  <version>0.0.1-preview2</version>
 </dependency>
 ```
 
