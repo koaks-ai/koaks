@@ -25,7 +25,7 @@
 ```kotlin
 // 对于 Gradle 项目, 无论是 JVM 项目还是 Kotlin Multiplatform 项目
 // 你只需要添加如下内容即可, Gradle 会自动处理不同平台的适配
-implementation("io.github.mynna404:koaks:0.0.1-preview1")
+implementation("io.github.mynna404:koaks-core:0.0.1-preview2")
 ```
 
 - Maven  
@@ -34,8 +34,8 @@ implementation("io.github.mynna404:koaks:0.0.1-preview1")
      当然，如果你不清楚我在说什么，那么你只需要将以下内容添加到 pom.xml 中即可。 -->
 <dependency>
     <groupId>io.github.mynna404</groupId>
-    <artifactId>koaks-jvm</artifactId>
-    <version>0.0.1-preview1</version>
+    <artifactId>koaks-core-jvm</artifactId>
+    <version>0.0.1-preview2</version>
 </dependency>
 ```
 
