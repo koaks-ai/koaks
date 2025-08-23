@@ -1,8 +1,10 @@
 package org.koaks.framework.api.dsl
 
 import org.koaks.framework.api.chat.completions.ChatClient
-import org.koaks.framework.toolcall.ToolContainer
+import org.koaks.framework.toolcall.toolinterface.Tool
+import org.koaks.framework.toolcall.ToolManager
 import org.koaks.framework.toolcall.ToolDefinition
+import org.koaks.framework.toolcall.toDefinition
 
 
 class ChatClientBuilder : BaseChatClientBuilder() {
@@ -22,17 +24,45 @@ class ChatClientBuilder : BaseChatClientBuilder() {
 }
 
 class CompletionToolBuilder {
-    private val tools: MutableList<ToolDefinition> = mutableListOf()
+    private val actions: MutableList<() -> Unit> = mutableListOf()
+    private var groupsAction: (() -> Unit)? = null
+    private val toolList: MutableList<ToolDefinition> = mutableListOf()
 
     fun default() {
-        tools += ToolContainer.getTools("default")
+        actions += { toolList += ToolManager.getTools("default") }
     }
 
     fun groups(vararg names: String) {
-        names.forEach { name ->
-            tools += ToolContainer.getTools(name)
+        groupsAction = { toolList += ToolManager.getTools(*names) }
+    }
+
+    fun addTools(vararg tools: ToolDefinition) {
+        actions += {
+            toolList += tools
+            tools.forEach { ToolManager.addTool(it) }
         }
     }
 
-    fun build(): List<ToolDefinition> = tools
+    fun addTools(vararg tools: Tool<*>) {
+        actions += {
+            tools.map { it.toDefinition() }.forEach {
+                toolList += it
+                ToolManager.addTool(it)
+            }
+        }
+    }
+
+    fun build(): List<ToolDefinition> {
+        actions.forEach { it.invoke() }
+        groupsAction?.invoke() ?: run {
+            groups("default")
+        }
+        return toolList
+    }
+}
+
+fun createChatClient(block: ChatClientBuilder.() -> Unit): ChatClient {
+    val builder = ChatClientBuilder()
+    builder.block()
+    return builder.build()
 }
