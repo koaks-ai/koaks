@@ -15,8 +15,8 @@ object ToolContainer {
 
     fun getTool(toolname: String): ToolDefinition? = container[toolname]
 
-    fun getTools(group: String): MutableList<ToolDefinition> {
-        return container.values.filter { it.group == group } as MutableList<ToolDefinition>
+    fun getTools(vararg group: String): MutableList<ToolDefinition> {
+        return container.values.filter { group.contains(it.group) } as MutableList<ToolDefinition>
     }
 
     fun showContainerStatus() {
