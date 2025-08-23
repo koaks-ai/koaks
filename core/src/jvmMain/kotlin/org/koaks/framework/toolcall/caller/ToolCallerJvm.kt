@@ -14,21 +14,16 @@ actual object ToolCaller : IOutCaller {
     private val logger = KotlinLogging.logger {}
 
     fun call(tool: ToolDefinition, args: Array<Any>?): String {
+        val toolName = tool.toolname
         return tool.let {
-            val toolName = it.toolname
             try {
                 val actualArgs = args ?: emptyArray()
-                if (it.toolType == ToolType.ANNOTATION) {
-                    it.realFunction!!.call(ToolInstanceContainer.getToolInstance(toolName), *actualArgs)?.toString()
-                } else {
-                    logger.error { "Tool $toolName is not an annotation tool." }
-                    return@let null
-                }
+                it.realFunction!!.call(ToolInstanceContainer.getToolInstance(toolName), *actualArgs)?.toString()
             } catch (e: Exception) {
                 throw RuntimeException("Error when calling tool $toolName.", e)
             }
         } ?: run {
-            logger.error { "Tool ${tool.toolname} not found." }
+            logger.error { "Tool $toolName not found." }
             "null"
         }
     }
