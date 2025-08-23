@@ -1,7 +1,7 @@
 package org.koaks.framework.api.dsl
 
 import org.koaks.framework.api.chat.completions.ChatClient
-import org.koaks.framework.toolcall.Tool
+import org.koaks.framework.toolcall.toolinterface.Tool
 import org.koaks.framework.toolcall.ToolManager
 import org.koaks.framework.toolcall.ToolDefinition
 import org.koaks.framework.toolcall.toDefinition

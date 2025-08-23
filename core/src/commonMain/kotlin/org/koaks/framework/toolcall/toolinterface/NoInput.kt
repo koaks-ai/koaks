@@ -1,4 +1,4 @@
-package org.koaks.framework.toolcall
+package org.koaks.framework.toolcall.toolinterface
 
 import kotlinx.serialization.Serializable
 

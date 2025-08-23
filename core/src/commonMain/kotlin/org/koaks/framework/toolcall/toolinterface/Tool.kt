@@ -1,4 +1,4 @@
-package org.koaks.framework.toolcall
+package org.koaks.framework.toolcall.toolinterface
 
 import kotlinx.serialization.KSerializer
 import org.koaks.framework.utils.JsonUtil
@@ -79,7 +79,7 @@ interface Tool<T> {
      */
     suspend fun executeJson(json: String?): String? {
         val input: T = if (json.isNullOrBlank() || json == "{}") {
-            if (serializer.descriptor.serialName == "org.koaks.framework.toolcall.NoInput") {
+            if (serializer.descriptor.serialName == "org.koaks.framework.toolcall.toolinterface.NoInput") {
                 @Suppress("UNCHECKED_CAST")
                 NoInput as T
             } else {
