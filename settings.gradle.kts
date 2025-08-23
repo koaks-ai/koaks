@@ -4,7 +4,6 @@ pluginManagement {
         gradlePluginPortal()
         mavenCentral()
     }
-
 }
 
 plugins {
@@ -15,3 +14,4 @@ rootProject.name = "koaks"
 
 includeBuild("build-logic")
 include("core")
+include("llms:qwen")
