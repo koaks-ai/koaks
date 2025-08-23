@@ -29,9 +29,7 @@ class CompletionToolBuilder {
     }
 
     fun groups(vararg names: String) {
-        names.forEach { name ->
-            tools += ToolContainer.getTools(name)
-        }
+        tools += ToolContainer.getTools(*names)
     }
 
     fun build(): List<ToolDefinition> = tools
