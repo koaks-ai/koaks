@@ -36,3 +36,9 @@ class CompletionToolBuilder {
 
     fun build(): List<ToolDefinition> = tools
 }
+
+fun createChatClient(block: ChatClientBuilder.() -> Unit): ChatClient {
+    val builder = ChatClientBuilder()
+    builder.block()
+    return builder.build()
+}

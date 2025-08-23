@@ -52,3 +52,9 @@ class ResponsesToolBuilder {
 
     fun build(): List<ToolDefinition> = tools
 }
+
+fun createResponsesClient(block: ResponsesClientBuilder.() -> Unit): ResponsesClient {
+    val builder = ResponsesClientBuilder()
+    builder.block()
+    return builder.build()
+}
