@@ -1,7 +1,7 @@
 package org.koaks.framework.toolcall
 
-interface Tool {
+interface Tool<T> {
     val name: String
     val description: String
-    suspend fun call(input: String): String
+    suspend fun execute(input: T): String
 }
