@@ -1,6 +1,7 @@
-package org.koaks.framework.toolcall
+package org.koaks.framework.toolcall.toolinterface
 
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.serializer
 
 
 class ToolBuilder<T>(val serializer: KSerializer<T>) {
@@ -20,7 +21,7 @@ class ToolBuilder<T>(val serializer: KSerializer<T>) {
 
 
 inline fun <reified T> createTool(block: ToolBuilder<T>.() -> Unit): Tool<T> {
-    val builder = ToolBuilder(kotlinx.serialization.serializer<T>())
+    val builder = ToolBuilder(serializer<T>())
     return builder.apply(block).build()
 }
 
@@ -34,7 +35,7 @@ inline fun <reified T> createTool(
         override val name = name
         override val description = description
         override val group = group
-        override val serializer = kotlinx.serialization.serializer<T>()
+        override val serializer = serializer<T>()
         override suspend fun execute(input: T): String = block(input)
     }
 }

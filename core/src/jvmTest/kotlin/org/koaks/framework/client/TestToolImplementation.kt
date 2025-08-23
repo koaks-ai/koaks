@@ -7,8 +7,8 @@ import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.implTools.UserImplTools
 import org.koaks.framework.implTools.WeatherImplTools
 import org.koaks.framework.implTools.WeatherInput
-import org.koaks.framework.toolcall.NoInput
-import org.koaks.framework.toolcall.createTool
+import org.koaks.framework.toolcall.toolinterface.NoInput
+import org.koaks.framework.toolcall.toolinterface.createTool
 import kotlin.test.Test
 
 /**

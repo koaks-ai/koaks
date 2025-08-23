@@ -1,8 +1,8 @@
 package org.koaks.framework.implTools
 
 import kotlinx.serialization.KSerializer
-import org.koaks.framework.toolcall.NoInput
-import org.koaks.framework.toolcall.Tool
+import org.koaks.framework.toolcall.toolinterface.NoInput
+import org.koaks.framework.toolcall.toolinterface.Tool
 
 class UserImplTools() : Tool<NoInput> {
 

@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import org.koaks.framework.platform.PlatformTools
 import org.koaks.framework.platform.PlatformType
+import org.koaks.framework.toolcall.toolinterface.Tool
 import kotlin.reflect.KFunction
 
 @Serializable

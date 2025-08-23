@@ -3,7 +3,7 @@ package org.koaks.framework.implTools
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import org.koaks.framework.annotation.Description
-import org.koaks.framework.toolcall.Tool
+import org.koaks.framework.toolcall.toolinterface.Tool
 
 class WeatherImplTools : Tool<WeatherInput> {
 
