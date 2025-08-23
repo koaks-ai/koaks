@@ -15,3 +15,4 @@ rootProject.name = "koaks"
 includeBuild("build-logic")
 include("core")
 include("llms:qwen")
+include("workflow")
