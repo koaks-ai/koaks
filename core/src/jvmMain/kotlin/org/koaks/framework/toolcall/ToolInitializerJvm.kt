@@ -87,13 +87,15 @@ actual object ToolInitializer {
 
     actual fun registerTools(tools: List<ToolDefinition>) {
         tools.forEach {
-            ToolContainer.addTool(it)
+            ToolManager.addTool(it)
         }
     }
 
     actual fun instanceToolClass(tools: List<ToolDefinition>) {
         tools.forEach { tool ->
-            val function = tool.realFunction
+            // only used annotation tool need instance, and only jvm need readFunction property
+            // for this, it can never be null
+            val function = tool.realFunction!!
             val klass = function.javaMethod?.declaringClass?.kotlin ?: return@forEach
 
             val instance = classInstanceCache.getOrPut(klass) {
