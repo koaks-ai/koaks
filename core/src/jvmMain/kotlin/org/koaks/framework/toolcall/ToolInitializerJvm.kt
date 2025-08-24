@@ -87,7 +87,7 @@ actual object ToolInitializer {
 
     actual fun registerTools(tools: List<ToolDefinition>) {
         tools.forEach {
-            ToolManager.addTool(it)
+            ToolManager.registerTool(it)
         }
     }
 
@@ -102,7 +102,7 @@ actual object ToolInitializer {
                 klass.objectInstance ?: klass.createInstance()
             }
 
-            ToolInstanceContainer.addToolInstance(tool.toolname, instance)
+            ToolInstanceContainer.addToolInstance(tool.toolName, instance)
         }
     }
 }

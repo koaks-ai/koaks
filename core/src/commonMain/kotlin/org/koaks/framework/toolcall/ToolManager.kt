@@ -13,12 +13,12 @@ object ToolManager {
     // tool implemented using the tool interface
     private val interfaceContainer: HashMap<String, Tool<*>> = HashMap()
 
-    fun addTool(tool: ToolDefinition) {
+    fun registerTool(tool: ToolDefinition) {
         logger.debug { tool.toJson() }
-        container[tool.toolname] = tool
+        container[tool.toolName] = tool
     }
 
-    fun addInterfaceTools(vararg tool: Tool<*>) {
+    fun registerInterfaceTools(vararg tool: Tool<*>) {
         tool.forEach {
             logger.debug { "add tool ${it.name}" }
             container[it.name] = it.toDefinition()
