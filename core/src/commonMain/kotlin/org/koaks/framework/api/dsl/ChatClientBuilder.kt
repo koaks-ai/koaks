@@ -39,7 +39,7 @@ class CompletionToolBuilder {
     fun addTools(vararg tools: ToolDefinition) {
         actions += {
             toolList += tools
-            tools.forEach { ToolManager.addTool(it) }
+            tools.forEach { ToolManager.registerTool(it) }
         }
     }
 
@@ -47,7 +47,7 @@ class CompletionToolBuilder {
         actions += {
             tools.map { it.toDefinition() }.forEach {
                 toolList += it
-                ToolManager.addTool(it)
+                ToolManager.registerTool(it)
             }
         }
     }

@@ -30,7 +30,7 @@ data class ToolDefinition(
     var toolImplementation: Tool<*>? = null
 
     @Transient
-    val toolname: String = function.name
+    val toolName: String = function.name
 
     @Transient
     var group: String = "default"

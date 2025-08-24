@@ -10,7 +10,7 @@ actual object AnnoTypeCaller {
     private val logger = KotlinLogging.logger {}
 
     actual suspend fun call(tool: ToolDefinition, args: Array<Any>?): String {
-        val toolName = tool.toolname
+        val toolName = tool.toolName
         return tool.let {
             try {
                 val actualArgs = args ?: emptyArray()
