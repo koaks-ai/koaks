@@ -21,6 +21,10 @@ object JsonUtil {
         }
     }
 
+    fun <T> toJson(obj: T, serializer: KSerializer<T>): String {
+        return json.encodeToString(serializer, obj)
+    }
+
     inline fun <reified T> fromJson(jsonStr: String?): T {
         return if (jsonStr == null) {
             json.decodeFromString(serializer(), "{}")
