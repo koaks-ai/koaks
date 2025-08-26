@@ -61,7 +61,8 @@ class ChatService<TRequest, TResponse>(
         return if (request.stream == true && request.tools.isNullOrEmpty()) {
             val responseContent = StringBuilder()
             val streamFlow =
-                httpClient.postAsObjectStream(request, model.responseDeserializer).map { model.toChatMessage(it) }
+                httpClient.postAsObjectStream(request, model.responseDeserializer)
+                    .map { model.toChatMessage(it) }
                     .onEach { data ->
                         val chunk = data.choices?.getOrNull(0)?.delta?.content
                         if (!chunk.isNullOrEmpty()) {
@@ -79,16 +80,16 @@ class ChatService<TRequest, TResponse>(
                 request.stream = false
                 logger.warn { "Streaming is not supported for tools. Falling back to non-streaming mode." }
             }
-            val initialResponse = ModelResponse.fromResult(
+            val initialResp = ModelResponse.fromResult(
                 httpClient.postAsObject(request, model.responseDeserializer)
                     .map { model.toChatMessage(it) }
             ) { ChatMessage() }
             // mapper ChatMessage.id to Message.id
-            initialResponse.value.apply {
+            initialResp.value.apply {
                 choices?.forEach { it.message?.id = this.id }
             }
-            saveMessage(initialResponse.value.choices?.firstOrNull()?.message, memoryId, request.messages)
-            handleToolCall(request, initialResponse)
+            saveMessage(initialResp.value.choices?.firstOrNull()?.message, memoryId, request.messages)
+            handleToolCall(request, initialResp)
         }
     }
 
@@ -101,7 +102,7 @@ class ChatService<TRequest, TResponse>(
         var toolCallCount = 0
         val caller = ToolCaller
 
-        while (response.value.shouldToolCall() && toolCallCount < MAX_TOOL_CALL_EPOCH) {
+        while (response.value.shouldToolCall && toolCallCount < MAX_TOOL_CALL_EPOCH) {
             val responseMessage = response.value.choices?.firstOrNull()?.message
             val toolCalls = responseMessage?.toolCalls.orEmpty()
             val semaphore = Semaphore(MAX_TOOL_CALL_EPOCH)
@@ -121,7 +122,11 @@ class ChatService<TRequest, TResponse>(
             }
 
             toolCallCount++
-            response = ModelResponse.fromResult(httpClient.postAsObject<ChatMessage>(request)) { ChatMessage() }
+            response = ModelResponse.fromResult(
+                httpClient.postAsObject(request, model.responseDeserializer)
+                    .map { model.toChatMessage(it) }
+            ) { ChatMessage() }
+
             response.value.choices?.getOrNull(0)?.message.let {
                 saveMessage(it, request.messageId, messages)
             }
