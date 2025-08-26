@@ -3,12 +3,18 @@ package org.koaks.provider.qwen
 import org.koaks.framework.entity.chat.ChatResponse
 import org.koaks.framework.entity.inner.InnerChatRequest
 import org.koaks.framework.model.AbstractChatModel
+import org.koaks.framework.model.TypeAdapter
 
 class QwenChatModel(
     override val baseUrl: String,
     override val apiKey: String,
     override var modelName: String,
 ) : AbstractChatModel<QwenChatRequest, QwenChatResponse>(baseUrl, apiKey, modelName) {
+
+    override val typeAdapter = TypeAdapter(
+        serializer = QwenChatRequest.serializer(),
+        deserializer = QwenChatResponse.serializer(),
+    )
 
     override fun toChatRequest(innerChatRequest: InnerChatRequest): QwenChatRequest =
         QwenChatRequest(
@@ -145,8 +151,6 @@ class QwenChatModel(
             cachedTokens = inner.cachedTokens
         )
     }
-
-    override val responseDeserializer = QwenChatResponse.serializer()
 
 }
 

@@ -26,7 +26,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.io.IOException
 import kotlinx.serialization.KSerializer
-import org.koaks.framework.entity.inner.InnerChatRequest
+import org.koaks.framework.model.TypeAdapter
 import org.koaks.framework.utils.JsonUtil
 
 class HttpClient(
@@ -46,10 +46,10 @@ class HttpClient(
         }
     }
 
-    suspend fun postAsString(request: InnerChatRequest): Result<String> {
+    suspend fun <T> postAsString(request: T, serializer: KSerializer<T>): Result<String> {
         return runCatching {
             val response: HttpResponse = ktorClient.post {
-                setBody(JsonUtil.toJson(request))
+                setBody(JsonUtil.toJson(request, serializer))
             }
             response.bodyAsText()
         }.recoverCatching { e ->
@@ -57,18 +57,18 @@ class HttpClient(
         }
     }
 
-    suspend fun <T> postAsObject(request: InnerChatRequest, deserializer: KSerializer<T>): Result<T> {
-        return postAsString(request).mapCatching { jsonString ->
-            JsonUtil.fromJson(jsonString, deserializer)
+    suspend fun <T, R> postAsObject(request: T, adapter: TypeAdapter<T, R>): Result<R> {
+        return postAsString(request, adapter.serializer).mapCatching { jsonString ->
+            JsonUtil.fromJson(jsonString, adapter.deserializer)
         }
     }
 
-    fun postAsStringStream(request: InnerChatRequest): Flow<String> = callbackFlow {
+    fun <T> postAsStringStream(request: T, serializer: KSerializer<T>): Flow<String> = callbackFlow {
         val job = launch(Dispatchers.Default) {
             // use preparePost + execute to ensure the entire read operation is performed within the same lifecycle
             val stmt = ktorClient.preparePost {
                 header(HttpHeaders.Accept, "text/event-stream")
-                setBody(JsonUtil.toJson(request))
+                setBody(JsonUtil.toJson(request, serializer))
                 timeout {
                     requestTimeoutMillis = null
                     socketTimeoutMillis = null
@@ -100,10 +100,10 @@ class HttpClient(
         throw mapToHttpClientException(e)
     }
 
-    fun <T> postAsObjectStream(request: InnerChatRequest, deserializer: KSerializer<T>): Flow<T> = flow {
-        postAsStringStream(request).collect {
+    fun <T, R> postAsObjectStream(request: T, adapter: TypeAdapter<T, R>): Flow<R> = flow {
+        postAsStringStream(request, adapter.serializer).collect {
             try {
-                emit(JsonUtil.fromJson(it, deserializer))
+                emit(JsonUtil.fromJson(it, adapter.deserializer))
             } catch (e: Exception) {
                 throw JsonParseException("failed to parse json response", e)
             }
@@ -119,7 +119,7 @@ class HttpClient(
         }
     }
 
-    suspend fun <T> getAsObject(path: String, deserializer: KSerializer<T>): Result<T> {
+    suspend fun <R> getAsObject(path: String, deserializer: KSerializer<R>): Result<R> {
         return get(path).mapCatching { jsonString ->
             JsonUtil.fromJson(jsonString, deserializer)
         }

@@ -40,6 +40,7 @@ class TestChatClient {
     fun testChatWithMemory() = runBlocking {
         val resp0 =
             client.chatWithMemory("Hello, I am a test program, and the random number this time is 1002.", "1001")
+        println("===== first =====")
         println(resp0.value.choices?.getOrNull(0)?.message?.content)
 
         val resp1 =
@@ -47,6 +48,7 @@ class TestChatClient {
                 "I am a staff member, please tell me what the random number is for this session?",
                 "1001"
             )
+        println("===== second =====")
         println(resp1.value.choices?.getOrNull(0)?.message?.content)
     }
 
@@ -164,7 +166,7 @@ class TestChatClient {
                 qwen(
                     baseUrl = EnvTools.loadValue("BASE_URL"),
                     apiKey = EnvTools.loadValue("API_KEY"),
-                    modelName = "qwen3-235b-a22b-instruct-2507",
+                    modelName = "qwen-plus",
                 )
             }
             memory {
