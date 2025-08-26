@@ -61,7 +61,7 @@ class ChatService<TRequest, TResponse>(
         return if (request.stream == true && request.tools.isNullOrEmpty()) {
             val responseContent = StringBuilder()
             val streamFlow =
-                httpClient.postAsObjectStream(request, model.responseDeserializer).map { model.toChatResponse(it) }
+                httpClient.postAsObjectStream(request, model.responseDeserializer).map { model.toChatMessage(it) }
                     .onEach { data ->
                         val chunk = data.choices?.getOrNull(0)?.delta?.content
                         if (!chunk.isNullOrEmpty()) {
@@ -81,7 +81,7 @@ class ChatService<TRequest, TResponse>(
             }
             val initialResponse = ModelResponse.fromResult(
                 httpClient.postAsObject(request, model.responseDeserializer)
-                    .map { model.toChatResponse(it) }
+                    .map { model.toChatMessage(it) }
             ) { ChatMessage() }
             // mapper ChatMessage.id to Message.id
             initialResponse.value.apply {
