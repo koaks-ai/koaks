@@ -15,6 +15,9 @@ object ToolManager {
 
     fun registerTool(tool: ToolDefinition) {
         logger.debug { tool.toJson() }
+        if (container.containsKey(tool.toolName)) {
+            logger.warn { "tool ${tool.toolName} already exists" }
+        }
         container[tool.toolName] = tool
     }
 
