@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.sync.Mutex
@@ -18,16 +19,15 @@ import org.koaks.framework.entity.Message
 import org.koaks.framework.entity.ModelResponse
 import org.koaks.framework.memory.DefaultMemoryStorage
 import org.koaks.framework.memory.IMemoryStorage
-import org.koaks.framework.model.ChatModel
+import org.koaks.framework.model.AbstractChatModel
 import org.koaks.framework.net.HttpClient
 import org.koaks.framework.net.HttpClientConfig
 import org.koaks.framework.net.postAsObject
-import org.koaks.framework.net.postAsObjectStream
 import org.koaks.framework.toolcall.caller.ToolCaller
 
 
-class ChatService(
-    val model: ChatModel,
+class ChatService<TRequest, TResponse>(
+    val model: AbstractChatModel<TRequest, TResponse>,
     val memoryStorage: IMemoryStorage = DefaultMemoryStorage,
 ) {
 
@@ -38,8 +38,7 @@ class ChatService(
 
     private var httpClient = HttpClient(
         HttpClientConfig(
-            baseUrl = model.baseUrl,
-            apiKey = model.apiKey
+            baseUrl = model.baseUrl, apiKey = model.apiKey
         )
     )
 
@@ -55,51 +54,35 @@ class ChatService(
      * @return `ModelResponse` object containing the response from the chat service.
      */
     suspend fun execChat(chatRequest: ChatRequest, memoryId: String? = null): ModelResponse<ChatMessage> {
-        val request = chatRequest2innerRequest(chatRequest, memoryId)
-
-        with(request) {
-            systemMessage = systemMessage ?: model.defaultSystemMessage
-            if (model.useMcp == true) {
-                systemMessage += "\n\n" + model.mcpSystemMessage
-            }
-            modelName = modelName ?: model.modelName
-            stream = stream ?: model.stream
-            parallelToolCalls = parallelToolCalls ?: model.parallelToolCalls
-            responseFormat = responseFormat ?: model.responseFormat
-            tools = tools ?: model.tools
-            maxTokens = maxTokens ?: model.maxTokens
-            temperature = temperature ?: model.temperature
-            topP = topP ?: model.topP
-            n = n ?: model.n
-            stop = stop ?: model.stop
-            presencePenalty = presencePenalty ?: model.presencePenalty
-            frequencyPenalty = frequencyPenalty ?: model.frequencyPenalty
-            logitBias = logitBias ?: model.logitBias
-        }
+        mergeToolList(chatRequest)
+        val messageList = mergeMessageList(chatRequest.message, memoryId)
+        val request = mapToInnerRequest(chatRequest, messageList)
 
         return if (request.stream == true && request.tools.isNullOrEmpty()) {
             val responseContent = StringBuilder()
-            val streamFlow = httpClient.postAsObjectStream<ChatMessage>(request)
-                .onEach { data ->
-                    val chunk = data.choices?.getOrNull(0)?.delta?.content
-                    if (!chunk.isNullOrEmpty()) {
-                        responseContent.append(chunk)
+            val streamFlow =
+                httpClient.postAsObjectStream(request, model.responseDeserializer).map { model.toChatResponse(it) }
+                    .onEach { data ->
+                        val chunk = data.choices?.getOrNull(0)?.delta?.content
+                        if (!chunk.isNullOrEmpty()) {
+                            responseContent.append(chunk)
+                        }
                     }
-                }
 
             ModelResponse.fromStream(
                 streamFlow.onCompletion {
                     val assistantMessage = Message.assistant(responseContent.toString())
                     saveMessage(assistantMessage, memoryId, request.messages)
-                }
-            )
+                })
         } else {
             if (request.stream == true) {
                 request.stream = false
                 logger.warn { "Streaming is not supported for tools. Falling back to non-streaming mode." }
             }
-            val initialResponse =
-                ModelResponse.fromResult(httpClient.postAsObject<ChatMessage>(request)) { ChatMessage() }
+            val initialResponse = ModelResponse.fromResult(
+                httpClient.postAsObject(request, model.responseDeserializer)
+                    .map { model.toChatResponse(it) }
+            ) { ChatMessage() }
             // mapper ChatMessage.id to Message.id
             initialResponse.value.apply {
                 choices?.forEach { it.message?.id = this.id }
@@ -118,7 +101,7 @@ class ChatService(
         var toolCallCount = 0
         val caller = ToolCaller
 
-        while (isToolCallResponse(response.value) && toolCallCount < MAX_TOOL_CALL_EPOCH) {
+        while (response.value.shouldToolCall() && toolCallCount < MAX_TOOL_CALL_EPOCH) {
             val responseMessage = response.value.choices?.firstOrNull()?.message
             val toolCalls = responseMessage?.toolCalls.orEmpty()
             val semaphore = Semaphore(MAX_TOOL_CALL_EPOCH)
@@ -147,12 +130,8 @@ class ChatService(
         return response
     }
 
-
     private suspend fun executeToolCall(
-        tool: ChatMessage.ToolCall,
-        caller: ToolCaller,
-        request: InnerChatRequest,
-        messages: MutableList<Message>
+        tool: ChatMessage.ToolCall, caller: ToolCaller, request: InnerChatRequest, messages: MutableList<Message>
     ) {
         val toolName = tool.function?.name.orEmpty()
         val argsJson = tool.function?.arguments ?: ""
@@ -160,12 +139,6 @@ class ChatService(
 
         logger.info { "tool_call: id=${tool.id}, name=$toolName, args=$argsJson" }
         saveMessage(Message.tool(result, tool.id), request.messageId, messages)
-    }
-
-
-    private fun isToolCallResponse(chatMessage: ChatMessage): Boolean {
-        return (chatMessage.choices?.firstOrNull()?.finishReason == "tool_calls")
-                && (chatMessage.choices?.firstOrNull()?.message?.toolCalls != null)
     }
 
     private val mutex = Mutex()
@@ -185,32 +158,48 @@ class ChatService(
         }
     }
 
-    private suspend fun chatRequest2innerRequest(chatRequest: ChatRequest, messageId: String?): InnerChatRequest {
-        val messages = messageId?.let {
+    /**
+     * Merge model tool list and request tool list.
+     */
+    private fun mergeToolList(chatRequest: ChatRequest) {
+        chatRequest.params.tools = (chatRequest.params.tools.orEmpty() + model.tools.orEmpty())
+            .distinct()
+            .takeIf { it.isNotEmpty() }
+            ?.toMutableList()
+    }
+
+    private suspend fun mergeMessageList(message: String, messageId: String?): MutableList<Message> {
+        return (messageId?.let {
             // need to call toMutableList() to create a copy, avoiding modification of the original reference
             memoryStorage.getMessageList(messageId).toMutableList()
-        } ?: mutableListOf()
+        } ?: mutableListOf()).apply {
+            saveMessage(Message.user(message), messageId, this)
+        }
+    }
 
-        saveMessage(Message.user(chatRequest.message), messageId, messages)
-
+    private fun mapToInnerRequest(
+        chatRequest: ChatRequest,
+        messageList: MutableList<Message>
+    ): InnerChatRequest {
+        val params = chatRequest.params
         return InnerChatRequest(
-            modelName = chatRequest.modelName,
-            messages = messages
+            modelName = chatRequest.modelName ?: model.modelName,
+            messages = messageList
         ).apply {
-            systemMessage = chatRequest.params.systemMessage
-            tools = chatRequest.params.tools
-            parallelToolCalls = chatRequest.params.parallelToolCalls
-            stop = chatRequest.params.stop
-            responseFormat = chatRequest.params.responseFormat
-            maxTokens = chatRequest.params.maxTokens
-            temperature = chatRequest.params.temperature
-            topP = chatRequest.params.topP
-            n = chatRequest.params.n
-            stream = chatRequest.params.stream
-            useMcp = chatRequest.params.useMcp
-            presencePenalty = chatRequest.params.presencePenalty
-            frequencyPenalty = chatRequest.params.frequencyPenalty
-            logitBias = chatRequest.params.logitBias
+            systemMessage = params.systemMessage ?: model.systemMessage
+            tools = params.tools ?: model.tools
+            parallelToolCalls = params.parallelToolCalls ?: model.parallelToolCalls
+            stop = params.stop ?: model.stop
+            responseFormat = params.responseFormat ?: model.responseFormat
+            maxTokens = params.maxTokens ?: model.maxTokens
+            temperature = params.temperature ?: model.temperature
+            topP = params.topP ?: model.topP
+            n = params.n ?: model.n
+            stream = params.stream ?: model.stream
+            useMcp = params.useMcp
+            presencePenalty = params.presencePenalty ?: model.presencePenalty
+            frequencyPenalty = params.frequencyPenalty ?: model.frequencyPenalty
+            logitBias = params.logitBias ?: model.logitBias
         }
     }
 

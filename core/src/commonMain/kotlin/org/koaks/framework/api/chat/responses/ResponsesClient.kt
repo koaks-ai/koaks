@@ -4,12 +4,12 @@ import org.koaks.framework.entity.ModelResponse
 import org.koaks.framework.entity.chat.responsesapi.ResponsesMessage
 import org.koaks.framework.entity.chat.responsesapi.ResponsesRequest
 import org.koaks.framework.memory.IMemoryStorage
-import org.koaks.framework.model.ChatModel
+import org.koaks.framework.model.AbstractChatModel
 import org.koaks.framework.service.ChatService
 import org.koaks.framework.toolcall.ToolDefinition
 
 class ResponsesClient(
-    private val model: ChatModel,
+    private val model: AbstractChatModel<*,*>,
     private val memory: IMemoryStorage,
     private val tools: List<ToolDefinition>
 ) {

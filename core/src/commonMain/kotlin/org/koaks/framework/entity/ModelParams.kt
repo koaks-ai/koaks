@@ -1,58 +1,50 @@
 package org.koaks.framework.entity
 
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import org.koaks.framework.toolcall.ToolDefinition
 
 @Serializable
 open class ModelParams {
 
-    // 工具
-    var tools: List<ToolDefinition>? = null
+    /** Tool definitions */
+    var tools: MutableList<ToolDefinition>? = null
 
-    // 可选参数：是否允许并行调用工具
-    @SerialName("parallel_tool_calls")
+    /** Optional: whether to allow parallel tool calls */
     var parallelToolCalls: Boolean? = null
 
+    /** The default system message for the assistant */
     var systemMessage: String? = null
 
-    // 可选参数：生成文本的最大 token 数量
-    @SerialName("max_tokens")
+    /** Optional: maximum number of tokens to generate */
     var maxTokens: Int? = null
 
-    // 可选参数：控制生成文本的随机性，0 表示完全确定性
+    /** Optional: controls randomness of generation; 0 means fully deterministic */
     var temperature: Double? = null
 
-    // 可选参数： nucleus sampling 参数，通常取值 0-1
-    @SerialName("top_p")
+    /** Optional: nucleus sampling parameter, usually between 0 and 1 */
     var topP: Double? = null
 
-    // 可选参数：一次请求返回多少个候选结果
+    /** Optional: number of candidate results to return per request */
     var n: Int? = null
 
-    // 可选参数：是否以流式返回结果
+    /** Optional: whether to return results in streaming mode */
     var stream: Boolean? = null
 
-    // 可选参数：是否启用 MCP 支持
+    /** Optional: whether to enable MCP support */
     var useMcp: Boolean? = null
 
-    // 可选参数：停止生成的标识符，可以为 null
+    /** Optional: stop sequence to terminate generation, can be null */
     var stop: String? = null
 
-    // 可选参数：生成时对话重复内容的惩罚，默认 0
-    @SerialName("presence_penalty")
+    /** Optional: penalty for repeated content in generation, default is 0 */
     var presencePenalty: Double? = null
 
-    // 可选参数：生成时对话重复使用同一 token 的惩罚，默认 0
-    @SerialName("frequency_penalty")
+    /** Optional: penalty for reusing the same token in generation, default is 0 */
     var frequencyPenalty: Double? = null
 
-    // 可选参数：修改指定标记出现在完成中的可能性
-    @SerialName("logit_bias")
+    /** Optional: modifies the likelihood of specified tokens appearing in the completion */
     var logitBias: String? = null
 
-    // 可选参数：返回结果的格式,强制Json请设置 {"type": "json_object"}
-    @SerialName("response_format")
+    /** Optional: response format; for JSON enforce {"type": "json_object"} */
     var responseFormat: Map<String, String>? = null
-
 }
