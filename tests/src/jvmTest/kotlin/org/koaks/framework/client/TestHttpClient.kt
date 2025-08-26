@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import org.koaks.framework.EnvTools
 import org.koaks.framework.entity.Message
-import org.koaks.framework.entity.chat.ChatMessage
+import org.koaks.framework.entity.chat.ChatResponse
 import org.koaks.framework.entity.inner.InnerChatRequest
 import org.koaks.framework.net.HttpClient
 import org.koaks.framework.net.HttpClientConfig
@@ -35,7 +35,7 @@ class TestHttpClient {
             stream = false
         }
 
-        val stringResult = client.postAsObject<ChatMessage>(request)
+        val stringResult = client.postAsObject<ChatResponse>(request)
 
         stringResult.fold(
             onSuccess = { result ->
@@ -60,7 +60,7 @@ class TestHttpClient {
         }
 
         var chunkCount = 0
-        client.postAsObjectStream<ChatMessage>(request)
+        client.postAsObjectStream<ChatResponse>(request)
             .map { data ->
                 chunkCount++
                 print("${data.choices?.get(0)?.delta?.content}")

@@ -1,6 +1,6 @@
 package org.koaks.provider.qwen
 
-import org.koaks.framework.entity.chat.ChatMessage
+import org.koaks.framework.entity.chat.ChatResponse
 import org.koaks.framework.entity.inner.InnerChatRequest
 import org.koaks.framework.model.AbstractChatModel
 
@@ -30,26 +30,26 @@ class QwenChatModel(
         )
 
 
-    override fun toChatMessage(innerResponse: QwenChatResponse): ChatMessage {
-        return ChatMessage(
-            shouldToolCall = innerResponse.shouldToolCall,
-            choices = innerResponse.choices?.map {
+    override fun toChatResponse(providerResponse: QwenChatResponse): ChatResponse {
+        return ChatResponse(
+            shouldToolCall = providerResponse.shouldToolCall,
+            choices = providerResponse.choices?.map {
                 toChoice(it)
             },
-            created = innerResponse.created,
-            id = innerResponse.id,
-            model = innerResponse.model,
-            chatObject = innerResponse.chatObject,
-            promptFilterResults = innerResponse.promptFilterResults?.map {
+            created = providerResponse.created,
+            id = providerResponse.id,
+            model = providerResponse.model,
+            chatObject = providerResponse.chatObject,
+            promptFilterResults = providerResponse.promptFilterResults?.map {
                 it?.let { toPromptFilterResult(it) }
             },
-            systemFingerprint = innerResponse.systemFingerprint,
-            usage = innerResponse.usage?.let { toUsage(it) }
+            systemFingerprint = providerResponse.systemFingerprint,
+            usage = providerResponse.usage?.let { toUsage(it) }
         )
     }
 
-    private fun toChoice(inner: QwenChatResponse.Choice): ChatMessage.Choice {
-        return ChatMessage.Choice(
+    private fun toChoice(inner: QwenChatResponse.Choice): ChatResponse.Choice {
+        return ChatResponse.Choice(
             contentFilterResults = inner.contentFilterResults?.let {
                 toContentFilterResults(it)
             },
@@ -61,8 +61,8 @@ class QwenChatModel(
         )
     }
 
-    private fun toDelta(inner: QwenChatResponse.Delta): ChatMessage.Delta {
-        return ChatMessage.Delta(
+    private fun toDelta(inner: QwenChatResponse.Delta): ChatResponse.Delta {
+        return ChatResponse.Delta(
             role = inner.role,
             content = inner.content,
             refusal = inner.refusal,
@@ -73,8 +73,8 @@ class QwenChatModel(
         )
     }
 
-    private fun toToolCall(inner: QwenChatResponse.ToolCall): ChatMessage.ToolCall {
-        return ChatMessage.ToolCall(
+    private fun toToolCall(inner: QwenChatResponse.ToolCall): ChatResponse.ToolCall {
+        return ChatResponse.ToolCall(
             id = inner.id,
             function = inner.function?.let {
                 toFunctionCall(it)
@@ -84,15 +84,15 @@ class QwenChatModel(
         )
     }
 
-    private fun toFunctionCall(inner: QwenChatResponse.FunctionCall): ChatMessage.FunctionCall {
-        return ChatMessage.FunctionCall(
+    private fun toFunctionCall(inner: QwenChatResponse.FunctionCall): ChatResponse.FunctionCall {
+        return ChatResponse.FunctionCall(
             name = inner.name,
             arguments = inner.arguments
         )
     }
 
-    private fun toContentFilterResults(inner: QwenChatResponse.ContentFilterResults): ChatMessage.ContentFilterResults {
-        return ChatMessage.ContentFilterResults(
+    private fun toContentFilterResults(inner: QwenChatResponse.ContentFilterResults): ChatResponse.ContentFilterResults {
+        return ChatResponse.ContentFilterResults(
             hate = inner.hate?.let { toFilterDetail(it) },
             selfHarm = inner.selfHarm?.let { toFilterDetail(it) },
             sexual = inner.sexual?.let { toFilterDetail(it) },
@@ -100,15 +100,15 @@ class QwenChatModel(
         )
     }
 
-    private fun toFilterDetail(inner: QwenChatResponse.FilterDetail): ChatMessage.FilterDetail {
-        return ChatMessage.FilterDetail(
+    private fun toFilterDetail(inner: QwenChatResponse.FilterDetail): ChatResponse.FilterDetail {
+        return ChatResponse.FilterDetail(
             isFiltered = inner.isFiltered,
             severity = inner.severity
         )
     }
 
-    private fun toPromptFilterResult(inner: QwenChatResponse.PromptFilterResult): ChatMessage.PromptFilterResult {
-        return ChatMessage.PromptFilterResult(
+    private fun toPromptFilterResult(inner: QwenChatResponse.PromptFilterResult): ChatResponse.PromptFilterResult {
+        return ChatResponse.PromptFilterResult(
             contentFilterResults = inner.contentFilterResults?.let {
                 toContentFilterResults(it)
             },
@@ -116,8 +116,8 @@ class QwenChatModel(
         )
     }
 
-    private fun toUsage(inner: QwenChatResponse.Usage): ChatMessage.Usage {
-        return ChatMessage.Usage(
+    private fun toUsage(inner: QwenChatResponse.Usage): ChatResponse.Usage {
+        return ChatResponse.Usage(
             completionTokens = inner.completionTokens,
             completionTokensDetails = inner.completionTokensDetails?.let {
                 toCompletionTokensDetails(it)
@@ -130,8 +130,8 @@ class QwenChatModel(
         )
     }
 
-    private fun toCompletionTokensDetails(inner: QwenChatResponse.CompletionTokensDetails): ChatMessage.CompletionTokensDetails {
-        return ChatMessage.CompletionTokensDetails(
+    private fun toCompletionTokensDetails(inner: QwenChatResponse.CompletionTokensDetails): ChatResponse.CompletionTokensDetails {
+        return ChatResponse.CompletionTokensDetails(
             acceptedPredictionTokens = inner.acceptedPredictionTokens,
             audioTokens = inner.audioTokens,
             reasoningTokens = inner.reasoningTokens,
@@ -139,8 +139,8 @@ class QwenChatModel(
         )
     }
 
-    private fun toPromptTokensDetails(inner: QwenChatResponse.PromptTokensDetails): ChatMessage.PromptTokensDetails {
-        return ChatMessage.PromptTokensDetails(
+    private fun toPromptTokensDetails(inner: QwenChatResponse.PromptTokensDetails): ChatResponse.PromptTokensDetails {
+        return ChatResponse.PromptTokensDetails(
             audioTokens = inner.audioTokens,
             cachedTokens = inner.cachedTokens
         )

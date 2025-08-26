@@ -2,7 +2,7 @@ package org.koaks.framework.entity
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import org.koaks.framework.entity.chat.ChatMessage
+import org.koaks.framework.entity.chat.ChatResponse
 
 @Serializable
 class Message {
@@ -13,10 +13,10 @@ class Message {
     var role: String? = null
 
     @SerialName("tool_calls")
-    var toolCalls: MutableList<ChatMessage.ToolCall>? = null
+    var toolCalls: MutableList<ChatResponse.ToolCall>? = null
 
     @SerialName("function_call")
-    var functionCall: ChatMessage.FunctionCall? = null
+    var functionCall: ChatResponse.FunctionCall? = null
 
     var audio: String? = null
 
