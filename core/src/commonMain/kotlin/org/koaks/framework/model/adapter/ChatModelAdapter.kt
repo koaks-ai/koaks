@@ -5,8 +5,8 @@ import org.koaks.framework.entity.inner.InnerChatRequest
 
 interface ChatModelAdapter<TRequest, TResponse> {
 
-    fun toInnerRequest(innerChatRequest: InnerChatRequest): TRequest
+    fun toChatRequest(innerChatRequest: InnerChatRequest): TRequest
 
-    fun toChatResponse(innerResponse: TResponse): ChatMessage
+    fun toChatMessage(innerResponse: TResponse): ChatMessage
 
 }

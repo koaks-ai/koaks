@@ -10,8 +10,8 @@ class QwenChatModel(
     override var modelName: String,
 ) : AbstractChatModel<QwenChatRequest, ChatMessage>(baseUrl, apiKey, modelName) {
 
-    override fun toInnerRequest(innerChatRequest: InnerChatRequest): QwenChatRequest {
-        return QwenChatRequest(
+    override fun toChatRequest(innerChatRequest: InnerChatRequest): QwenChatRequest =
+        QwenChatRequest(
             modelName = innerChatRequest.modelName,
             messageList = innerChatRequest.messages,
             tools = innerChatRequest.tools,
@@ -28,9 +28,9 @@ class QwenChatModel(
             logitBias = innerChatRequest.logitBias,
             responseFormat = innerChatRequest.responseFormat
         )
-    }
 
-    override fun toChatResponse(innerResponse: ChatMessage): ChatMessage {
+
+    override fun toChatMessage(innerResponse: ChatMessage): ChatMessage {
         return innerResponse
     }
 
