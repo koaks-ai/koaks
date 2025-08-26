@@ -21,10 +21,6 @@ kotlin {
     }
 }
 
-repositories {
-    mavenCentral()
-}
-
 tasks.withType<Test> {
     useJUnitPlatform()
     testLogging {
