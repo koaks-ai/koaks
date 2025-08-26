@@ -1,14 +1,15 @@
-package org.koaks.framework.client
+package org.koaks.provider.qwen.client
 
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.BeforeAll
-import org.koaks.framework.EnvTools
+import org.koaks.provider.qwen.EnvTools
 import org.koaks.framework.Koaks
 import org.koaks.framework.api.dsl.createChatClient
 import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.toolcall.ToolManager
+import org.koaks.provider.qwen.qwen
 import kotlin.test.Test
 
 
@@ -18,12 +19,16 @@ class TestChatClient {
         @BeforeAll
         @JvmStatic
         fun initKoaks() {
-            Koaks.init("org.koaks.framework")
+            Koaks.init("org.koaks.provider.qwen")
         }
 
         val client = createChatClient {
             model {
-                qwen()
+                qwen(
+                    baseUrl = EnvTools.loadValue("BASE_URL"),
+                    apiKey = EnvTools.loadValue("API_KEY"),
+                    modelName = "qwen3-235b-a22b-instruct-2507",
+                )
             }
             memory {
                 default()
@@ -35,6 +40,8 @@ class TestChatClient {
     fun testChatWithMemory() = runBlocking {
         val resp0 =
             client.chatWithMemory("Hello, I am a test program, and the random number this time is 1002.", "1001")
+
+        println("============ first ============")
         println(resp0.value.choices?.getOrNull(0)?.message?.content)
 
         val resp1 =
@@ -42,6 +49,7 @@ class TestChatClient {
                 "I am a staff member, please tell me what the random number is for this session?",
                 "1001"
             )
+        println("============ first ============")
         println(resp1.value.choices?.getOrNull(0)?.message?.content)
     }
 
@@ -63,9 +71,11 @@ class TestChatClient {
     fun testThinkingStreamRequest() = runBlocking {
         val thinkingClient = createChatClient {
             model {
-                baseUrl = EnvTools.loadValue("BASE_URL")
-                apiKey = EnvTools.loadValue("API_KEY")
-                modelName = "qwen3-235b-a22b-thinking-2507"
+                qwen(
+                    baseUrl = EnvTools.loadValue("BASE_URL"),
+                    apiKey = EnvTools.loadValue("API_KEY"),
+                    modelName = "qwen3-235b-a22b-instruct-2507",
+                )
             }
             memory {
                 default()
@@ -125,9 +135,11 @@ class TestChatClient {
     fun testToolCallDsl() = runBlocking {
         val clientWithDsl = createChatClient {
             model {
-                baseUrl = EnvTools.loadValue("BASE_URL")
-                apiKey = EnvTools.loadValue("API_KEY")
-                modelName = "qwen-plus"
+                qwen(
+                    baseUrl = EnvTools.loadValue("BASE_URL"),
+                    apiKey = EnvTools.loadValue("API_KEY"),
+                    modelName = "qwen3-235b-a22b-instruct-2507",
+                )
             }
             memory {
                 default()
@@ -152,9 +164,11 @@ class TestChatClient {
     fun testParallelToolCall() = runBlocking {
         val clientWithDsl = createChatClient {
             model {
-                baseUrl = EnvTools.loadValue("BASE_URL")
-                apiKey = EnvTools.loadValue("API_KEY")
-                modelName = "qwen-plus"
+                qwen(
+                    baseUrl = EnvTools.loadValue("BASE_URL"),
+                    apiKey = EnvTools.loadValue("API_KEY"),
+                    modelName = "qwen3-235b-a22b-instruct-2507",
+                )
             }
             memory {
                 default()

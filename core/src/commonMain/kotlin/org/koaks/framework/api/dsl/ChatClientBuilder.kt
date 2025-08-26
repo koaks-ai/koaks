@@ -11,14 +11,14 @@ class ChatClientBuilder : BaseChatClientBuilder() {
 
     private var tools: List<ToolDefinition> = listOf()
 
-    fun build(): ChatClient {
-        return ChatClient(model, memory, tools)
-    }
-
     fun tools(block: CompletionToolBuilder.() -> Unit) {
         val builder = CompletionToolBuilder()
         builder.block()
         tools = builder.build()
+    }
+
+    fun build(): ChatClient<*, *> {
+        return ChatClient(model, memory, tools)
     }
 
 }
@@ -61,7 +61,7 @@ class CompletionToolBuilder {
     }
 }
 
-fun createChatClient(block: ChatClientBuilder.() -> Unit): ChatClient {
+fun createChatClient(block: ChatClientBuilder.() -> Unit): ChatClient<*, *> {
     val builder = ChatClientBuilder()
     builder.block()
     return builder.build()

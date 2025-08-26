@@ -1,4 +1,4 @@
-package org.koaks.framework.entity.chat
+package org.koaks.provider.qwen
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -6,7 +6,7 @@ import org.koaks.framework.entity.Message
 import org.koaks.framework.model.ToolCallable
 
 @Serializable
-class ChatMessage: ToolCallable{
+class QwenChatResponse : ToolCallable {
 
     var choices: MutableList<Choice>? = null
     var created: Long = 0
