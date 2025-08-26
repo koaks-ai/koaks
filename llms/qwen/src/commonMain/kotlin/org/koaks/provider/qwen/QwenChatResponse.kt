@@ -6,235 +6,118 @@ import org.koaks.framework.entity.Message
 import org.koaks.framework.model.ToolCallable
 
 @Serializable
-class QwenChatResponse : ToolCallable {
-
-    var choices: MutableList<Choice>? = null
-    var created: Long = 0
-    var id: String? = null
-    var model: String? = null
-
+data class QwenChatResponse(
+    val shouldToolCall: Boolean = false,
+    val choices: List<Choice>? = null,
+    val created: Long = 0,
+    val id: String? = null,
+    val model: String? = null,
     @SerialName("object")
-    var chatObject: String? = null
-
+    val chatObject: String? = null,
     @SerialName("prompt_filter_results")
-    var promptFilterResults: MutableList<PromptFilterResult?>? = null
-
+    val promptFilterResults: List<PromptFilterResult?>? = null,
     @SerialName("system_fingerprint")
-    var systemFingerprint: String? = null
-    var usage: Usage? = null
-
-    override fun toString(): String {
-        return "ChatMessage{" +
-                "choices=" + choices +
-                ", created=" + created +
-                ", id='" + id + '\'' +
-                ", model='" + model + '\'' +
-                ", object='" + this.chatObject + '\'' +
-                ", promptFilterResults=" + promptFilterResults +
-                ", systemFingerprint='" + systemFingerprint + '\'' +
-                ", usage=" + usage +
-                '}'
-    }
+    val systemFingerprint: String? = null,
+    val usage: Usage? = null
+) : ToolCallable {
 
     override fun shouldToolCall(): Boolean {
         return (choices?.firstOrNull()?.finishReason == "tool_calls")
-                && (choices?.firstOrNull()?.message?.toolCalls != null)
+                && (choices.first().message?.toolCalls != null)
     }
 
     @Serializable
-    class Choice {
+    data class Choice(
         @SerialName("content_filter_results")
-        var contentFilterResults: ContentFilterResults? = null
-
+        val contentFilterResults: ContentFilterResults? = null,
         @SerialName("finish_reason")
-        var finishReason: String? = null
-        var delta: Delta? = null
-        var text: String? = null
-        var index: Int = 0
-
-        // TODO: logprobs
-//        var logprobs: Any? = null
-        var message: Message? = null
-
-        override fun toString(): String {
-            return "Choice{" +
-                    "contentFilterResults=" + contentFilterResults +
-                    ", finishReason='" + finishReason + '\'' +
-                    ", index=" + index +
-//                    ", logprobs=" + logprobs +
-                    ", message=" + message +
-                    ", delta=" + delta +
-                    ", text='" + text + '\'' +
-                    '}'
-        }
-    }
+        val finishReason: String? = null,
+        val delta: Delta? = null,
+        val text: String? = null,
+        val index: Int = 0,
+        val message: Message? = null
+    )
 
     @Serializable
-    class Delta {
-        var role: String? = null
-        var content: String? = null
-        var refusal: String? = null
-
+    data class Delta(
+        val role: String? = null,
+        val content: String? = null,
+        val refusal: String? = null,
         @SerialName("tool_calls")
-        var toolCalls: MutableList<ToolCall?>? = null
-
+        val toolCalls: List<ToolCall?>? = null,
         @SerialName("reasoning_content")
-        var reasoningContent: String? = null
-
-        override fun toString(): String {
-            return "Delta{" +
-                    "content='" + content + '\'' +
-                    ", role='" + role + '\'' +
-                    ", refusal='" + refusal + '\'' +
-                    ", reasoningContent='" + reasoningContent + '\'' +
-                    ", toolCalls=" + toolCalls +
-                    '}'
-        }
-    }
+        val reasoningContent: String? = null
+    )
 
     @Serializable
-    class ContentFilterResults {
-        var hate: FilterDetail? = null
-
+    data class ContentFilterResults(
+        val hate: FilterDetail? = null,
         @SerialName("self_harm")
-        var selfHarm: FilterDetail? = null
-        var sexual: FilterDetail? = null
-        var violence: FilterDetail? = null
-
-        override fun toString(): String {
-            return "ContentFilterResults{" +
-                    "hate=" + hate +
-                    ", selfHarm=" + selfHarm +
-                    ", sexual=" + sexual +
-                    ", violence=" + violence +
-                    '}'
-        }
-    }
+        val selfHarm: FilterDetail? = null,
+        val sexual: FilterDetail? = null,
+        val violence: FilterDetail? = null
+    )
 
     @Serializable
-    class FilterDetail {
-        var isFiltered: Boolean = false
-        var severity: String? = null
-
-        override fun toString(): String {
-            return "FilterDetail{" +
-                    "filtered=" + this.isFiltered +
-                    ", severity='" + severity + '\'' +
-                    '}'
-        }
-    }
+    data class FilterDetail(
+        @SerialName("filtered")
+        val isFiltered: Boolean = false,
+        val severity: String? = null
+    )
 
     @Serializable
-    class ToolCall {
-        lateinit var id: String
-        var function: FunctionCall? = null
-        var type: String? = null
-        var index: Int = 0
-
-        override fun toString(): String {
-            return "ToolCall{" +
-                    "id='" + id + '\'' +
-                    ", function=" + function +
-                    ", type='" + type + '\'' +
-                    ", index=" + index +
-                    '}'
-        }
-    }
+    data class ToolCall(
+        val id: String,
+        val function: FunctionCall? = null,
+        val type: String? = null,
+        val index: Int? = null,
+    )
 
     @Serializable
-    class FunctionCall {
-        lateinit var name: String
-        var arguments: String? = null
-
-        override fun toString(): String {
-            return "FunctionCall{" +
-                    "name='" + name + '\'' +
-                    ", arguments='" + arguments + '\'' +
-                    '}'
-        }
-    }
+    data class FunctionCall(
+        val name: String,
+        val arguments: String? = null
+    )
 
     @Serializable
-    class PromptFilterResult {
+    data class PromptFilterResult(
         @SerialName("content_filter_results")
-        var contentFilterResults: ContentFilterResults? = null
-
+        val contentFilterResults: ContentFilterResults? = null,
         @SerialName("prompt_index")
-        var promptIndex: Int = 0
-
-        override fun toString(): String {
-            return "PromptFilterResult{" +
-                    "contentFilterResults=" + contentFilterResults +
-                    ", promptIndex=" + promptIndex +
-                    '}'
-        }
-    }
+        val promptIndex: Int? = null,
+    )
 
     @Serializable
-    class Usage {
+    data class Usage(
         @SerialName("completion_tokens")
-        var completionTokens: Int = 0
-
+        val completionTokens: Int? = null,
         @SerialName("completion_tokens_details")
-        var completionTokensDetails: CompletionTokensDetails? = null
-
+        val completionTokensDetails: CompletionTokensDetails? = null,
         @SerialName("prompt_tokens")
-        var promptTokens: Int = 0
-
+        val promptTokens: Int? = null,
         @SerialName("prompt_tokens_details")
-        var promptTokensDetails: PromptTokensDetails? = null
-
+        val promptTokensDetails: PromptTokensDetails? = null,
         @SerialName("total_tokens")
-        var totalTokens: Int = 0
-
-        override fun toString(): String {
-            return "Usage{" +
-                    "completionTokens=" + completionTokens +
-                    ", completionTokensDetails=" + completionTokensDetails +
-                    ", promptTokens=" + promptTokens +
-                    ", promptTokensDetails=" + promptTokensDetails +
-                    ", totalTokens=" + totalTokens +
-                    '}'
-        }
-    }
+        val totalTokens: Int? = null,
+    )
 
     @Serializable
-    class CompletionTokensDetails {
+    data class CompletionTokensDetails(
         @SerialName("accepted_prediction_tokens")
-        var acceptedPredictionTokens: Int = 0
-
+        val acceptedPredictionTokens: Int? = null,
         @SerialName("audio_tokens")
-        var audioTokens: Int = 0
-
+        val audioTokens: Int? = null,
         @SerialName("reasoning_tokens")
-        var reasoningTokens: Int = 0
-
+        val reasoningTokens: Int? = null,
         @SerialName("rejected_prediction_tokens")
-        var rejectedPredictionTokens: Int = 0
-
-        override fun toString(): String {
-            return "CompletionTokensDetails{" +
-                    "acceptedPredictionTokens=" + acceptedPredictionTokens +
-                    ", audioTokens=" + audioTokens +
-                    ", reasoningTokens=" + reasoningTokens +
-                    ", rejectedPredictionTokens=" + rejectedPredictionTokens +
-                    '}'
-        }
-    }
+        val rejectedPredictionTokens: Int = 0
+    )
 
     @Serializable
-    class PromptTokensDetails {
+    data class PromptTokensDetails(
         @SerialName("audio_tokens")
-        var audioTokens: Int = 0
-
+        val audioTokens: Int? = null,
         @SerialName("cached_tokens")
-        var cachedTokens: Int = 0
-
-        override fun toString(): String {
-            return "PromptTokensDetails{" +
-                    "audioTokens=" + audioTokens +
-                    ", cachedTokens=" + cachedTokens +
-                    '}'
-        }
-    }
+        val cachedTokens: Int? = null,
+    )
 }
