@@ -7,7 +7,6 @@ import org.koaks.framework.model.ToolCallable
 
 @Serializable
 data class QwenChatResponse(
-    val shouldToolCall: Boolean = false,
     val choices: List<Choice>? = null,
     val created: Long = 0,
     val id: String? = null,
