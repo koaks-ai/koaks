@@ -13,7 +13,6 @@ coroutines = "1.10.2"
 
 logback = "1.5.13"
 reflections = "0.10.2"
-dotenv = "6.5.1"
 junit = "5.13.4"
 
 [plugins]
