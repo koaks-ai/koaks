@@ -1,15 +1,19 @@
 package org.koaks.framework.model
 
-import kotlinx.serialization.KSerializer
 import org.koaks.framework.entity.ModelParams
-import org.koaks.framework.model.adapter.ChatModelAdapter
+import org.koaks.framework.entity.chat.ChatResponse
+import org.koaks.framework.entity.inner.InnerChatRequest
 
 abstract class AbstractChatModel<TRequest, TResponse>(
     open val baseUrl: String,
     open val apiKey: String,
     open val modelName: String,
-) : ModelParams(), ChatModelAdapter<TRequest, TResponse> {
+) : ModelParams() {
 
-    abstract val responseDeserializer: KSerializer<TResponse>
+    abstract val typeAdapter: TypeAdapter<TRequest, TResponse>
+
+    abstract fun toChatRequest(innerChatRequest: InnerChatRequest): TRequest
+
+    abstract fun toChatResponse(providerResponse: TResponse): ChatResponse
 
 }

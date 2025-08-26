@@ -60,8 +60,9 @@ class ChatService<TRequest, TResponse>(
         return if (request.stream == true && request.tools.isNullOrEmpty()) {
             val responseContent = StringBuilder()
             val streamFlow =
-                httpClient.postAsObjectStream(request, model.responseDeserializer)
-                    .map { model.toChatResponse(it) }
+                httpClient.postAsObjectStream(
+                    model.toChatRequest(request), model.typeAdapter
+                ).map { model.toChatResponse(it) }
                     .onEach { data ->
                         val chunk = data.choices?.getOrNull(0)?.delta?.content
                         if (!chunk.isNullOrEmpty()) {
@@ -80,8 +81,9 @@ class ChatService<TRequest, TResponse>(
                 logger.warn { "Streaming is not supported for tools. Falling back to non-streaming mode." }
             }
             val initialResp = ModelResponse.fromResult(
-                httpClient.postAsObject(request, model.responseDeserializer)
-                    .map { model.toChatResponse(it) }
+                httpClient.postAsObject(
+                    model.toChatRequest(request), model.typeAdapter
+                ).map { model.toChatResponse(it) }
             ) { ChatResponse() }
             // mapper ChatMessage.id to Message.id
             initialResp.value.apply {
@@ -122,8 +124,9 @@ class ChatService<TRequest, TResponse>(
 
             toolCallCount++
             response = ModelResponse.fromResult(
-                httpClient.postAsObject(request, model.responseDeserializer)
-                    .map { model.toChatResponse(it) }
+                httpClient.postAsObject(
+                    model.toChatRequest(request), model.typeAdapter
+                ).map { model.toChatResponse(it) }
             ) { ChatResponse() }
 
             response.value.choices?.getOrNull(0)?.message.let {
