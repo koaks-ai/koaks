@@ -9,6 +9,7 @@ import org.koaks.framework.Koaks
 import org.koaks.framework.api.dsl.createChatClient
 import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.toolcall.ToolManager
+import org.koaks.provider.qwen.qwen
 import kotlin.test.Test
 
 
@@ -23,7 +24,11 @@ class TestChatClient {
 
         val client = createChatClient {
             model {
-                qwen()
+                qwen(
+                    baseUrl = EnvTools.loadValue("BASE_URL"),
+                    apiKey = EnvTools.loadValue("API_KEY"),
+                    modelName = "qwen3-235b-a22b-instruct-2507",
+                )
             }
             memory {
                 default()
@@ -63,9 +68,11 @@ class TestChatClient {
     fun testThinkingStreamRequest() = runBlocking {
         val thinkingClient = createChatClient {
             model {
-                baseUrl = EnvTools.loadValue("BASE_URL")
-                apiKey = EnvTools.loadValue("API_KEY")
-                modelName = "qwen3-235b-a22b-thinking-2507"
+                qwen(
+                    baseUrl = EnvTools.loadValue("BASE_URL"),
+                    apiKey = EnvTools.loadValue("API_KEY"),
+                    modelName = "qwen3-235b-a22b-instruct-2507",
+                )
             }
             memory {
                 default()
@@ -125,9 +132,11 @@ class TestChatClient {
     fun testToolCallDsl() = runBlocking {
         val clientWithDsl = createChatClient {
             model {
-                baseUrl = EnvTools.loadValue("BASE_URL")
-                apiKey = EnvTools.loadValue("API_KEY")
-                modelName = "qwen-plus"
+                qwen(
+                    baseUrl = EnvTools.loadValue("BASE_URL"),
+                    apiKey = EnvTools.loadValue("API_KEY"),
+                    modelName = "qwen3-235b-a22b-instruct-2507",
+                )
             }
             memory {
                 default()
@@ -152,9 +161,11 @@ class TestChatClient {
     fun testParallelToolCall() = runBlocking {
         val clientWithDsl = createChatClient {
             model {
-                baseUrl = EnvTools.loadValue("BASE_URL")
-                apiKey = EnvTools.loadValue("API_KEY")
-                modelName = "qwen-plus"
+                qwen(
+                    baseUrl = EnvTools.loadValue("BASE_URL"),
+                    apiKey = EnvTools.loadValue("API_KEY"),
+                    modelName = "qwen3-235b-a22b-instruct-2507",
+                )
             }
             memory {
                 default()
