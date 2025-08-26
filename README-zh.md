@@ -25,7 +25,8 @@
 ```kotlin
 // 对于 Gradle 项目, 无论是 JVM 项目还是 Kotlin Multiplatform 项目
 // 你只需要添加如下内容即可, Gradle 会自动处理不同平台的适配
-implementation("io.github.mynna404:koaks-core:0.0.1-preview2")
+implementation("io.github.mynna404:koaks-core:0.0.1-preview3")
+implementation("io.github.mynna404:koaks-qwen:0.0.1-preview3")
 ```
 
 - Maven  
@@ -35,7 +36,13 @@ implementation("io.github.mynna404:koaks-core:0.0.1-preview2")
 <dependency>
     <groupId>io.github.mynna404</groupId>
     <artifactId>koaks-core-jvm</artifactId>
-    <version>0.0.1-preview2</version>
+    <version>0.0.1-preview3</version>
+</dependency>
+
+<dependency>
+  <groupId>io.github.mynna404</groupId>
+  <artifactId>koaks-qwen-jvm</artifactId>
+  <version>0.0.1-preview3</version>
 </dependency>
 ```
 
@@ -49,9 +56,11 @@ implementation("io.github.mynna404:koaks-core:0.0.1-preview2")
 suspend fun main() {
     val client = createChatClient {
         model {
-            baseUrl = "base-url"
-            apiKey = "api-key"
-            modelName = "gpt-4o"
+            qwen(
+                baseUrl = "base-url",
+                apiKey = "api-key",
+                modelName = "qwen3-235b-a22b-instruct-2507",
+            )
         }
     }
 
@@ -65,9 +74,11 @@ suspend fun main() {
 suspend fun main() {
     val client = createChatClient {
         model {
-            baseUrl = "base-url"
-            apiKey = "api-key"
-            modelName = "gpt-4o"
+            qwen(
+                baseUrl = "base-url",
+                apiKey = "api-key",
+                modelName = "qwen3-235b-a22b-instruct-2507",
+            )
         }
         memory {
             default()
@@ -84,9 +95,11 @@ suspend fun main() {
 suspend fun main() {
     val client = createChatClient {
         model {
-            baseUrl = "base-url"
-            apiKey = "api-key"
-            modelName = "gpt-4o"
+            qwen(
+                baseUrl = "base-url",
+                apiKey = "api-key",
+                modelName = "qwen3-235b-a22b-instruct-2507",
+            )
         }
     }
 
@@ -137,9 +150,11 @@ fun main() {
     runBlocking {
         val client = createChatClient {
             model {
-                baseUrl = "base-url"
-                apiKey = "api-key"
-                modelName = "qwen-plus"
+                qwen(
+                    baseUrl = "base-url",
+                    apiKey = "api-key",
+                    modelName = "qwen3-235b-a22b-instruct-2507",
+                )
             }
             memory {
                 default()
@@ -183,6 +198,5 @@ fun main() {
 | Project | Description |
 |---------|-------------|
 | [Kotlin](https://github.com/JetBrains/kotlin) | The Kotlin Programming Language. |
-| [format-print](https://github.com/mynna404/format-print) | A tool for Java and Kotlin developers to enable more readable and structured printing of object contents. |
 | [kotlin-logging](https://github.com/oshai/kotlin-logging) | Lightweight multiplatform logging framework for Kotlin. A convenient and performant logging facade. |
 

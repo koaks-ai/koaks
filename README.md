@@ -25,7 +25,8 @@
 ```kotlin
 // For Gradle projects, whether it's a JVM project or a Kotlin Multiplatform project, 
 // you only need to add the following. Gradle will automatically handle platform adaptation.
-implementation("io.github.mynna404:koaks-core:0.0.1-preview2")
+implementation("io.github.mynna404:koaks-core:0.0.1-preview3")
+implementation("io.github.mynna404:koaks-qwen:0.0.1-preview3")
 
 ```
 
@@ -37,6 +38,12 @@ implementation("io.github.mynna404:koaks-core:0.0.1-preview2")
   <groupId>io.github.mynna404</groupId>
   <artifactId>koaks-core-jvm</artifactId>
   <version>0.0.1-preview2</version>
+</dependency>
+
+<dependency>
+  <groupId>io.github.mynna404</groupId>
+  <artifactId>koaks-qwen-jvm</artifactId>
+  <version>0.0.1-preview3</version>
 </dependency>
 ```
 
@@ -50,9 +57,11 @@ implementation("io.github.mynna404:koaks-core:0.0.1-preview2")
 suspend fun main() {
     val client = createChatClient {
         model {
-            baseUrl = "base-url"
-            apiKey = "api-key"
-            modelName = "gpt-4o"
+            qwen(
+                baseUrl = "base-url",
+                apiKey = "api-key",
+                modelName = "qwen3-235b-a22b-instruct-2507",
+            )
         }
     }
 
@@ -66,9 +75,11 @@ suspend fun main() {
 suspend fun main() {
     val client = createChatClient {
         model {
-            baseUrl = "base-url"
-            apiKey = "api-key"
-            modelName = "gpt-4o"
+            qwen(
+                baseUrl = "base-url",
+                apiKey = "api-key",
+                modelName = "qwen3-235b-a22b-instruct-2507",
+            )
         }
         memory {
             default()
@@ -85,9 +96,11 @@ suspend fun main() {
 suspend fun main() {
     val client = createChatClient {
         model {
-            baseUrl = "base-url"
-            apiKey = "api-key"
-            modelName = "gpt-4o"
+            qwen(
+                baseUrl = "base-url",
+                apiKey = "api-key",
+                modelName = "qwen3-235b-a22b-instruct-2507",
+            )
         }
     }
 
@@ -138,9 +151,11 @@ fun main() {
     runBlocking {
         val client = createChatClient {
             model {
-                baseUrl = "base-url"
-                apiKey = "api-key"
-                modelName = "qwen-plus"
+                qwen(
+                    baseUrl = "base-url",
+                    apiKey = "api-key",
+                    modelName = "qwen3-235b-a22b-instruct-2507",
+                )
             }
             memory {
                 default()
@@ -183,7 +198,5 @@ This project makes use of, but is not limited to, the following open-source proj
 | Project | Description |
 |---------|-------------|
 | [Kotlin](https://github.com/JetBrains/kotlin) | The Kotlin Programming Language. |
-| [medivh-publisher](https://github.com/medivh-project/medivh-publisher) | A Gradle plugin that publishes Gradle projects to Sonatype. |
-| [format-print](https://github.com/mynna404/format-print) | A tool for Java and Kotlin developers to enable more readable and structured printing of object contents. |
 | [kotlin-logging](https://github.com/oshai/kotlin-logging) | Lightweight multiplatform logging framework for Kotlin. A convenient and performant logging facade. |
 
