@@ -6,13 +6,11 @@ import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.memory.IMemoryStorage
 import org.koaks.framework.model.AbstractChatModel
 import org.koaks.framework.service.ChatService
-import org.koaks.framework.toolcall.ToolDefinition
 
 
 class ChatClient<TRequest, TResponse>(
     private val model: AbstractChatModel<TRequest, TResponse>,
     private val memory: IMemoryStorage,
-    private val tools: List<ToolDefinition>
 ) {
     private val chatService = ChatService(model, memory)
 

@@ -15,10 +15,11 @@ class ChatClientBuilder : BaseChatClientBuilder() {
         val builder = CompletionToolBuilder()
         builder.block()
         tools = builder.build()
+        model.tools = tools as MutableList<ToolDefinition>?
     }
 
     fun build(): ChatClient<*, *> {
-        return ChatClient(model, memory, tools)
+        return ChatClient(model, memory)
     }
 
 }
