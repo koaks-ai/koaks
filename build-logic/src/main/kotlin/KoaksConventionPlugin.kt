@@ -41,7 +41,6 @@ class KoaksConventionPlugin : Plugin<Project> {
             }
 
             sourceSets.getByName("jvmTest").dependencies {
-                implementation(libs.findLibrary("dotenv-kotlin").get())
                 implementation(libs.findLibrary("junit-jupiter").get())
                 implementation(libs.findLibrary("kotlin-test-junit5").get())
             }
