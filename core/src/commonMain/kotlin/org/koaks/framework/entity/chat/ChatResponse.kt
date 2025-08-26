@@ -6,7 +6,7 @@ import org.koaks.framework.entity.Message
 
 
 @Serializable
-data class ChatMessage(
+data class ChatResponse(
     val shouldToolCall: Boolean = false,
     val choices: List<Choice>? = null,
     val created: Long = 0,

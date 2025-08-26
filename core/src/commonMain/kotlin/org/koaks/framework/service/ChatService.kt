@@ -12,7 +12,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
-import org.koaks.framework.entity.chat.ChatMessage
+import org.koaks.framework.entity.chat.ChatResponse
 import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.entity.inner.InnerChatRequest
 import org.koaks.framework.entity.Message
@@ -22,7 +22,6 @@ import org.koaks.framework.memory.IMemoryStorage
 import org.koaks.framework.model.AbstractChatModel
 import org.koaks.framework.net.HttpClient
 import org.koaks.framework.net.HttpClientConfig
-import org.koaks.framework.net.postAsObject
 import org.koaks.framework.toolcall.caller.ToolCaller
 
 
@@ -53,7 +52,7 @@ class ChatService<TRequest, TResponse>(
      *
      * @return `ModelResponse` object containing the response from the chat service.
      */
-    suspend fun execChat(chatRequest: ChatRequest, memoryId: String? = null): ModelResponse<ChatMessage> {
+    suspend fun execChat(chatRequest: ChatRequest, memoryId: String? = null): ModelResponse<ChatResponse> {
         mergeToolList(chatRequest)
         val messageList = mergeMessageList(chatRequest.message, memoryId)
         val request = mapToInnerRequest(chatRequest, messageList)
@@ -62,7 +61,7 @@ class ChatService<TRequest, TResponse>(
             val responseContent = StringBuilder()
             val streamFlow =
                 httpClient.postAsObjectStream(request, model.responseDeserializer)
-                    .map { model.toChatMessage(it) }
+                    .map { model.toChatResponse(it) }
                     .onEach { data ->
                         val chunk = data.choices?.getOrNull(0)?.delta?.content
                         if (!chunk.isNullOrEmpty()) {
@@ -82,8 +81,8 @@ class ChatService<TRequest, TResponse>(
             }
             val initialResp = ModelResponse.fromResult(
                 httpClient.postAsObject(request, model.responseDeserializer)
-                    .map { model.toChatMessage(it) }
-            ) { ChatMessage() }
+                    .map { model.toChatResponse(it) }
+            ) { ChatResponse() }
             // mapper ChatMessage.id to Message.id
             initialResp.value.apply {
                 choices?.forEach { it.message?.id = this.id }
@@ -95,8 +94,8 @@ class ChatService<TRequest, TResponse>(
 
     private suspend fun handleToolCall(
         request: InnerChatRequest,
-        initialResponse: ModelResponse<ChatMessage>,
-    ): ModelResponse<ChatMessage> {
+        initialResponse: ModelResponse<ChatResponse>,
+    ): ModelResponse<ChatResponse> {
         val messages = request.messages
         var response = initialResponse
         var toolCallCount = 0
@@ -124,8 +123,8 @@ class ChatService<TRequest, TResponse>(
             toolCallCount++
             response = ModelResponse.fromResult(
                 httpClient.postAsObject(request, model.responseDeserializer)
-                    .map { model.toChatMessage(it) }
-            ) { ChatMessage() }
+                    .map { model.toChatResponse(it) }
+            ) { ChatResponse() }
 
             response.value.choices?.getOrNull(0)?.message.let {
                 saveMessage(it, request.messageId, messages)
@@ -136,7 +135,7 @@ class ChatService<TRequest, TResponse>(
     }
 
     private suspend fun executeToolCall(
-        tool: ChatMessage.ToolCall, caller: ToolCaller, request: InnerChatRequest, messages: MutableList<Message>
+        tool: ChatResponse.ToolCall, caller: ToolCaller, request: InnerChatRequest, messages: MutableList<Message>
     ) {
         val toolName = tool.function?.name.orEmpty()
         val argsJson = tool.function?.arguments ?: ""
