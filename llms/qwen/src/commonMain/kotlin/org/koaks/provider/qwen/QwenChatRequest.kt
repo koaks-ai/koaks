@@ -6,7 +6,7 @@ import org.koaks.framework.entity.Message
 import org.koaks.framework.toolcall.ToolDefinition
 
 @Serializable
-class QwenChatRequest(
+data class QwenChatRequest(
 
     @SerialName("model")
     var modelName: String?,
