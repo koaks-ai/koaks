@@ -32,7 +32,7 @@ class QwenChatModel(
 
     override fun toChatResponse(providerResponse: QwenChatResponse): ChatResponse {
         return ChatResponse(
-            shouldToolCall = providerResponse.shouldToolCall,
+            shouldToolCall = providerResponse.shouldToolCall(),
             choices = providerResponse.choices?.map {
                 toChoice(it)
             },
