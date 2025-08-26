@@ -9,6 +9,7 @@ import org.koaks.framework.implTools.WeatherImplTools
 import org.koaks.framework.implTools.WeatherInput
 import org.koaks.framework.toolcall.toolinterface.NoInput
 import org.koaks.framework.toolcall.toolinterface.createTool
+import org.koaks.provider.qwen.qwen
 import kotlin.test.Test
 
 /**
@@ -20,9 +21,11 @@ class TestToolImplementation {
     fun testToolCall() = runBlocking {
         val client = createChatClient {
             model {
-                baseUrl = EnvTools.loadValue("BASE_URL")
-                apiKey = EnvTools.loadValue("API_KEY")
-                modelName = "qwen3-235b-a22b-instruct-2507"
+                qwen(
+                    baseUrl = EnvTools.loadValue("BASE_URL"),
+                    apiKey = EnvTools.loadValue("API_KEY"),
+                    modelName = "qwen3-235b-a22b-instruct-2507",
+                )
             }
             tools {
                 addTools(
@@ -49,9 +52,11 @@ class TestToolImplementation {
     fun testParallelToolCall() = runBlocking {
         val clientWithDsl = createChatClient {
             model {
-                baseUrl = EnvTools.loadValue("BASE_URL")
-                apiKey = EnvTools.loadValue("API_KEY")
-                modelName = "qwen-plus"
+                qwen(
+                    baseUrl = EnvTools.loadValue("BASE_URL"),
+                    apiKey = EnvTools.loadValue("API_KEY"),
+                    modelName = "qwen3-235b-a22b-instruct-2507",
+                )
             }
             tools {
                 addTools(
@@ -77,9 +82,11 @@ class TestToolImplementation {
     fun testToolCallDsl() = runBlocking {
         val client = createChatClient {
             model {
-                baseUrl = EnvTools.loadValue("BASE_URL")
-                apiKey = EnvTools.loadValue("API_KEY")
-                modelName = "qwen3-235b-a22b-instruct-2507"
+                qwen(
+                    baseUrl = EnvTools.loadValue("BASE_URL"),
+                    apiKey = EnvTools.loadValue("API_KEY"),
+                    modelName = "qwen3-235b-a22b-instruct-2507",
+                )
             }
             tools {
                 addTools(

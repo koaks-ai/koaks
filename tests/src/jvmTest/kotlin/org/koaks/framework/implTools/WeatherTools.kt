@@ -2,6 +2,7 @@ package org.koaks.framework.implTools
 
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.serializer
 import org.koaks.framework.annotation.Description
 import org.koaks.framework.toolcall.toolinterface.Tool
 
