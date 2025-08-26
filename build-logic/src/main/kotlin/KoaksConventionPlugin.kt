@@ -5,9 +5,17 @@ import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.withType
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import com.vanniktech.maven.publish.MavenPublishBaseExtension
+import org.gradle.api.artifacts.MinimalExternalModuleDependency
+import org.gradle.api.artifacts.VersionCatalog
 import org.gradle.api.artifacts.VersionCatalogsExtension
+import org.gradle.api.provider.Provider
+
 
 class KoaksConventionPlugin : Plugin<Project> {
+
+    operator fun VersionCatalog.get(alias: String): Provider<MinimalExternalModuleDependency> =
+        findLibrary(alias).get()
+
     override fun apply(target: Project) = with(target) {
 
         pluginManager.apply("org.jetbrains.kotlin.multiplatform")
@@ -17,15 +25,16 @@ class KoaksConventionPlugin : Plugin<Project> {
         val libs = extensions.getByType(VersionCatalogsExtension::class.java).named("libs")
 
         extensions.configure<KotlinMultiplatformExtension> {
+
             jvmToolchain(21)
             jvm()
 
             sourceSets.getByName("commonMain").dependencies {
-                api(libs.findLibrary("kotlin-logging").get())
-                api(libs.findLibrary("coroutines-core").get())
-                api(libs.findLibrary("serialization-core").get())
-                api(libs.findLibrary("serialization-json").get())
-                api(libs.findLibrary("ktor-client-core").get())
+                api(libs["kotlin-logging"])
+                api(libs["coroutines-core"])
+                api(libs["serialization-core"])
+                api(libs["serialization-json"])
+                api(libs["ktor-client-core"])
             }
 
             sourceSets.getByName("commonTest").dependencies {
@@ -33,16 +42,16 @@ class KoaksConventionPlugin : Plugin<Project> {
             }
 
             sourceSets.getByName("jvmMain").dependencies {
-                api(libs.findLibrary("logback-classic").get())
-                api(libs.findLibrary("coroutines-reactor").get())
-                api(libs.findLibrary("ktor-client-cio").get())
-                api(libs.findLibrary("reflections").get())
-                api(libs.findLibrary("kotlin-reflect").get())
+                api(libs["logback-classic"])
+                api(libs["coroutines-reactor"])
+                api(libs["ktor-client-cio"])
+                api(libs["reflections"])
+                api(libs["kotlin-reflect"])
             }
 
             sourceSets.getByName("jvmTest").dependencies {
-                implementation(libs.findLibrary("junit-jupiter").get())
-                implementation(libs.findLibrary("kotlin-test-junit5").get())
+                implementation(libs["junit-jupiter"])
+                implementation(libs["kotlin-test-junit5"])
             }
         }
 
@@ -87,5 +96,4 @@ class KoaksConventionPlugin : Plugin<Project> {
             }
         }
     }
-
 }
