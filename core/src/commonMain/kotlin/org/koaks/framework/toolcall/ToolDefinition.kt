@@ -2,7 +2,7 @@ package org.koaks.framework.toolcall
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
-import org.koaks.framework.platform.PlatformTools
+import org.koaks.framework.platform.PlatformUtils
 import org.koaks.framework.platform.PlatformType
 import org.koaks.framework.toolcall.toolinterface.Tool
 import kotlin.reflect.KFunction
@@ -14,7 +14,7 @@ data class ToolDefinition(
 ) {
 
     @Transient
-    val platform: PlatformType = PlatformTools.platformType()
+    val platform: PlatformType = PlatformUtils.platformType()
 
     @Transient
     var toolType: ToolType = ToolType.ANNOTATION
