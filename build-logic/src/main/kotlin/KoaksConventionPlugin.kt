@@ -29,12 +29,11 @@ class KoaksConventionPlugin : Plugin<Project> {
             jvmToolchain(21)
             jvm()
 
+            // only common dependencies for all modules
             sourceSets.getByName("commonMain").dependencies {
                 api(libs["kotlin-logging"])
-                api(libs["coroutines-core"])
                 api(libs["serialization-core"])
                 api(libs["serialization-json"])
-                api(libs["ktor-client-core"])
             }
 
             sourceSets.getByName("commonTest").dependencies {
@@ -43,16 +42,13 @@ class KoaksConventionPlugin : Plugin<Project> {
 
             sourceSets.getByName("jvmMain").dependencies {
                 api(libs["logback-classic"])
-                api(libs["coroutines-reactor"])
-                api(libs["ktor-client-cio"])
-                api(libs["reflections"])
-                api(libs["kotlin-reflect"])
             }
 
             sourceSets.getByName("jvmTest").dependencies {
                 implementation(libs["junit-jupiter"])
                 implementation(libs["kotlin-test-junit5"])
             }
+
         }
 
         tasks.withType<Test>().configureEach {
