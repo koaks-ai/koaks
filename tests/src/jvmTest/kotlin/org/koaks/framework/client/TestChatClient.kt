@@ -41,7 +41,7 @@ class TestChatClient {
         val resp0 =
             client.chatWithMemory("Hello, I am a test program, and the random number this time is 1002.", "1001")
         println("===== first =====")
-        println(resp0.value.choices?.getOrNull(0)?.message?.content)
+        println(resp0.value().choices?.getOrNull(0)?.message?.content)
 
         val resp1 =
             client.chatWithMemory(
@@ -49,7 +49,7 @@ class TestChatClient {
                 "1001"
             )
         println("===== second =====")
-        println(resp1.value.choices?.getOrNull(0)?.message?.content)
+        println(resp1.value().choices?.getOrNull(0)?.message?.content)
     }
 
     @Test
@@ -61,7 +61,7 @@ class TestChatClient {
         }
 
         val result = client.chat(chatRequest)
-        result.stream.map { data ->
+        result.stream().map { data ->
             print(data.choices?.get(0)?.delta?.content)
         }.collect()
     }
@@ -91,7 +91,7 @@ class TestChatClient {
         var hasPrintedThinkingHeader = false
         var hasPrintedContentHeader = false
 
-        result.stream.map { data ->
+        result.stream().map { data ->
             val reasoning = data.choices?.get(0)?.delta?.reasoningContent
             val content = data.choices?.get(0)?.delta?.content
 
@@ -127,7 +127,7 @@ class TestChatClient {
 
         val result = client.chat(chatRequest)
 
-        println(result.value.choices?.getOrNull(0)?.message?.content)
+        println(result.value().choices?.getOrNull(0)?.message?.content)
     }
 
     @Test
@@ -156,7 +156,7 @@ class TestChatClient {
 
         val result = clientWithDsl.chat(chatRequest)
 
-        println(result.value.choices?.getOrNull(0)?.message?.content)
+        println(result.value().choices?.getOrNull(0)?.message?.content)
     }
 
     @Test
@@ -185,7 +185,7 @@ class TestChatClient {
 
         val result = clientWithDsl.chat(chatRequest)
 
-        println(result.value.choices?.getOrNull(0)?.message?.content)
+        println(result.value().choices?.getOrNull(0)?.message?.content)
     }
 
 }

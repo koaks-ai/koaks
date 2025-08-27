@@ -86,10 +86,10 @@ class ChatService<TRequest, TResponse>(
                 ).map { model.toChatResponse(it) }
             ) { ChatResponse() }
             // mapper ChatMessage.id to Message.id
-            initialResp.value.apply {
+            initialResp.value().apply {
                 choices?.forEach { it.message?.id = this.id }
             }
-            saveMessage(initialResp.value.choices?.firstOrNull()?.message, memoryId, request.messages)
+            saveMessage(initialResp.value().choices?.firstOrNull()?.message, memoryId, request.messages)
             handleToolCall(request, initialResp)
         }
     }
@@ -103,8 +103,8 @@ class ChatService<TRequest, TResponse>(
         var toolCallCount = 0
         val caller = ToolCaller
 
-        while (response.value.shouldToolCall && toolCallCount < MAX_TOOL_CALL_EPOCH) {
-            val responseMessage = response.value.choices?.firstOrNull()?.message
+        while (response.value().shouldToolCall && toolCallCount < MAX_TOOL_CALL_EPOCH) {
+            val responseMessage = response.value().choices?.firstOrNull()?.message
             val toolCalls = responseMessage?.toolCalls.orEmpty()
             val semaphore = Semaphore(MAX_TOOL_CALL_EPOCH)
 
@@ -129,7 +129,7 @@ class ChatService<TRequest, TResponse>(
                 ).map { model.toChatResponse(it) }
             ) { ChatResponse() }
 
-            response.value.choices?.getOrNull(0)?.message.let {
+            response.value().choices?.getOrNull(0)?.message.let {
                 saveMessage(it, request.messageId, messages)
             }
         }
