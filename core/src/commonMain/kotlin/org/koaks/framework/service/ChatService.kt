@@ -14,7 +14,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import org.koaks.framework.entity.chat.ChatResponse
 import org.koaks.framework.entity.chat.ChatRequest
-import org.koaks.framework.entity.inner.InnerChatRequest
+import org.koaks.framework.entity.inner.FullChatRequest
 import org.koaks.framework.entity.Message
 import org.koaks.framework.entity.ModelResponse
 import org.koaks.framework.memory.DefaultMemoryStorage
@@ -55,7 +55,7 @@ class ChatService<TRequest, TResponse>(
     suspend fun execChat(chatRequest: ChatRequest, memoryId: String? = null): ModelResponse<ChatResponse> {
         mergeToolList(chatRequest)
         val messageList = mergeMessageList(chatRequest.message, memoryId)
-        val request = mapToInnerRequest(chatRequest, messageList)
+        val request = mergeParamsAndMapToFullRequest(chatRequest, messageList)
 
         return if (request.stream == true && request.tools.isNullOrEmpty()) {
             val responseContent = StringBuilder()
@@ -95,7 +95,7 @@ class ChatService<TRequest, TResponse>(
     }
 
     private suspend fun handleToolCall(
-        request: InnerChatRequest,
+        request: FullChatRequest,
         initialResponse: ModelResponse<ChatResponse>,
     ): ModelResponse<ChatResponse> {
         val messages = request.messages
@@ -138,7 +138,7 @@ class ChatService<TRequest, TResponse>(
     }
 
     private suspend fun executeToolCall(
-        tool: ChatResponse.ToolCall, caller: ToolCaller, request: InnerChatRequest, messages: MutableList<Message>
+        tool: ChatResponse.ToolCall, caller: ToolCaller, request: FullChatRequest, messages: MutableList<Message>
     ) {
         val toolName = tool.function?.name.orEmpty()
         val argsJson = tool.function?.arguments ?: ""
@@ -184,12 +184,12 @@ class ChatService<TRequest, TResponse>(
         }
     }
 
-    private fun mapToInnerRequest(
+    private fun mergeParamsAndMapToFullRequest(
         chatRequest: ChatRequest,
         messageList: MutableList<Message>
-    ): InnerChatRequest {
+    ): FullChatRequest {
         val params = chatRequest.params
-        return InnerChatRequest(
+        return FullChatRequest(
             modelName = chatRequest.modelName ?: model.modelName,
             messages = messageList
         ).apply {

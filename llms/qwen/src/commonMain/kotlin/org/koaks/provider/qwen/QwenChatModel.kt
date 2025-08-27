@@ -1,7 +1,7 @@
 package org.koaks.provider.qwen
 
 import org.koaks.framework.entity.chat.ChatResponse
-import org.koaks.framework.entity.inner.InnerChatRequest
+import org.koaks.framework.entity.inner.FullChatRequest
 import org.koaks.framework.model.AbstractChatModel
 import org.koaks.framework.model.TypeAdapter
 
@@ -16,23 +16,23 @@ class QwenChatModel(
         deserializer = QwenChatResponse.serializer(),
     )
 
-    override fun toChatRequest(innerChatRequest: InnerChatRequest): QwenChatRequest =
+    override fun toChatRequest(fullChatRequest: FullChatRequest): QwenChatRequest =
         QwenChatRequest(
-            modelName = innerChatRequest.modelName,
-            messageList = innerChatRequest.messages,
-            tools = innerChatRequest.tools,
-            parallelToolCalls = innerChatRequest.parallelToolCalls,
-            systemMessage = innerChatRequest.systemMessage,
-            maxTokens = innerChatRequest.maxTokens,
-            temperature = innerChatRequest.temperature,
-            topP = innerChatRequest.topP,
-            n = innerChatRequest.n,
-            stream = innerChatRequest.stream,
-            stop = innerChatRequest.stop,
-            presencePenalty = innerChatRequest.presencePenalty,
-            frequencyPenalty = innerChatRequest.frequencyPenalty,
-            logitBias = innerChatRequest.logitBias,
-            responseFormat = innerChatRequest.responseFormat
+            modelName = fullChatRequest.modelName,
+            messageList = fullChatRequest.messages,
+            tools = fullChatRequest.tools,
+            parallelToolCalls = fullChatRequest.parallelToolCalls,
+            systemMessage = fullChatRequest.systemMessage,
+            maxTokens = fullChatRequest.maxTokens,
+            temperature = fullChatRequest.temperature,
+            topP = fullChatRequest.topP,
+            n = fullChatRequest.n,
+            stream = fullChatRequest.stream,
+            stop = fullChatRequest.stop,
+            presencePenalty = fullChatRequest.presencePenalty,
+            frequencyPenalty = fullChatRequest.frequencyPenalty,
+            logitBias = fullChatRequest.logitBias,
+            responseFormat = fullChatRequest.responseFormat
         )
 
 
