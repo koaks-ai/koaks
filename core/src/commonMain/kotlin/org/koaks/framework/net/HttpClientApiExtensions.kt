@@ -1,18 +1,17 @@
 package org.koaks.framework.net
 
 import kotlinx.serialization.serializer
-import org.koaks.framework.entity.inner.FullChatRequest
 import kotlinx.coroutines.flow.Flow
 import org.koaks.framework.model.TypeAdapter
 
-suspend inline fun <reified T> HttpClient.postAsObject(
-    request: FullChatRequest
-): Result<T> = postAsObject(request, TypeAdapter(serializer(), serializer()))
+suspend inline fun <reified T, reified R> HttpClient.postAsObject(
+    request: T
+): Result<R> = postAsObject(request, TypeAdapter(serializer(), serializer()))
 
-inline fun <reified T> HttpClient.postAsObjectStream(
-    request: FullChatRequest
-): Flow<T> = postAsObjectStream(request, TypeAdapter(serializer(), serializer()))
+inline fun <reified T, reified R> HttpClient.postAsObjectStream(
+    request: T
+): Flow<R> = postAsObjectStream(request, TypeAdapter(serializer(), serializer()))
 
-suspend inline fun <reified T> HttpClient.getAsObject(
+suspend inline fun <reified R> HttpClient.getAsObject(
     path: String
-): Result<T> = getAsObject(path, serializer())
+): Result<R> = getAsObject(path, serializer())
