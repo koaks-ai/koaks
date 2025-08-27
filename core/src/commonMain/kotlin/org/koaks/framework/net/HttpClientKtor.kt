@@ -11,9 +11,9 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.network.sockets.SocketTimeoutException
 import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
-import io.ktor.network.sockets.SocketTimeoutException
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.Dispatchers
