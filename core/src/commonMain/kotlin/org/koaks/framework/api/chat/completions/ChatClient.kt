@@ -17,7 +17,7 @@ class ChatClient<TRequest, TResponse>(
     suspend fun generate(message: String): String {
         return chatService.execChat(
             ChatRequest(message = message)
-        ).value.choices?.getOrNull(0)?.message?.content as String
+        ).value().choices?.getOrNull(0)?.message?.content as String
     }
 
     suspend fun chat(chatRequest: ChatRequest): ModelResponse<ChatResponse> {

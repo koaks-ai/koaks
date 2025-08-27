@@ -37,31 +37,13 @@ class ModelResponse<T> private constructor(
         }
     }
 
-    val stream: Flow<T> by LoggedProperty(
-        expectedValue = _stream,
-        typeName = "stream",
-        fallback = { emptyFlow() }
-    )
+    fun stream(): Flow<T> = _stream ?: run {
+        logger.error { "Attempted to access stream, but this ModelResponse contains value()" }
+        emptyFlow()
+    }
 
-    val value: T by LoggedProperty(
-        expectedValue = _value,
-        typeName = "value",
-        fallback = { throw NoSuchElementException("Response is not available") }
-    )
-
-    private inner class LoggedProperty<V>(
-        private val expectedValue: V?,
-        private val typeName: String,
-        private val fallback: () -> V
-    ) : ReadOnlyProperty<Any?, V> {
-        override fun getValue(thisRef: Any?, property: KProperty<*>): V {
-            return expectedValue ?: run {
-                logger.warn {
-                    "Attempted to access $typeName, but this ModelResponse contains " +
-                            if (typeName == "stream") "value" else "stream"
-                }
-                fallback()
-            }
-        }
+    fun value(): T = _value ?: run {
+        logger.error { "Attempted to access value, but this ModelResponse contains stream()" }
+        throw NoSuchElementException("Response is not available")
     }
 }

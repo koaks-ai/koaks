@@ -45,7 +45,7 @@ class TestToolImplementation {
 
         val result = client.chat(chatRequest)
 
-        println(result.value.choices?.getOrNull(0)?.message?.content)
+        println(result.value().choices?.getOrNull(0)?.message?.content)
     }
 
     @Test
@@ -75,7 +75,7 @@ class TestToolImplementation {
 
         val result = clientWithDsl.chat(chatRequest)
 
-        println(result.value.choices?.getOrNull(0)?.message?.content)
+        println(result.value().choices?.getOrNull(0)?.message?.content)
     }
 
     @Test
@@ -118,7 +118,7 @@ class TestToolImplementation {
 
         val result = client.chat(chatRequest)
 
-        println(result.value.choices?.getOrNull(0)?.message?.content)
+        println(result.value().choices?.getOrNull(0)?.message?.content)
     }
 
 }
