@@ -74,7 +74,8 @@ class ChatService<TRequest, TResponse>(
                 streamFlow.onCompletion {
                     val assistantMessage = Message.assistant(responseContent.toString())
                     saveMessage(assistantMessage, memoryId, request.messages)
-                })
+                }
+            )
         } else {
             if (request.stream == true) {
                 request.stream = false
