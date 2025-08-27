@@ -35,7 +35,7 @@ class TestHttpClient {
             stream = false
         }
 
-        val stringResult = client.postAsObject<ChatResponse>(request)
+        val stringResult = client.postAsObject<FullChatRequest, ChatResponse>(request)
 
         stringResult.fold(
             onSuccess = { result ->
@@ -60,7 +60,7 @@ class TestHttpClient {
         }
 
         var chunkCount = 0
-        client.postAsObjectStream<ChatResponse>(request)
+        client.postAsObjectStream<FullChatRequest, ChatResponse>(request)
             .map { data ->
                 chunkCount++
                 print("${data.choices?.get(0)?.delta?.content}")
