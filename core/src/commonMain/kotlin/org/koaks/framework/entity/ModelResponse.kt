@@ -14,9 +14,11 @@ class ModelResponse<T> private constructor(
     private val _stream: Flow<T>?,
     private val _value: T?
 ) {
-    private val logger = KotlinLogging.logger {}
 
     companion object {
+
+        private val logger = KotlinLogging.logger {}
+
         fun <T> fromStream(stream: Flow<T>) = ModelResponse(stream, null)
         fun <T> fromValue(value: T) = ModelResponse(null, value)
         fun <T> empty(value: T): ModelResponse<T> = ModelResponse(null, value)
@@ -25,7 +27,7 @@ class ModelResponse<T> private constructor(
             result.fold(
                 onSuccess = { fromValue(it) },
                 onFailure = {
-                    KotlinLogging.logger {}.error(it) { "Model response failure: ${it.message}" }
+                    logger.error(it) { "Model response failure: ${it.message}" }
                     empty(fallback())
                 }
             )
@@ -46,4 +48,5 @@ class ModelResponse<T> private constructor(
         logger.error { "Attempted to access value, but this ModelResponse contains stream()" }
         throw NoSuchElementException("Response is not available")
     }
+
 }
