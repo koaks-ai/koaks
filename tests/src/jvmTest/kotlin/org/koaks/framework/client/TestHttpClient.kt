@@ -6,7 +6,7 @@ import kotlinx.coroutines.runBlocking
 import org.koaks.framework.EnvTools
 import org.koaks.framework.entity.Message
 import org.koaks.framework.entity.chat.ChatResponse
-import org.koaks.framework.entity.inner.InnerChatRequest
+import org.koaks.framework.entity.inner.FullChatRequest
 import org.koaks.framework.net.HttpClient
 import org.koaks.framework.net.HttpClientConfig
 import org.koaks.framework.net.postAsObject
@@ -26,7 +26,7 @@ class TestHttpClient {
 
     @Test
     fun testSyncRequest() = runBlocking {
-        val request = InnerChatRequest(
+        val request = FullChatRequest(
             modelName = "qwen-plus",
             messages = mutableListOf(
                 Message.user("What is the meaning of life?")
@@ -50,7 +50,7 @@ class TestHttpClient {
 
     @Test
     fun testStreamRequest() = runBlocking {
-        val request = InnerChatRequest(
+        val request = FullChatRequest(
             modelName = "qwen-plus",
             messages = mutableListOf(
                 Message.user("what's the meaning of life？")

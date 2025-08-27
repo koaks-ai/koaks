@@ -7,7 +7,7 @@ import org.koaks.framework.entity.Message
 import org.koaks.framework.entity.ModelParams
 
 @Serializable
-class InnerChatRequest(
+class FullChatRequest(
     var user: String? = null,
     @Transient
     var messageId: String? = null,
