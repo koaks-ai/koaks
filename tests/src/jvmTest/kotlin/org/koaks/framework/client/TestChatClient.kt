@@ -115,23 +115,6 @@ class TestChatClient {
 
     @Test
     fun testToolCall() = runBlocking {
-        val chatRequest = ChatRequest(
-            message = "What's the weather like?"
-        ).apply {
-            // when using tool_call, stream mode is currently not supported
-            params.stream = false
-            // if the tools are not grouped, the tools in the 'default' group will be used by default.
-            params.tools = ToolManager.getTools("weather", "location")
-            params.parallelToolCalls = true
-        }
-
-        val result = client.chat(chatRequest)
-
-        println(result.value().choices?.getOrNull(0)?.message?.content)
-    }
-
-    @Test
-    fun testToolCallDsl() = runBlocking {
         val clientWithDsl = createChatClient {
             model {
                 qwen(
