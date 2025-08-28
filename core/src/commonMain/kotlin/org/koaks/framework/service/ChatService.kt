@@ -152,7 +152,7 @@ class ChatService<TRequest, TResponse>(
     ) {
         val toolName = tool.function?.name.orEmpty()
         val argsJson = tool.function?.arguments ?: ""
-        val result = caller.call(toolName, argsJson)
+        val result = caller.call(toolName, argsJson, model.toolContainer)
 
         logger.info { "tool_call: id=${tool.id}, name=$toolName, args=$argsJson" }
         saveMessage(Message.tool(result, tool.id), request.messageId, messages)
@@ -179,10 +179,16 @@ class ChatService<TRequest, TResponse>(
     }
 
     /**
-     * Merge model's tool list and request's tool list.
+     * Merge model's tool list, request's tool list, and model's toolContainer.
+     *
+     * under normal circumstances, you should always ensure that only the toolContainer contains content.
      */
     private fun mergeToolList(chatRequest: ChatRequest) {
-        chatRequest.params.tools = (chatRequest.params.tools.orEmpty() + model.tools.orEmpty())
+        chatRequest.params.tools = (
+                chatRequest.params.tools.orEmpty() +
+                        model.tools.orEmpty() +
+                        model.toolContainer.values.toList()
+                )
             .distinct()
             .takeIf { it.isNotEmpty() }
             ?.toMutableList()

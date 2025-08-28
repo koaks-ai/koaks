@@ -15,7 +15,7 @@ class ChatClientBuilder : BaseChatClientBuilder() {
         val builder = CompletionToolBuilder()
         builder.block()
         tools = builder.build()
-        model.tools = tools as MutableList<ToolDefinition>?
+        model.toolContainer.putAll(tools.associateBy { it.toolName })
     }
 
     fun build(): ChatClient<*, *> {
@@ -30,21 +30,38 @@ class CompletionToolBuilder {
     private val toolList: MutableList<ToolDefinition> = mutableListOf()
 
     fun default() {
-        actions += { toolList += ToolManager.getTools("default") }
+        actions += {
+            ToolManager.getGroupToolList("default")?.let {
+                toolList.addAll(it)
+            }
+        }
     }
 
     fun groups(vararg names: String) {
-        groupsAction = { toolList += ToolManager.getTools(*names) }
+        groupsAction = {
+            names.forEach {
+                ToolManager.getGroupToolList(it)?.let {
+                    toolList.addAll(it)
+                }
+            }
+        }
     }
 
     fun addTools(vararg tools: ToolDefinition) {
         actions += {
             toolList += tools
-            tools.forEach { ToolManager.registerTool(it) }
         }
     }
 
     fun addTools(vararg tools: Tool<*>) {
+        actions += {
+            tools.map { it.toDefinition() }.forEach {
+                toolList += it
+            }
+        }
+    }
+
+    fun addToolsToGlobal(vararg tools: Tool<*>) {
         actions += {
             tools.map { it.toDefinition() }.forEach {
                 toolList += it
@@ -55,6 +72,7 @@ class CompletionToolBuilder {
 
     fun build(): List<ToolDefinition> {
         actions.forEach { it.invoke() }
+        // make the group action is always last
         groupsAction?.invoke() ?: run {
             groups("default")
         }

@@ -7,38 +7,34 @@ object ToolManager {
 
     private val logger = KotlinLogging.logger {}
 
-    // tool implemented using the annotation and interface
-    private val container: HashMap<String, ToolDefinition> = HashMap()
+    private val globalGroupContainer = HashMap<String, MutableList<ToolDefinition>>()
+
+    // check whether there is a duplicate tool name
+    private val nameSet = HashSet<String>()
 
     // tool implemented using the tool interface
     private val interfaceContainer: HashMap<String, Tool<*>> = HashMap()
 
     fun registerTool(tool: ToolDefinition) {
         logger.debug { tool.toJson() }
-        if (container.containsKey(tool.toolName)) {
+        if (nameSet.contains(tool.toolName)) {
             logger.warn { "tool ${tool.toolName} already exists" }
         }
-        container[tool.toolName] = tool
-    }
-
-    fun registerInterfaceTools(vararg tool: Tool<*>) {
-        tool.forEach {
-            logger.debug { "add tool ${it.name}" }
-            container[it.name] = it.toDefinition()
+        globalGroupContainer[tool.group]?.add(tool) ?: run {
+            globalGroupContainer[tool.group] = mutableListOf(tool)
         }
+        nameSet.add(tool.toolName)
     }
 
-    fun getTool(toolname: String): ToolDefinition? = container[toolname]
-
-    fun getTools(vararg group: String): MutableList<ToolDefinition> {
-        return container.values.filter { group.contains(it.group) } as MutableList<ToolDefinition>
-    }
+    fun getGroupToolList(group: String): MutableList<ToolDefinition>? = globalGroupContainer[group]
 
     fun showContainerStatus() {
         logger.info {
-            "\n====== ToolContainer Status ======\n" +
-                    "container size: ${container.size}\n" +
-                    "container keys: ${container.keys}"
+            "\n====== GlobalToolContainer Status ======\n" +
+                    "group size: ${globalGroupContainer.size}\n" +
+                    "group keys: ${globalGroupContainer.keys}\n" +
+                    "group entries: ${globalGroupContainer.entries}\n"
+            "\n========================================\n"
         }
     }
 

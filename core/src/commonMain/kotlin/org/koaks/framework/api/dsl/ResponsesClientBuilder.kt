@@ -30,23 +30,38 @@ class ResponsesToolBuilder {
     private val toolList: MutableList<ToolDefinition> = mutableListOf()
 
     fun default() {
-        actions += { toolList += ToolManager.getTools("default") }
+        actions += {
+            ToolManager.getGroupToolList("default")?.let {
+                toolList.addAll(it)
+            }
+        }
     }
 
     fun groups(vararg names: String) {
         groupsAction = {
-            toolList += ToolManager.getTools(*names)
+            names.forEach {
+                ToolManager.getGroupToolList(it)?.let {
+                    toolList.addAll(it)
+                }
+            }
         }
     }
 
     fun addTools(vararg tools: ToolDefinition) {
         actions += {
             toolList += tools
-            tools.forEach { ToolManager.registerTool(it) }
         }
     }
 
     fun addTools(vararg tools: Tool<*>) {
+        actions += {
+            tools.map { it.toDefinition() }.forEach {
+                toolList += it
+            }
+        }
+    }
+
+    fun addToolsToGlobal(vararg tools: Tool<*>) {
         actions += {
             tools.map { it.toDefinition() }.forEach {
                 toolList += it
