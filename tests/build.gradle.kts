@@ -1,7 +1,6 @@
 import org.gradle.kotlin.dsl.withType
 import org.jetbrains.kotlin.gradle.dsl.KotlinJsCompile
 
-
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
@@ -10,7 +9,6 @@ plugins {
 
 kotlin {
     sourceSets {
-
         jvmToolchain(21)
 
         jvm()
@@ -36,6 +34,12 @@ kotlin {
             binaries.executable()
         }
 
+        macosArm64("macosArm") {
+            binaries {
+                executable()
+            }
+        }
+
         val commonTest by getting {
             dependencies {
                 implementation(project(":core"))
@@ -47,6 +51,7 @@ kotlin {
 
         val jvmTest by getting {
             dependencies {
+                implementation(libs.dotenv)
                 implementation(libs.junit.jupiter)
                 implementation(libs.kotlin.test.junit5)
             }
