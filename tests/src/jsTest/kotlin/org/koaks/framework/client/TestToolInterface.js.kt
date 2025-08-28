@@ -15,10 +15,10 @@ import kotlin.test.Test
 /**
  * Koaks.init() is not called here, so classes annotated with @Tool will not be scanned
  */
-class TestToolInterface {
+class JsTestToolInterface {
 
     @Test
-    fun testToolCall() = runTest {
+    fun jsTestToolCall() = runTest {
         val client = createChatClient {
             model {
                 qwen(
@@ -49,7 +49,7 @@ class TestToolInterface {
     }
 
     @Test
-    fun testParallelToolCall() = runTest {
+    fun jsTestParallelToolCall() = runTest {
         val clientWithDsl = createChatClient {
             model {
                 qwen(
@@ -79,7 +79,7 @@ class TestToolInterface {
     }
 
     @Test
-    fun testToolCallDsl() = runTest {
+    fun jsTestToolCallDsl() = runTest {
         val client = createChatClient {
             model {
                 qwen(
