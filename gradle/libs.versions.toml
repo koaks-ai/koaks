@@ -26,10 +26,13 @@ kotlin-logging = { module = "io.github.oshai:kotlin-logging", version.ref = "kot
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serializationJson" }
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "serializationCore" }
 
-# jvmMain
+# jvm、android、native
 ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
+
+# jvmMain
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 reflections = { module = "org.reflections:reflections", version.ref = "reflections" }
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
@@ -38,3 +41,6 @@ coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reacto
 # jvmTest
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5", version.ref = "kotlin" }
+
+# jsMain
+ktor-client-js = { module = "io.ktor:ktor-client-js", version.ref = "ktor" }
