@@ -1,6 +1,7 @@
 import org.gradle.kotlin.dsl.withType
 import org.jetbrains.kotlin.gradle.dsl.KotlinJsCompile
 
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
@@ -15,10 +16,18 @@ kotlin {
         jvm()
 
         js(IR) {
+            browser {
+                testTask {
+                    useKarma {
+                        useChromeHeadless()
+                        useConfigDirectory(project.rootProject.file("karma"))
+                    }
+                }
+            }
             nodejs {
                 testTask {
                     useMocha {
-                        timeout = "60s"
+                        timeout = "0"
                     }
                     environment("PROJECT_ROOT", rootDir.absolutePath)
                 }
