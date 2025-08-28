@@ -6,7 +6,7 @@ expect object ToolInitializer {
     // todo: to be optimized
     fun init()
 
-    fun scanTools(packageName: Array<String>): List<ToolDefinition>
+    fun scanTools(packageName: List<String>): List<ToolDefinition>
 
     fun registerTools(tools: List<ToolDefinition>)
 

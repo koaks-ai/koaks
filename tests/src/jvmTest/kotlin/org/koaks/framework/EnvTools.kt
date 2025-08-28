@@ -5,11 +5,12 @@ import kotlin.io.path.exists
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.readLines
 
-object EnvTools {
+@Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING")
+actual object EnvTools {
 
     private val envMap: Map<String, String> by lazy { loadEnvFile() }
 
-    fun loadValue(key: String): String =
+    actual fun loadValue(key: String): String =
         envMap[key] ?: error("Key '$key' not found in .env file")
 
     private fun loadEnvFile(): Map<String, String> {

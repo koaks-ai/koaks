@@ -15,7 +15,7 @@ object DefaultMemoryStorage : IMemoryStorage {
     }
 
     override fun addMessage(message: Message, memoryId: String) {
-        getMessageList(memoryId).addLast(message)
+        getMessageList(memoryId).add(message)
     }
 
     override fun deleteMessageList(memoryId: String) {

@@ -4,5 +4,15 @@ allprojects {
 
     repositories {
         mavenCentral()
+        google()
     }
+
+    tasks.withType<Test>().configureEach {
+        useJUnitPlatform()
+        testLogging {
+            showStandardStreams = true
+            showExceptions = true
+        }
+    }
+
 }

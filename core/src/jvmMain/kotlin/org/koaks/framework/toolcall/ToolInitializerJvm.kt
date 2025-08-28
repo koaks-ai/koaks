@@ -1,6 +1,5 @@
 package org.koaks.framework.toolcall
 
-import org.koaks.framework.annotation.Tool
 import org.koaks.framework.context.KoaksContext
 import org.reflections.Reflections
 import org.reflections.scanners.Scanners
@@ -30,7 +29,7 @@ actual object ToolInitializer {
         isInitialized = true
     }
 
-    actual fun scanTools(packageName: Array<String>): List<ToolDefinition> {
+    actual fun scanTools(packageName: List<String>): List<ToolDefinition> {
         return Reflections(packageName, Scanners.MethodsAnnotated)
             .getMethodsAnnotatedWith(Tool::class.java)
             .mapNotNull { it.kotlinFunction }
@@ -65,7 +64,6 @@ actual object ToolInitializer {
                 val required = paramAnnotations
                     .filter { it.required }
                     .map { it.param }
-                    .toTypedArray()
 
                 val toolParams = ToolDefinition.ToolParameters(
                     properties = properties,

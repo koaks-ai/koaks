@@ -24,7 +24,7 @@ annotation class Tool(
      *
      * `optional`
      */
-    val params: Array<Param> = [],
+    val params: Array<Param>,
 
     /**
      * "group" is the grouping information of the tool. It is optional, but it is recommended to set this attribute,
