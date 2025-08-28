@@ -1,7 +1,5 @@
-import org.gradle.kotlin.dsl.getByType
 import org.gradle.kotlin.dsl.withType
 import org.jetbrains.kotlin.gradle.dsl.KotlinJsCompile
-import org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsEnvSpec
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -16,8 +14,15 @@ kotlin {
 
         jvm()
 
-        js() {
-            nodejs()
+        js(IR) {
+            nodejs {
+                testTask {
+                    useMocha {
+                        timeout = "60s"
+                    }
+                    environment("PROJECT_ROOT", rootDir.absolutePath)
+                }
+            }
             binaries.executable()
         }
 
@@ -25,7 +30,6 @@ kotlin {
             dependencies {
                 implementation(project(":core"))
                 implementation(project(":llms:qwen"))
-                implementation(libs.kotlin.logging)
                 implementation(libs.coroutines.test)
                 implementation(kotlin("test"))
             }
@@ -48,14 +52,14 @@ kotlin {
 
 }
 
-//// for kotlin/js nodejs
+// for kotlin/js nodejs
 //project.plugins.withType<org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsPlugin> {
 //    // use local nodejs
 //    project.extensions.getByType<NodeJsEnvSpec>().download.set(false)
 //}
-//
+
 //rootProject.plugins.withType<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin> {
-//    // todo: this `download` will be removed in version 2.2, need migrate
+//    // this `download` will be removed in version 2.2, need migrate
 //    // use local yarn
 //    rootProject.the<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension>().download =  false
 //}

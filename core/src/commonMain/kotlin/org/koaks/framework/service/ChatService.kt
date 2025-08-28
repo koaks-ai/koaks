@@ -20,7 +20,7 @@ import org.koaks.framework.entity.ModelResponse
 import org.koaks.framework.memory.DefaultMemoryStorage
 import org.koaks.framework.memory.IMemoryStorage
 import org.koaks.framework.model.AbstractChatModel
-import org.koaks.framework.net.HttpClient
+import org.koaks.framework.net.KtorHttpClient
 import org.koaks.framework.net.HttpClientConfig
 import org.koaks.framework.toolcall.caller.ToolCaller
 
@@ -35,7 +35,7 @@ class ChatService<TRequest, TResponse>(
         private const val MAX_TOOL_CALL_EPOCH = 30
     }
 
-    private var httpClient = HttpClient(
+    private var ktorHttpClient = KtorHttpClient(
         HttpClientConfig(
             baseUrl = model.baseUrl, apiKey = model.apiKey
         )
@@ -60,7 +60,7 @@ class ChatService<TRequest, TResponse>(
         return if (request.stream == true && request.tools.isNullOrEmpty()) {
             val responseContent = StringBuilder()
             val streamFlow =
-                httpClient.postAsObjectStream(
+                ktorHttpClient.postAsObjectStream(
                     model.toChatRequest(request), model.typeAdapter
                 ).map { model.toChatResponse(it) }
                     .onEach { data ->
@@ -82,7 +82,7 @@ class ChatService<TRequest, TResponse>(
                 logger.warn { "Streaming is not supported for tools. Falling back to non-streaming mode." }
             }
             val initialResp = ModelResponse.fromResult(
-                httpClient.postAsObject(
+                ktorHttpClient.postAsObject(
                     model.toChatRequest(request), model.typeAdapter
                 ).map { model.toChatResponse(it) }
             ) { ChatResponse() }
@@ -125,7 +125,7 @@ class ChatService<TRequest, TResponse>(
 
             toolCallCount++
             response = ModelResponse.fromResult(
-                httpClient.postAsObject(
+                ktorHttpClient.postAsObject(
                     model.toChatRequest(request), model.typeAdapter
                 ).map { model.toChatResponse(it) }
             ) { ChatResponse() }

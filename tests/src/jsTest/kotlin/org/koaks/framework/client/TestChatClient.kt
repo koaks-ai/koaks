@@ -1,16 +1,11 @@
-@file:OptIn(DelicateCoroutinesApi::class)
-
 package org.koaks.framework.client
 
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.promise
+import kotlinx.coroutines.test.runTest
 import org.koaks.framework.EnvTools
 import org.koaks.framework.api.dsl.createChatClient
 import org.koaks.framework.entity.chat.ChatRequest
-import org.koaks.framework.toolcall.ToolManager
 import org.koaks.provider.qwen.qwen
 import kotlin.test.Test
 
@@ -31,7 +26,7 @@ class TestChatClient {
     }
 
     @Test
-    fun testChatWithMemory() = GlobalScope.promise {
+    fun testChatWithMemory() = runTest {
         val resp0 =
             client.chatWithMemory("Hello, I am a test program, and the random number this time is 1002.", "1001")
         println("===== first =====")
@@ -47,7 +42,7 @@ class TestChatClient {
     }
 
     @Test
-    fun testStreamRequest() = GlobalScope.promise {
+    fun testStreamRequest() = runTest {
         val chatRequest = ChatRequest(
             message = "What's the meaning of life?"
         ).apply {
@@ -61,13 +56,13 @@ class TestChatClient {
     }
 
     @Test
-    fun testThinkingStreamRequest() = GlobalScope.promise {
+    fun testThinkingStreamRequest() = runTest {
         val thinkingClient = createChatClient {
             model {
                 qwen(
                     baseUrl = EnvTools.loadValue("BASE_URL"),
                     apiKey = EnvTools.loadValue("API_KEY"),
-                    modelName = "qwen3-235b-a22b-instruct-2507",
+                    modelName = "qwen3-30b-a3b-thinking-2507",
                 )
             }
             memory {
@@ -105,81 +100,6 @@ class TestChatClient {
                 print(content)
             }
         }.collect()
-    }
-
-    @Test
-    fun testToolCall() = GlobalScope.promise {
-        val chatRequest = ChatRequest(
-            message = "What's the weather like?"
-        ).apply {
-            // when using tool_call, stream mode is currently not supported
-            params.stream = false
-            // if the tools are not grouped, the tools in the 'default' group will be used by default.
-            params.tools = ToolManager.getTools("weather", "location")
-            params.parallelToolCalls = true
-        }
-
-        val result = client.chat(chatRequest)
-
-        println(result.value().choices?.getOrNull(0)?.message?.content)
-    }
-
-    @Test
-    fun testToolCallDsl() = GlobalScope.promise {
-        val clientWithDsl = createChatClient {
-            model {
-                qwen(
-                    baseUrl = EnvTools.loadValue("BASE_URL"),
-                    apiKey = EnvTools.loadValue("API_KEY"),
-                    modelName = "qwen3-235b-a22b-instruct-2507",
-                )
-            }
-            memory {
-                default()
-            }
-            tools {
-                groups("weather", "location")
-            }
-        }
-
-        val chatRequest = ChatRequest(
-            message = "What's the weather like?"
-        ).apply {
-            params.parallelToolCalls = true
-        }
-
-        val result = clientWithDsl.chat(chatRequest)
-
-        println(result.value().choices?.getOrNull(0)?.message?.content)
-    }
-
-    @Test
-    fun testParallelToolCall() = GlobalScope.promise {
-        val clientWithDsl = createChatClient {
-            model {
-                qwen(
-                    baseUrl = EnvTools.loadValue("BASE_URL"),
-                    apiKey = EnvTools.loadValue("API_KEY"),
-                    modelName = "qwen-plus",
-                )
-            }
-            memory {
-                default()
-            }
-            tools {
-                groups("weather", "location")
-            }
-        }
-
-        val chatRequest = ChatRequest(
-            message = "What's the 'shanghai'、'beijing'、'xi an'、'tai an' weather like?"
-        ).apply {
-            params.parallelToolCalls = true
-        }
-
-        val result = clientWithDsl.chat(chatRequest)
-
-        println(result.value().choices?.getOrNull(0)?.message?.content)
     }
 
 }

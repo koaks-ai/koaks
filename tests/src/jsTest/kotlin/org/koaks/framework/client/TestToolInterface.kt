@@ -1,6 +1,6 @@
 package org.koaks.framework.client
 
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import org.koaks.framework.EnvTools
 import org.koaks.framework.api.dsl.createChatClient
 import org.koaks.framework.entity.chat.ChatRequest
@@ -15,10 +15,10 @@ import kotlin.test.Test
 /**
  * Koaks.init() is not called here, so classes annotated with @Tool will not be scanned
  */
-class TestToolImplementation {
+class TestToolInterface {
 
     @Test
-    fun testToolCall() = runBlocking {
+    fun testToolCall() = runTest {
         val client = createChatClient {
             model {
                 qwen(
@@ -49,7 +49,7 @@ class TestToolImplementation {
     }
 
     @Test
-    fun testParallelToolCall() = runBlocking {
+    fun testParallelToolCall() = runTest {
         val clientWithDsl = createChatClient {
             model {
                 qwen(
@@ -79,7 +79,7 @@ class TestToolImplementation {
     }
 
     @Test
-    fun testToolCallDsl() = runBlocking {
+    fun testToolCallDsl() = runTest {
         val client = createChatClient {
             model {
                 qwen(

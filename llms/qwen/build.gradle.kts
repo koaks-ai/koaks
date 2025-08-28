@@ -1,3 +1,6 @@
+import org.gradle.kotlin.dsl.withType
+import org.jetbrains.kotlin.gradle.dsl.KotlinJsCompile
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
@@ -23,6 +26,11 @@ kotlin {
     }
 }
 
+tasks.withType<KotlinJsCompile>().configureEach {
+    compilerOptions {
+        target.set("es2015")
+    }
+}
 
 mavenPublishing {
     publishToMavenCentral()

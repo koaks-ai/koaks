@@ -1,5 +1,5 @@
-import org.gradle.kotlin.dsl.getByType
-import org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsEnvSpec
+import org.gradle.kotlin.dsl.withType
+import org.jetbrains.kotlin.gradle.dsl.KotlinJsCompile
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -15,10 +15,8 @@ kotlin {
         jvm()
         js(IR){
             nodejs {}
-            binaries.executable()
         }
 
-        // non-common dependencies for all modules
         val commonMain by getting {
             dependencies {
                 api(libs.ktor.client.core)
@@ -31,8 +29,8 @@ kotlin {
 
         val jvmMain by getting {
             dependencies {
-                api(libs.ktor.client.cio)
-                api(libs.coroutines.reactor)
+                api(libs.ktor.client.okhttp)
+//                api(libs.coroutines.reactor)
                 api(libs.logback.classic)
                 api(libs.reflections)
                 api(libs.kotlin.reflect)
@@ -49,16 +47,22 @@ kotlin {
     }
 }
 
-//// for kotlin/js nodejs
+// for kotlin/js nodejs
 //project.plugins.withType<org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsPlugin> {
 //    // use local nodejs
 //    project.extensions.getByType<NodeJsEnvSpec>().download.set(false)
 //}
-//
+
 //rootProject.plugins.withType<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin> {
-//    // todo: this `download` will be removed in version 2.2, need migrate
+//    // this `download` will be removed in version 2.2, need migrate
 //    rootProject.the<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension>().download =  false
 //}
+
+tasks.withType<KotlinJsCompile>().configureEach {
+    compilerOptions {
+        target.set("es2015")
+    }
+}
 
 mavenPublishing {
     publishToMavenCentral()
