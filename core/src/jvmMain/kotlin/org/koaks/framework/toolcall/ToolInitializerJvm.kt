@@ -1,5 +1,6 @@
 package org.koaks.framework.toolcall
 
+import org.koaks.framework.annotation.Tool
 import org.koaks.framework.context.KoaksContext
 import org.reflections.Reflections
 import org.reflections.scanners.Scanners
