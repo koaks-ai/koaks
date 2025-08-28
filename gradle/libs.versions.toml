@@ -29,14 +29,14 @@ coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", ve
 coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "serializationCore" }
 
-# jvm、android、native
-ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
-
 # jvmMain
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 reflections = { module = "org.reflections:reflections", version.ref = "reflections" }
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
 coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactor", version.ref = "coroutines" }
+
+# jvmMain & androidMain
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 
 # jvmTest
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
