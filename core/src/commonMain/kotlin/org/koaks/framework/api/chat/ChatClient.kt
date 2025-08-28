@@ -1,12 +1,11 @@
-package org.koaks.framework.api.chat.completions
+package org.koaks.framework.api.chat
 
 import org.koaks.framework.entity.ModelResponse
-import org.koaks.framework.entity.chat.ChatResponse
 import org.koaks.framework.entity.chat.ChatRequest
+import org.koaks.framework.entity.chat.ChatResponse
 import org.koaks.framework.memory.IMemoryStorage
 import org.koaks.framework.model.AbstractChatModel
 import org.koaks.framework.service.ChatService
-
 
 class ChatClient<TRequest, TResponse>(
     private val model: AbstractChatModel<TRequest, TResponse>,

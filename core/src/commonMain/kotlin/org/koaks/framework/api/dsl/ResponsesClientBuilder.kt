@@ -1,6 +1,6 @@
 package org.koaks.framework.api.dsl
 
-import org.koaks.framework.api.chat.responses.ResponsesClient
+import org.koaks.framework.api.chat.ResponsesClient
 import org.koaks.framework.toolcall.toolinterface.Tool
 import org.koaks.framework.toolcall.ToolManager
 import org.koaks.framework.toolcall.ToolDefinition
