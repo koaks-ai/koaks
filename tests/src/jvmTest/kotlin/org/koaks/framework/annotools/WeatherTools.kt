@@ -1,4 +1,4 @@
-package org.koaks.framework.tools
+package org.koaks.framework.annotools
 
 import org.koaks.framework.annotation.Param
 import org.koaks.framework.annotation.Tool

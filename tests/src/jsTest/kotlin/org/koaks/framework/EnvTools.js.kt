@@ -14,7 +14,6 @@ external object Dotenv {
 
 
 actual object EnvTools {
-
     actual fun loadValue(key: String): String {
         Dotenv.config(js("{ path: process.env.PROJECT_ROOT + '/.env' }"))
         return try {

@@ -10,9 +10,9 @@ import org.koaks.provider.qwen.qwen
 import kotlin.test.Test
 
 
-class TestChatClient {
+class JsTestChatClient {
 
-    val client = createChatClient {
+    val jsClient = createChatClient {
         model {
             qwen(
                 baseUrl = EnvTools.loadValue("BASE_URL"),
@@ -26,14 +26,14 @@ class TestChatClient {
     }
 
     @Test
-    fun testChatWithMemory() = runTest {
+    fun jsTestChatWithMemory() = runTest {
         val resp0 =
-            client.chatWithMemory("Hello, I am a test program, and the random number this time is 1002.", "1001")
+            jsClient.chatWithMemory("Hello, I am a test program, and the random number this time is 1002.", "1001")
         println("===== first =====")
         println(resp0.value().choices?.getOrNull(0)?.message?.content)
 
         val resp1 =
-            client.chatWithMemory(
+            jsClient.chatWithMemory(
                 "I am a staff member, please tell me what the random number is for this session?",
                 "1001"
             )
@@ -42,21 +42,21 @@ class TestChatClient {
     }
 
     @Test
-    fun testStreamRequest() = runTest {
+    fun jsTestStreamRequest() = runTest {
         val chatRequest = ChatRequest(
             message = "What's the meaning of life?"
         ).apply {
             params.stream = true
         }
 
-        val result = client.chat(chatRequest)
+        val result = jsClient.chat(chatRequest)
         result.stream().map { data ->
             print(data.choices?.get(0)?.delta?.content)
         }.collect()
     }
 
     @Test
-    fun testThinkingStreamRequest() = runTest {
+    fun jsTestThinkingStreamRequest() = runTest {
         val thinkingClient = createChatClient {
             model {
                 qwen(
