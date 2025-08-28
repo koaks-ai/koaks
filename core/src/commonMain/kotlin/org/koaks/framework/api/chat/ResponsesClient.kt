@@ -1,4 +1,4 @@
-package org.koaks.framework.api.chat.responses
+package org.koaks.framework.api.chat
 
 import org.koaks.framework.entity.ModelResponse
 import org.koaks.framework.entity.chat.responsesapi.ResponsesMessage
@@ -9,7 +9,7 @@ import org.koaks.framework.service.ChatService
 import org.koaks.framework.toolcall.ToolDefinition
 
 class ResponsesClient(
-    private val model: AbstractChatModel<*,*>,
+    private val model: AbstractChatModel<*, *>,
     private val memory: IMemoryStorage,
     private val tools: List<ToolDefinition>
 ) {
