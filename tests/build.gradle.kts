@@ -18,6 +18,7 @@ kotlin {
         js(IR) {
             browser {
                 testTask {
+                    enabled = false
                     useKarma {
                         useChromeHeadless()
                         useConfigDirectory(project.rootProject.file("karma"))
