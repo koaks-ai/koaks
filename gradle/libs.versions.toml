@@ -44,3 +44,6 @@ kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5", versi
 
 # jsMain
 ktor-client-js = { module = "io.ktor:ktor-client-js", version.ref = "ktor" }
+
+# native
+ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
