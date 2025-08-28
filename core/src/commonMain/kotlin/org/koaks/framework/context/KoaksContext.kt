@@ -8,8 +8,8 @@ object KoaksContext {
         this.scanPackageName.add("org.koaks.framework")
     }
 
-    fun getPackageName(): Array<String> {
-        return this.scanPackageName.toTypedArray()
+    fun getPackageName(): List<String> {
+        return this.scanPackageName
     }
 
     fun addPackageName(packageName: String) {

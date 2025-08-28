@@ -19,7 +19,8 @@ class WeatherTools {
 
     @Tool(
         group = "location",
-        description = "Get the city where the user is located"
+        description = "Get the city where the user is located",
+        params =  []
     )
     fun getCity(): String {
         return "Shanghai"

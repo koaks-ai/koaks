@@ -45,7 +45,6 @@ fun SerialDescriptor.toToolParameters(): ToolDefinition.ToolParameters {
         val required = (0 until elementsCount)
             .filter { !isElementOptional(it) }
             .map { getElementName(it) }
-            .toTypedArray()
 
         ToolDefinition.ToolParameters(
             type = "object",
@@ -62,7 +61,7 @@ fun SerialDescriptor.toToolParameters(): ToolDefinition.ToolParameters {
                     description = ""
                 )
             ),
-            required = arrayOf("value")
+            required = listOf("value")
         )
     }
 }
