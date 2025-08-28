@@ -17,7 +17,7 @@ object ToolCaller : IOutCaller {
         return ToolManager.getTool(toolname)?.let {
             if (it.toolType == ToolType.ANNOTATION) {
                 val args = parseToolArguments(toolname, json)
-                `AnnoTypeCaller.jvm`.call(it, args.toTypedArray())
+                AnnoTypeCaller.call(it, args.toTypedArray())
             } else {
                 // only two types: ANNOTATION and INTERFACE
                 // for tools of type INTERFACE, toolImplementation can never be null

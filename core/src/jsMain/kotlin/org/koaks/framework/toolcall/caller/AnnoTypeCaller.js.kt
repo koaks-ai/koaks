@@ -3,7 +3,7 @@ package org.koaks.framework.toolcall.caller
 import org.koaks.framework.toolcall.ToolDefinition
 
 @Suppress(names = ["EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING"])
-actual object `AnnoTypeCaller.jvm` {
+actual object AnnoTypeCaller {
     actual suspend fun call(
         tool: ToolDefinition,
         args: Array<Any>?
