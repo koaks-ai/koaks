@@ -18,6 +18,8 @@ kotlin {
             nodejs {}
         }
 
+        macosArm64("macosArm") {}
+
         val commonMain by getting {
             dependencies {
                 implementation(project(":core"))

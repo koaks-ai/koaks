@@ -18,6 +18,8 @@ kotlin {
             nodejs {}
         }
 
+        macosArm64("macosArm") {}
+
         val commonMain by getting {
             dependencies {
                 api(libs.ktor.client.core)
@@ -42,6 +44,12 @@ kotlin {
         val jsMain by getting {
             dependencies {
                 api(libs.ktor.client.js)
+            }
+        }
+
+        val macosArmMain by getting {
+            dependencies {
+                api(libs.ktor.client.darwin)
             }
         }
 
