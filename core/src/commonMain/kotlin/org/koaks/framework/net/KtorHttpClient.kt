@@ -1,7 +1,6 @@
 package org.koaks.framework.net
 
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.HttpClient
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -29,22 +28,12 @@ import kotlinx.serialization.KSerializer
 import org.koaks.framework.model.TypeAdapter
 import org.koaks.framework.utils.JsonUtil
 
-class HttpClient(
+expect fun createHttpClient(config: HttpClientConfig): HttpClient
+
+class KtorHttpClient(
     private val config: HttpClientConfig
 ) {
-    private val ktorClient = io.ktor.client.HttpClient {
-        install(HttpTimeout) {
-            requestTimeoutMillis = config.callTimeout * 1000
-            connectTimeoutMillis = config.connectTimeout * 1000
-            socketTimeoutMillis = config.readTimeout * 1000
-        }
-        defaultRequest {
-            url(config.baseUrl)
-            header(HttpHeaders.ContentType, "application/json")
-            header(HttpHeaders.Accept, "application/json")
-            header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
-        }
-    }
+    private val ktorClient = createHttpClient(config)
 
     suspend fun <T> postAsString(request: T, serializer: KSerializer<T>): Result<String> {
         return runCatching {

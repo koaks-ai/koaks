@@ -1,8 +1,6 @@
 package org.koaks.framework.client
 
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.promise
+import kotlinx.coroutines.runBlocking
 import org.koaks.framework.EnvTools
 import org.koaks.framework.api.dsl.createChatClient
 import org.koaks.framework.entity.chat.ChatRequest
@@ -17,11 +15,10 @@ import kotlin.test.Test
 /**
  * Koaks.init() is not called here, so classes annotated with @Tool will not be scanned
  */
-@OptIn(DelicateCoroutinesApi::class)
-class TestToolImplementation {
+class TestToolInterface {
 
     @Test
-    fun testToolCall() = GlobalScope.promise {
+    fun testToolCall() = runBlocking {
         val client = createChatClient {
             model {
                 qwen(
@@ -52,7 +49,7 @@ class TestToolImplementation {
     }
 
     @Test
-    fun testParallelToolCall() = GlobalScope.promise {
+    fun testParallelToolCall() = runBlocking {
         val clientWithDsl = createChatClient {
             model {
                 qwen(
@@ -82,7 +79,7 @@ class TestToolImplementation {
     }
 
     @Test
-    fun testToolCallDsl() = GlobalScope.promise {
+    fun testToolCallDsl() = runBlocking {
         val client = createChatClient {
             model {
                 qwen(

@@ -7,7 +7,7 @@ import org.koaks.framework.EnvTools
 import org.koaks.framework.entity.Message
 import org.koaks.framework.entity.chat.ChatResponse
 import org.koaks.framework.entity.inner.FullChatRequest
-import org.koaks.framework.net.HttpClient
+import org.koaks.framework.net.KtorHttpClient
 import org.koaks.framework.net.HttpClientConfig
 import org.koaks.framework.net.postAsObject
 import org.koaks.framework.net.postAsObjectStream
@@ -17,7 +17,7 @@ import kotlin.test.Test
 
 class TestHttpClient {
 
-    val client = HttpClient(
+    val client = KtorHttpClient(
         HttpClientConfig(
             baseUrl = EnvTools.loadValue("BASE_URL"),
             apiKey = EnvTools.loadValue("API_KEY"),
