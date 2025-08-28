@@ -32,12 +32,15 @@ class ChatService<TRequest, TResponse>(
 
     companion object {
         private val logger = KotlinLogging.logger {}
+
+        /** The maximum number of times the tool call is executed. **/
         private const val MAX_TOOL_CALL_EPOCH = 30
     }
 
-    private var ktorHttpClient = KtorHttpClient(
+    private var httpClient = KtorHttpClient(
         HttpClientConfig(
-            baseUrl = model.baseUrl, apiKey = model.apiKey
+            baseUrl = model.baseUrl,
+            apiKey = model.apiKey
         )
     )
 
@@ -60,7 +63,7 @@ class ChatService<TRequest, TResponse>(
         return if (request.stream == true && request.tools.isNullOrEmpty()) {
             val responseContent = StringBuilder()
             val streamFlow =
-                ktorHttpClient.postAsObjectStream(
+                httpClient.postAsObjectStream(
                     model.toChatRequest(request), model.typeAdapter
                 ).map { model.toChatResponse(it) }
                     .onEach { data ->
@@ -82,7 +85,7 @@ class ChatService<TRequest, TResponse>(
                 logger.warn { "Streaming is not supported for tools. Falling back to non-streaming mode." }
             }
             val initialResp = ModelResponse.fromResult(
-                ktorHttpClient.postAsObject(
+                httpClient.postAsObject(
                     model.toChatRequest(request), model.typeAdapter
                 ).map { model.toChatResponse(it) }
             ) { ChatResponse() }
@@ -95,6 +98,9 @@ class ChatService<TRequest, TResponse>(
         }
     }
 
+    /**
+     * Handles tool call response.
+     */
     private suspend fun handleToolCall(
         request: FullChatRequest,
         initialResponse: ModelResponse<ChatResponse>,
@@ -125,7 +131,7 @@ class ChatService<TRequest, TResponse>(
 
             toolCallCount++
             response = ModelResponse.fromResult(
-                ktorHttpClient.postAsObject(
+                httpClient.postAsObject(
                     model.toChatRequest(request), model.typeAdapter
                 ).map { model.toChatResponse(it) }
             ) { ChatResponse() }
@@ -138,6 +144,9 @@ class ChatService<TRequest, TResponse>(
         return response
     }
 
+    /**
+     * Executes tool call.
+     */
     private suspend fun executeToolCall(
         tool: ChatResponse.ToolCall, caller: ToolCaller, request: FullChatRequest, messages: MutableList<Message>
     ) {
@@ -151,6 +160,9 @@ class ChatService<TRequest, TResponse>(
 
     private val mutex = Mutex()
 
+    /**
+     * Save message to memory storage. the function is thread-safe
+     */
     private suspend fun saveMessage(message: Message?, messageId: String?, messages: MutableList<Message>) {
         mutex.withLock {
             if (message == null) return
@@ -167,7 +179,7 @@ class ChatService<TRequest, TResponse>(
     }
 
     /**
-     * Merge model tool list and request tool list.
+     * Merge model's tool list and request's tool list.
      */
     private fun mergeToolList(chatRequest: ChatRequest) {
         chatRequest.params.tools = (chatRequest.params.tools.orEmpty() + model.tools.orEmpty())
