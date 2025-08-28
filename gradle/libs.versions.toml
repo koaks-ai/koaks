@@ -7,8 +7,8 @@ mavenPublish = "0.34.0"
 # Libraries
 kotlinLogging = "7.0.3"
 ktor = "3.2.3"
-serializationJson = "1.9.0"
-serializationCore = "1.6.3"
+serializationJson = "1.8.1"
+serializationCore = "1.8.1"
 coroutines = "1.10.2"
 
 logback = "1.5.13"
