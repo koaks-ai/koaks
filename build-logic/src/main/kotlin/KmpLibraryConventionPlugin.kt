@@ -10,9 +10,13 @@ class KmpLibraryConventionPlugin : Plugin<Project> {
         pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         pluginManager.apply("org.jetbrains.kotlin.plugin.serialization")
         extensions.configure<KotlinMultiplatformExtension> {
-            jvmToolchain(21)
+            jvmToolchain(17)
 
-            jvm()
+            jvm {
+                compilations.all {
+                    kotlinOptions.jvmTarget = "17"
+                }
+            }
             if (target.name == "tests") {
                 js(IR) {
                     browser {
