@@ -1,6 +1,7 @@
 package org.koaks.framework.net
 
 import io.ktor.client.HttpClient
+import io.ktor.client.engine.HttpClientEngineFactory
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -11,7 +12,12 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.client.network.sockets.SocketTimeoutException
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.request.accept
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readUTF8Line
@@ -28,12 +34,22 @@ import kotlinx.serialization.KSerializer
 import org.koaks.framework.model.TypeAdapter
 import org.koaks.framework.utils.JsonUtil
 
-expect fun createHttpClient(config: HttpClientConfig): HttpClient
-
 class KtorHttpClient(
     private val config: HttpClientConfig
 ) {
-    private val ktorClient = createHttpClient(config)
+    private val ktorClient = HttpClient(provideEngine()) {
+        install(HttpTimeout) {
+            requestTimeoutMillis = config.callTimeout * 1000L
+            connectTimeoutMillis = config.connectTimeout * 1000L
+            socketTimeoutMillis = config.readTimeout * 1000L
+        }
+        defaultRequest {
+            url(config.baseUrl)
+            contentType(ContentType.Application.Json)
+            accept(ContentType.Application.Json)
+            header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
+        }
+    }
 
     suspend fun <T> postAsString(request: T, serializer: KSerializer<T>): Result<String> {
         return runCatching {
