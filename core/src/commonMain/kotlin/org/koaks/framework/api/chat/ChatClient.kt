@@ -6,11 +6,17 @@ import org.koaks.framework.entity.chat.ChatResponse
 import org.koaks.framework.memory.IMemoryStorage
 import org.koaks.framework.model.AbstractChatModel
 import org.koaks.framework.service.ChatService
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 class ChatClient<TRequest, TResponse>(
     private val model: AbstractChatModel<TRequest, TResponse>,
     private val memory: IMemoryStorage,
 ) {
+
+    @ExperimentalUuidApi
+    private val chatClientId =  Uuid.random()
+
     private val chatService = ChatService(model, memory)
 
     suspend fun generate(message: String): String {
