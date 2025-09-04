@@ -19,6 +19,7 @@ fun <T> Tool<T>.toDefinition(): ToolDefinition {
         )
     ).apply {
         group = this@toDefinition.group ?: "default"
+        returnDirectly =this@toDefinition.returnDirectly
         toolType = ToolType.INTERFACE
         toolImplementation = this@toDefinition
     }

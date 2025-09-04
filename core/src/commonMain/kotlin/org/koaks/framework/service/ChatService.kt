@@ -152,9 +152,13 @@ class ChatService<TRequest, TResponse>(
     ) {
         val toolName = tool.function?.name.orEmpty()
         val argsJson = tool.function?.arguments ?: ""
-        val result = caller.call(toolName, argsJson, model.toolContainer)
+        val currentToolContainer = model.toolContainer
+        val result = caller.call(toolName, argsJson, currentToolContainer)
 
         logger.info { "tool_call: id=${tool.id}, name=$toolName, args=$argsJson" }
+        if (currentToolContainer[toolName]!!.returnDirectly) {
+            TODO("return directly is not supported yet")
+        }
         saveMessage(Message.tool(result, tool.id), request.messageId, messages)
     }
 

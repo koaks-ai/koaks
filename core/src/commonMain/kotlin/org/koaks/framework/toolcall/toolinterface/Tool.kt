@@ -58,6 +58,17 @@ interface Tool<T> {
     val serializer: KSerializer<T>
 
     /**
+     * By default, the results of tool calls are sent back to the model as responses. The model can then use these results to continue the conversation.
+     *
+     * In certain scenarios, you may want to return the results directly to the caller instead of sending them back to the model.
+     *
+     * For example, if you're building an agent that relies on a RAG (Retrieval-Augmented Generation) tool,
+     * you may prefer to return the results directly to the caller rather than sending them back to the model
+     * for unnecessary post-processing. Alternatively, you may have certain tools that should terminate the agent's reasoning loop.
+     */
+    val returnDirectly: Boolean
+
+    /**
      * "execute" is the function that actually executes the tool.
      */
     suspend fun execute(input: T): String?

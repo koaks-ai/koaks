@@ -11,6 +11,7 @@ class WeatherImplTools : Tool<WeatherInput> {
     override val description: String = "get the weather for a specific city today."
     override val group: String = "weather"
     override val serializer: KSerializer<WeatherInput> = WeatherInput.serializer()
+    override val returnDirectly: Boolean = false
 
     override suspend fun execute(input: WeatherInput): String {
         return "For ${input.city} on ${input.date}, the weather is cloudy with a high wind warning."
