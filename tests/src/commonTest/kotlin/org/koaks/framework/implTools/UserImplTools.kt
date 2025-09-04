@@ -10,6 +10,7 @@ class UserImplTools() : Tool<NoInput> {
     override val description: String = "get the city where the user is located"
     override val group: String = "location"
     override val serializer: KSerializer<NoInput> = NoInput.serializer()
+    override val returnDirectly: Boolean = false
 
     override suspend fun execute(input: NoInput): String {
         return "Shanghai"

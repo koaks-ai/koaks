@@ -16,6 +16,12 @@ data class ToolDefinition(
     @Transient
     val platform: PlatformType = PlatformUtils.platformType()
 
+    /**
+     * see [Tool]
+     */
+    @Transient
+    var returnDirectly: Boolean = false
+
     @Transient
     var toolType: ToolType = ToolType.ANNOTATION
 
