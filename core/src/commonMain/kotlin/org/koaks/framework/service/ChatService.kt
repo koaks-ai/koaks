@@ -57,45 +57,56 @@ class ChatService<TRequest, TResponse>(
      */
     suspend fun execChat(chatRequest: ChatRequest, memoryId: String? = null): ModelResponse<ChatResponse> {
         mergeToolList(chatRequest)
-        val messageList = mergeMessageList(chatRequest.message, memoryId)
-        val request = mergeParamsAndMapToFullRequest(chatRequest, messageList)
+        val messages = mergeMessageList(chatRequest.message, memoryId)
+        val fullReq = mergeParamsAndMapToFullRequest(chatRequest, messages)
 
-        return if (request.stream == true && request.tools.isNullOrEmpty()) {
-            val responseContent = StringBuilder()
-            val streamFlow =
-                httpClient.postAsObjectStream(
-                    model.toChatRequest(request), model.typeAdapter
-                ).map { model.toChatResponse(it) }
-                    .onEach { data ->
-                        val chunk = data.choices?.getOrNull(0)?.delta?.content
-                        if (!chunk.isNullOrEmpty()) {
-                            responseContent.append(chunk)
-                        }
-                    }
-
-            ModelResponse.fromStream(
-                streamFlow.onCompletion {
-                    val assistantMessage = Message.assistant(responseContent.toString())
-                    saveMessage(assistantMessage, memoryId, request.messages)
-                }
-            )
+        return if (fullReq.stream == true && fullReq.tools.isNullOrEmpty()) {
+            handleStreaming(fullReq, memoryId)
         } else {
-            if (request.stream == true) {
-                request.stream = false
-                logger.warn { "Streaming is not supported for tools. Falling back to non-streaming mode." }
-            }
-            val initialResp = ModelResponse.fromResult(
-                httpClient.postAsObject(
-                    model.toChatRequest(request), model.typeAdapter
-                ).map { model.toChatResponse(it) }
-            ) { ChatResponse() }
-            // mapper ChatMessage.id to Message.id
-            initialResp.value().apply {
-                choices?.forEach { it.message?.id = this.id }
-            }
-            saveMessage(initialResp.value().choices?.firstOrNull()?.message, memoryId, request.messages)
-            handleToolCall(request, initialResp)
+            handleNonStreaming(fullReq, memoryId)
         }
+    }
+
+    private fun handleStreaming(request: FullChatRequest, memoryId: String?): ModelResponse<ChatResponse> {
+        val aggregator = StreamingAggregator()
+        val stream = httpClient.postAsObjectStream(
+            model.toChatRequest(request),
+            model.typeAdapter
+        ).map { model.toChatResponse(it) }
+            .onEach { aggregator.accept(it) }
+
+        return ModelResponse.fromStream(
+            stream.onCompletion {
+                saveMessage(
+                    Message.assistant(aggregator.result()),
+                    memoryId,
+                    request.messages
+                )
+            }
+        )
+    }
+
+    private suspend fun handleNonStreaming(request: FullChatRequest, memoryId: String?): ModelResponse<ChatResponse> {
+        if (request.stream == true) {
+            request.stream = false
+            logger.warn { "Streaming is not supported for tools. Falling back to non-streaming mode." }
+        }
+
+        val response = ModelResponse.fromResult(
+            httpClient.postAsObject(
+                model.toChatRequest(request), model.typeAdapter
+            ).map { model.toChatResponse(it) }
+        ) { ChatResponse() }
+
+        // mapper ChatMessage.id to Message.id
+        response.value().choices?.forEach { it.message?.id = response.value().id }
+        saveMessage(
+            response.value().choices?.firstOrNull()?.message,
+            memoryId,
+            request.messages
+        )
+
+        return handleToolCall(request, response)
     }
 
     /**
@@ -231,6 +242,19 @@ class ChatService<TRequest, TResponse>(
             frequencyPenalty = params.frequencyPenalty ?: model.frequencyPenalty
             logitBias = params.logitBias ?: model.logitBias
         }
+    }
+
+    private class StreamingAggregator {
+        private val builder = StringBuilder()
+
+        fun accept(delta: ChatResponse) {
+            val chunk = delta.choices?.getOrNull(0)?.delta?.content
+            if (!chunk.isNullOrEmpty()) {
+                builder.append(chunk)
+            }
+        }
+
+        fun result(): String = builder.toString()
     }
 
 }
