@@ -16,7 +16,7 @@ class ToolBuilder<T>(val serializer: KSerializer<T>) {
         override val description = this@ToolBuilder.description
         override val group = this@ToolBuilder.group
         override val serializer = this@ToolBuilder.serializer
-        override val returnDirectly = true
+        override val returnDirectly = this@ToolBuilder.returnDirectly
         override suspend fun execute(input: T): String = this@ToolBuilder.execute(input)
     }
 }
