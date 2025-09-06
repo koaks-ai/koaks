@@ -26,6 +26,9 @@ object ToolManager {
         nameSet.add(tool.toolName)
     }
 
+    fun getTool(toolName: String): ToolDefinition? =
+        globalGroupContainer.values.flatten().firstOrNull { it.toolName == toolName }
+
     fun getGroupToolList(group: String): MutableList<ToolDefinition>? = globalGroupContainer[group]
 
     fun showContainerStatus() {

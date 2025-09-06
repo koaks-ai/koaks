@@ -13,7 +13,7 @@ class ResponsesClient(
     private val memory: IMemoryStorage,
     private val tools: List<ToolDefinition>
 ) {
-    private val chatService = ChatService(model, memory)
+    private val chatService = ChatService(model, memory, "unsupport")
 
     fun create(responsesRequest: ResponsesRequest): ModelResponse<ResponsesMessage> {
         TODO("Not implemented")

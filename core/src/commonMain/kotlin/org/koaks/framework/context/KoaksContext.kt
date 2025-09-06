@@ -24,4 +24,12 @@ object KoaksContext {
         }
     }
 
+    fun registerToolList(clientId: String, availableTools: MutableList<String>) {
+        clientToolContainer[clientId] = availableTools
+    }
+
+    fun getAvailableTools(clientId: String): MutableList<String>? {
+        return clientToolContainer[clientId]
+    }
+
 }
