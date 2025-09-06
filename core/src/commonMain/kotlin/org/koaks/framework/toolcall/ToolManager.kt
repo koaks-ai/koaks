@@ -12,9 +12,6 @@ object ToolManager {
     // check whether there is a duplicate tool name
     private val nameSet = HashSet<String>()
 
-    // tool implemented using the tool interface
-    private val interfaceContainer: HashMap<String, Tool<*>> = HashMap()
-
     fun registerTool(tool: ToolDefinition) {
         logger.debug { tool.toJson() }
         if (nameSet.contains(tool.toolName)) {
@@ -24,6 +21,8 @@ object ToolManager {
             globalGroupContainer[tool.group] = mutableListOf(tool)
         }
         nameSet.add(tool.toolName)
+
+        logger.debug { showContainerStatus() }
     }
 
     fun getTool(toolName: String): ToolDefinition? =
