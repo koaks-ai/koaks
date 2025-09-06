@@ -1,9 +1,8 @@
-package org.koaks.framework.utils
+package org.koaks.framework.utils.json
 
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer
-
 
 object JsonUtil {
 

@@ -3,72 +3,68 @@ package org.koaks.framework.entity
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import org.koaks.framework.entity.chat.ChatResponse
+import org.koaks.framework.entity.enums.MessageRole
+import org.koaks.framework.utils.json.ContentListSerializer
 
 @Serializable
-class Message {
-    var id: String? = null
-    var content: String? = null
-    // TODO: add refusal
-//    var refusal: Any? = null
-    var role: String? = null
+data class Message(
+    @SerialName("id")
+    var id: String? = null,
+
+    @SerialName("content")
+    @Serializable(with = ContentListSerializer::class)
+    var content: List<ContentItem>,
+
+    @SerialName("role")
+    var role: MessageRole,
 
     @SerialName("tool_calls")
-    var toolCalls: MutableList<ChatResponse.ToolCall>? = null
+    var toolCalls: MutableList<ChatResponse.ToolCall>? = null,
 
     @SerialName("function_call")
-    var functionCall: ChatResponse.FunctionCall? = null
+    var functionCall: ChatResponse.FunctionCall? = null,
 
-    var audio: String? = null
+    @SerialName("audio")
+    var audio: String? = null,
 
     @SerialName("tool_call_id")
-    var toolCallID: String? = null
-
-    constructor(role: String, content: String) {
-        this.role = role
-        this.content = content
-    }
-
-    constructor(role: String, content: String, toolCallID: String?) {
-        this.role = role
-        this.content = content
-        this.toolCallID = toolCallID
-    }
-
-    override fun toString(): String {
-        return "Message{" +
-                "content='" + content + '\'' +
-//                ", refusal=" + refusal +
-                ", role='" + role + '\'' +
-                ", toolCalls=" + toolCalls +
-                ", functionCall=" + functionCall +
-                ", audio='" + audio + '\'' +
-                ", toolCallID='" + toolCallID + '\'' +
-                '}'
-    }
-
+    var toolCallId: String? = null
+) {
     companion object {
-        fun of(role: String, content: String): Message {
-            return Message(role, content)
-        }
+        fun system(text: String) = Message(
+            role = MessageRole.SYSTEM,
+            content = listOf(ContentItem.Text(text))
+        )
 
-        fun system(content: String): Message {
-            return Message("system", content)
-        }
+        fun assistantText(text: String?) = Message(
+            role = MessageRole.ASSISTANT,
+            content = listOf(ContentItem.Text(text))
+        )
 
-        fun assistant(content: String): Message {
-            return Message("assistant", content)
-        }
+        fun tool(content: String, toolCallId: String) = Message(
+            role = MessageRole.TOOL,
+            content = listOf(ContentItem.Text(content)),
+        )
 
-        fun user(content: String): Message {
-            return Message("user", content)
-        }
+        fun userText(text: String) = Message(
+            role = MessageRole.USER,
+            content = listOf(ContentItem.Text(text))
+        )
 
-        fun tool(content: String, toolCallId: String): Message {
-            return Message("tool", content, toolCallId)
-        }
+        fun userImage(url: String, desc: String? = null) = Message(
+            role = MessageRole.USER,
+            content = listOfNotNull(
+                ContentItem.ImageUrl(url),
+                desc?.let { ContentItem.Text(it) }
+            )
+        )
 
-        fun developer(content: String): Message {
-            return Message("developer", content)
-        }
+        fun userVideo(frames: List<String>, desc: String? = null) = Message(
+            role = MessageRole.USER,
+            content = listOfNotNull(
+                ContentItem.Video(frames),
+                desc?.let { ContentItem.Text(it) }
+            )
+        )
     }
 }

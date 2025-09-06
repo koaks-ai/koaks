@@ -4,7 +4,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.descriptors.*
 import org.koaks.framework.annotation.Description
 import org.koaks.framework.toolcall.toolinterface.Tool
-import org.koaks.framework.utils.JsonUtil
+import org.koaks.framework.utils.json.JsonUtil
 
 private val logger = KotlinLogging.logger {}
 

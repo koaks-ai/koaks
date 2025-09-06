@@ -81,7 +81,7 @@ class ChatService<TRequest, TResponse>(
         return ModelResponse.fromStream(
             stream.onCompletion {
                 saveMessage(
-                    Message.assistant(aggregator.result()),
+                    Message.assistantText(aggregator.result()),
                     memoryId,
                     request.messages
                 )
@@ -211,7 +211,7 @@ class ChatService<TRequest, TResponse>(
             // need to call toMutableList() to create a copy, avoiding modification of the original reference
             memoryStorage.getMessageList(messageId).toMutableList()
         } ?: mutableListOf()).apply {
-            saveMessage(Message.user(message), messageId, this)
+            saveMessage(Message.userText(message), messageId, this)
         }
     }
 

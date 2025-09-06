@@ -45,7 +45,7 @@ class TestChatClient {
 
         val resp1 =
             client.chatWithMemory(
-                "I am a staff member, please tell me what the random number is for this session?",
+                "I am a staff member, please only tell me what the random number is for this session?",
                 "1001"
             )
         println("===== second =====")
