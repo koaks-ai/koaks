@@ -1,7 +1,6 @@
 package org.koaks.framework.net
 
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.HttpClientEngineFactory
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -32,7 +31,7 @@ import kotlinx.coroutines.launch
 import kotlinx.io.IOException
 import kotlinx.serialization.KSerializer
 import org.koaks.framework.model.TypeAdapter
-import org.koaks.framework.utils.JsonUtil
+import org.koaks.framework.utils.json.JsonUtil
 
 class KtorHttpClient(
     private val config: HttpClientConfig

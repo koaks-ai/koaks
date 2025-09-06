@@ -1,7 +1,7 @@
 package org.koaks.framework.toolcall.toolinterface
 
 import kotlinx.serialization.KSerializer
-import org.koaks.framework.utils.JsonUtil
+import org.koaks.framework.utils.json.JsonUtil
 
 /**
  * Represents a **callable Tool** in the framework.

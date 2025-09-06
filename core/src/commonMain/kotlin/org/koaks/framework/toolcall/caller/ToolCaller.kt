@@ -5,7 +5,7 @@ import kotlinx.serialization.json.JsonObject
 import org.koaks.framework.toolcall.ToolDefinition
 import org.koaks.framework.toolcall.ToolManager
 import org.koaks.framework.toolcall.ToolType
-import org.koaks.framework.utils.JsonUtil
+import org.koaks.framework.utils.json.JsonUtil
 
 
 object ToolCaller : IOutCaller {

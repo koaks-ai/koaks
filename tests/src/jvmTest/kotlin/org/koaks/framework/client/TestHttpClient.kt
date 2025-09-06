@@ -29,7 +29,7 @@ class TestHttpClient {
         val request = FullChatRequest(
             modelName = "qwen-plus",
             messages = mutableListOf(
-                Message.user("What is the meaning of life?")
+                Message.userText("What is the meaning of life?")
             )
         ).apply {
             stream = false
@@ -53,7 +53,7 @@ class TestHttpClient {
         val request = FullChatRequest(
             modelName = "qwen-plus",
             messages = mutableListOf(
-                Message.user("what's the meaning of life？")
+                Message.userText("what's the meaning of life？")
             )
         ).apply {
             stream = true
