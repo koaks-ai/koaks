@@ -1,6 +1,7 @@
 package org.koaks.framework.api.dsl
 
 import org.koaks.framework.api.chat.ChatClient
+import org.koaks.framework.context.KoaksContext
 import org.koaks.framework.toolcall.toolinterface.Tool
 import org.koaks.framework.toolcall.ToolManager
 import org.koaks.framework.toolcall.ToolDefinition
@@ -9,17 +10,17 @@ import org.koaks.framework.toolcall.toDefinition
 
 class ChatClientBuilder : BaseChatClientBuilder() {
 
-    private var tools: List<ToolDefinition> = listOf()
+    private var tools: MutableList<String> = mutableListOf()
 
     fun tools(block: CompletionToolBuilder.() -> Unit) {
         val builder = CompletionToolBuilder()
         builder.block()
         tools = builder.build()
-        model.toolContainer.putAll(tools.associateBy { it.toolName })
+        KoaksContext.registerToolList(clientId, tools)
     }
 
     fun build(): ChatClient<*, *> {
-        return ChatClient(model, memory)
+        return ChatClient(model, memory, clientId)
     }
 
 }
@@ -27,21 +28,21 @@ class ChatClientBuilder : BaseChatClientBuilder() {
 class CompletionToolBuilder {
     private val actions: MutableList<() -> Unit> = mutableListOf()
     private var groupsAction: (() -> Unit)? = null
-    private val toolList: MutableList<ToolDefinition> = mutableListOf()
+    private val toolNameList: MutableList<String> = mutableListOf()
 
     fun default() {
         actions += {
-            ToolManager.getGroupToolList("default")?.let {
-                toolList.addAll(it)
+            ToolManager.getGroupToolList("default")?.let { tool ->
+                toolNameList.addAll(tool.map { it.toolName })
             }
         }
     }
 
     fun groups(vararg names: String) {
         groupsAction = {
-            names.forEach {
-                ToolManager.getGroupToolList(it)?.let {
-                    toolList.addAll(it)
+            names.forEach { group ->
+                ToolManager.getGroupToolList(group)?.let { tool ->
+                    toolNameList.addAll(tool.map { it.toolName })
                 }
             }
         }
@@ -49,34 +50,33 @@ class CompletionToolBuilder {
 
     fun addTools(vararg tools: ToolDefinition) {
         actions += {
-            toolList += tools
+            toolNameList += tools.map { it.toolName }
+        }
+        // add to global tool container
+        tools.forEach {
+            ToolManager.registerTool(it)
         }
     }
 
     fun addTools(vararg tools: Tool<*>) {
         actions += {
             tools.map { it.toDefinition() }.forEach {
-                toolList += it
+                toolNameList += it.toolName
             }
+        }
+        // add to global tool container
+        tools.forEach {
+            ToolManager.registerTool(it.toDefinition())
         }
     }
 
-    fun addToolsToGlobal(vararg tools: Tool<*>) {
-        actions += {
-            tools.map { it.toDefinition() }.forEach {
-                toolList += it
-                ToolManager.registerTool(it)
-            }
-        }
-    }
-
-    fun build(): List<ToolDefinition> {
+    fun build(): MutableList<String> {
         actions.forEach { it.invoke() }
         // make the group action is always last
         groupsAction?.invoke() ?: run {
             groups("default")
         }
-        return toolList
+        return toolNameList
     }
 }
 

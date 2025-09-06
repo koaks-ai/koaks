@@ -12,6 +12,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import org.koaks.framework.context.KoaksContext
 import org.koaks.framework.entity.chat.ChatResponse
 import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.entity.inner.FullChatRequest
@@ -22,12 +23,14 @@ import org.koaks.framework.memory.IMemoryStorage
 import org.koaks.framework.model.AbstractChatModel
 import org.koaks.framework.net.KtorHttpClient
 import org.koaks.framework.net.HttpClientConfig
+import org.koaks.framework.toolcall.ToolManager
 import org.koaks.framework.toolcall.caller.ToolCaller
 
 
 class ChatService<TRequest, TResponse>(
     val model: AbstractChatModel<TRequest, TResponse>,
     val memoryStorage: IMemoryStorage = DefaultMemoryStorage,
+    val clientId: String,
 ) {
 
     companion object {
@@ -163,13 +166,12 @@ class ChatService<TRequest, TResponse>(
     ) {
         val toolName = tool.function?.name.orEmpty()
         val argsJson = tool.function?.arguments ?: ""
-        val currentToolContainer = model.toolContainer
-        val result = caller.call(toolName, argsJson, currentToolContainer)
+        val result = caller.call(toolName, argsJson)
 
         logger.info { "tool_call: id=${tool.id}, name=$toolName, args=$argsJson" }
-        if (currentToolContainer[toolName]!!.returnDirectly) {
-            TODO("return directly is not supported yet")
-        }
+//        if (currentToolContainer[toolName]!!.returnDirectly) {
+//            TODO("return directly is not supported yet")
+//        }
         saveMessage(Message.tool(result, tool.id), request.messageId, messages)
     }
 
@@ -199,14 +201,9 @@ class ChatService<TRequest, TResponse>(
      * under normal circumstances, you should always ensure that only the toolContainer contains content.
      */
     private fun mergeToolList(chatRequest: ChatRequest) {
-        chatRequest.params.tools = (
-                chatRequest.params.tools.orEmpty() +
-                        model.tools.orEmpty() +
-                        model.toolContainer.values.toList()
-                )
-            .distinct()
-            .takeIf { it.isNotEmpty() }
-            ?.toMutableList()
+        with(chatRequest) {
+
+        }
     }
 
     private suspend fun mergeMessageList(message: String, messageId: String?): MutableList<Message> {
@@ -222,25 +219,25 @@ class ChatService<TRequest, TResponse>(
         chatRequest: ChatRequest,
         messageList: MutableList<Message>
     ): FullChatRequest {
-        val params = chatRequest.params
+        val chatRequestParams = chatRequest.params
         return FullChatRequest(
             modelName = chatRequest.modelName ?: model.modelName,
             messages = messageList
         ).apply {
-            systemMessage = params.systemMessage ?: model.systemMessage
-            tools = params.tools ?: model.tools
-            parallelToolCalls = params.parallelToolCalls ?: model.parallelToolCalls
-            stop = params.stop ?: model.stop
-            responseFormat = params.responseFormat ?: model.responseFormat
-            maxTokens = params.maxTokens ?: model.maxTokens
-            temperature = params.temperature ?: model.temperature
-            topP = params.topP ?: model.topP
-            n = params.n ?: model.n
-            stream = params.stream ?: model.stream
-            useMcp = params.useMcp
-            presencePenalty = params.presencePenalty ?: model.presencePenalty
-            frequencyPenalty = params.frequencyPenalty ?: model.frequencyPenalty
-            logitBias = params.logitBias ?: model.logitBias
+            systemMessage = chatRequestParams.systemMessage ?: model.systemMessage
+            tools = KoaksContext.getAvailableTools(clientId)?.mapNotNull { ToolManager.getTool(it) }?.toMutableList()
+            parallelToolCalls = chatRequestParams.parallelToolCalls ?: model.parallelToolCalls
+            stop = chatRequestParams.stop ?: model.stop
+            responseFormat = chatRequestParams.responseFormat ?: model.responseFormat
+            maxTokens = chatRequestParams.maxTokens ?: model.maxTokens
+            temperature = chatRequestParams.temperature ?: model.temperature
+            topP = chatRequestParams.topP ?: model.topP
+            n = chatRequestParams.n ?: model.n
+            stream = chatRequestParams.stream ?: model.stream
+            useMcp = chatRequestParams.useMcp
+            presencePenalty = chatRequestParams.presencePenalty ?: model.presencePenalty
+            frequencyPenalty = chatRequestParams.frequencyPenalty ?: model.frequencyPenalty
+            logitBias = chatRequestParams.logitBias ?: model.logitBias
         }
     }
 

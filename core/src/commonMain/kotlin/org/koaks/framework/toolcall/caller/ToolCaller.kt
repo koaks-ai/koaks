@@ -3,6 +3,7 @@ package org.koaks.framework.toolcall.caller
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.json.JsonObject
 import org.koaks.framework.toolcall.ToolDefinition
+import org.koaks.framework.toolcall.ToolManager
 import org.koaks.framework.toolcall.ToolType
 import org.koaks.framework.utils.JsonUtil
 
@@ -11,8 +12,8 @@ object ToolCaller : IOutCaller {
 
     val logger = KotlinLogging.logger {}
 
-    override suspend fun call(toolname: String, json: String, toolContainer: Map<String, ToolDefinition>): String {
-        return toolContainer[toolname]?.let { tool ->
+    override suspend fun call(toolname: String, json: String): String {
+        return ToolManager.getTool(toolname)?.let { tool ->
             if (tool.toolType == ToolType.ANNOTATION) {
                 val args = parseToolArguments(tool, json)
                 AnnoTypeCaller.call(tool, args.toTypedArray())
