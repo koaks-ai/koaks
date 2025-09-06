@@ -46,6 +46,11 @@ class KtorHttpClient(
             requestTimeoutMillis = config.callTimeout * 1000L
             connectTimeoutMillis = config.connectTimeout * 1000L
             socketTimeoutMillis = config.readTimeout * 1000L
+            logger.debug {
+                "HttpClient timeout: ${requestTimeoutMillis}ms," +
+                        "connectTimeout: ${connectTimeoutMillis}ms," +
+                        "readTimeout: ${socketTimeoutMillis}ms. "
+            }
         }
         defaultRequest {
             url(config.baseUrl)
@@ -57,26 +62,27 @@ class KtorHttpClient(
 
     suspend fun <T> postAsString(request: T, serializer: KSerializer<T>): Result<String> {
         return runCatching {
+            logger.debug { "postAsString: ${config.baseUrl}" }
             val response: HttpResponse = ktorClient.post {
                 setBody(JsonUtil.toJson(request, serializer))
             }
             response.bodyAsText()
         }.recoverCatching { e ->
+            logger.error { "postAsString failed: $e" }
             throw mapToHttpClientException(e)
         }
     }
 
     suspend fun <T, R> postAsObject(request: T, adapter: TypeAdapter<T, R>): Result<R> {
         return postAsString(request, adapter.serializer).mapCatching { jsonString ->
+            logger.debug { "postAsObject: ${config.baseUrl}" }
             JsonUtil.fromJson(jsonString, adapter.deserializer)
         }
     }
 
-    fun <T> postAsStringStream(
-        request: T,
-        serializer: KSerializer<T>
-    ): Flow<String> = callbackFlow {
+    fun <T> postAsStringStream(request: T, serializer: KSerializer<T>): Flow<String> = callbackFlow {
         val job = launch(Dispatchers.Default) {
+            logger.debug { "Sending SSE request: ${JsonUtil.toJson(request, serializer)}" }
             val stmt = ktorClient.preparePost {
                 header(HttpHeaders.Accept, "text/event-stream")
                 setBody(JsonUtil.toJson(request, serializer))
@@ -89,6 +95,7 @@ class KtorHttpClient(
             stmt.execute { response ->
                 if (!response.status.isSuccess()) {
                     val err = response.bodyAsText()
+                    logger.error { "HTTP request failed with status ${response.status.value}: $err" }
                     close(HttpClientException("HTTP ${response.status.value}: $err"))
                     return@execute
                 }
@@ -97,10 +104,15 @@ class KtorHttpClient(
                 while (!channel.isClosedForRead) {
                     val line = channel.readUTF8Line() ?: break
                     val trimmed = line.trim()
+                    logger.debug { "Received line: '$trimmed'" }
+
                     if (trimmed.isEmpty() || !trimmed.startsWith("data:")) continue
 
                     val content = trimmed.removePrefix("data:").trim()
+                    logger.debug { "Parsed content: '$content'" }
+
                     if (content == config.streamEndMarker) {
+                        logger.debug { "Stream end marker received, closing flow" }
                         close()
                         break
                     }
@@ -112,8 +124,12 @@ class KtorHttpClient(
             }
         }
 
-        awaitClose { job.cancel() }
+        awaitClose {
+            logger.debug { "Flow cancelled, cancelling job" }
+            job.cancel()
+        }
     }.catch { e ->
+        logger.error(e) { "SSE flow exception" }
         throw mapToHttpClientException(e)
     }
 
@@ -122,6 +138,7 @@ class KtorHttpClient(
             try {
                 emit(JsonUtil.fromJson(it, adapter.deserializer))
             } catch (e: Exception) {
+                logger.error(e) { "Failed to parse json response" }
                 throw JsonParseException("failed to parse json response", e)
             }
         }
