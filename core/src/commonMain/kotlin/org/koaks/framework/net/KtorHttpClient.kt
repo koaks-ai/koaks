@@ -1,5 +1,6 @@
 package org.koaks.framework.net
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
@@ -23,6 +24,7 @@ import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.catch
@@ -36,6 +38,9 @@ import org.koaks.framework.utils.json.JsonUtil
 class KtorHttpClient(
     private val config: HttpClientConfig
 ) {
+
+    private val logger = KotlinLogging.logger {}
+
     private val ktorClient = HttpClient(provideEngine()) {
         install(HttpTimeout) {
             requestTimeoutMillis = config.callTimeout * 1000L
@@ -67,9 +72,11 @@ class KtorHttpClient(
         }
     }
 
-    fun <T> postAsStringStream(request: T, serializer: KSerializer<T>): Flow<String> = callbackFlow {
+    fun <T> postAsStringStream(
+        request: T,
+        serializer: KSerializer<T>
+    ): Flow<String> = callbackFlow {
         val job = launch(Dispatchers.Default) {
-            // use preparePost + execute to ensure the entire read operation is performed within the same lifecycle
             val stmt = ktorClient.preparePost {
                 header(HttpHeaders.Accept, "text/event-stream")
                 setBody(JsonUtil.toJson(request, serializer))
@@ -91,12 +98,18 @@ class KtorHttpClient(
                     val line = channel.readUTF8Line() ?: break
                     val trimmed = line.trim()
                     if (trimmed.isEmpty() || !trimmed.startsWith("data:")) continue
+
                     val content = trimmed.removePrefix("data:").trim()
-                    if (content == config.streamEndMarker) break
-                    trySend(content)
+                    if (content == config.streamEndMarker) {
+                        close()
+                        break
+                    }
+
+                    trySend(content).onFailure {
+                        logger.warn { "Failed to send content: $it" }
+                    }
                 }
             }
-            close()
         }
 
         awaitClose { job.cancel() }
