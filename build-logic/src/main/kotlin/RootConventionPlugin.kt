@@ -12,6 +12,7 @@ class RootConventionPlugin : Plugin<Project> {
                 mavenCentral()
                 google()
             }
+
         }
     }
 }
