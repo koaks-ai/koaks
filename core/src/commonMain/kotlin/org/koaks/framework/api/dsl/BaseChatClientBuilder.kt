@@ -2,6 +2,7 @@ package org.koaks.framework.api.dsl
 
 import org.koaks.framework.memory.DefaultMemoryStorage
 import org.koaks.framework.memory.IMemoryStorage
+import org.koaks.framework.memory.NoneMemoryStorage
 import org.koaks.framework.model.AbstractChatModel
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -32,10 +33,14 @@ abstract class BaseChatClientBuilder {
 
 
 class MemoryBuilder {
-    private var storage: IMemoryStorage = DefaultMemoryStorage
+    private var storage: IMemoryStorage = NoneMemoryStorage
 
     fun default() {
         storage = DefaultMemoryStorage
+    }
+
+    fun none() {
+        storage = NoneMemoryStorage
     }
 
     fun custom(storage: IMemoryStorage) {

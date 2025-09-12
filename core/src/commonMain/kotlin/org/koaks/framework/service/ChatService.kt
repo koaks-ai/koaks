@@ -20,6 +20,7 @@ import org.koaks.framework.entity.Message
 import org.koaks.framework.entity.ModelResponse
 import org.koaks.framework.memory.DefaultMemoryStorage
 import org.koaks.framework.memory.IMemoryStorage
+import org.koaks.framework.memory.NoneMemoryStorage
 import org.koaks.framework.model.AbstractChatModel
 import org.koaks.framework.net.KtorHttpClient
 import org.koaks.framework.net.HttpClientConfig
@@ -59,9 +60,15 @@ class ChatService<TRequest, TResponse>(
      * @return `ModelResponse` object containing the response from the chat service.
      */
     suspend fun execChat(chatRequest: ChatRequest, memoryId: String? = null): ModelResponse<ChatResponse> {
-        mergeToolList(chatRequest)
-        val messages = mergeMessageList(chatRequest.message, memoryId)
-        val fullReq = mergeParamsAndMapToFullRequest(chatRequest, messages)
+        // distinguish between manually managed message records and automatically managed message records
+        val messages = when {
+            // if message memory are provided, use them first.
+            chatRequest.messages != null -> chatRequest.messages
+            chatRequest.message != null -> mergeMessageList(chatRequest.message, memoryId)
+            // for the case, it should never come here
+            else -> mutableListOf()
+        }
+        val fullReq = mergeParamsAndMapToFullRequest(chatRequest, messages.toMutableList())
 
         return if (fullReq.stream == true && fullReq.tools.isNullOrEmpty()) {
             handleStreaming(fullReq, memoryId)
@@ -181,6 +188,8 @@ class ChatService<TRequest, TResponse>(
      * Save message to memory storage. the function is thread-safe
      */
     private suspend fun saveMessage(message: Message?, messageId: String?, messages: MutableList<Message>) {
+        if (memoryStorage::class == NoneMemoryStorage::class)
+            return
         mutex.withLock {
             if (message == null) return
             try {
@@ -192,17 +201,6 @@ class ChatService<TRequest, TResponse>(
                 messages.removeLastOrNull()
                 throw e
             }
-        }
-    }
-
-    /**
-     * Merge model's tool list, request's tool list, and model's toolContainer.
-     *
-     * under normal circumstances, you should always ensure that only the toolContainer contains content.
-     */
-    private fun mergeToolList(chatRequest: ChatRequest) {
-        with(chatRequest) {
-
         }
     }
 
@@ -220,9 +218,16 @@ class ChatService<TRequest, TResponse>(
         messageList: MutableList<Message>
     ): FullChatRequest {
         val chatRequestParams = chatRequest.params
+        // distinguish between manually managed message records and automatically managed message records
+        val finalMessages = if (chatRequest.messages != null) {
+            chatRequest.messages.toMutableList()
+        } else {
+            messageList
+        }
+
         return FullChatRequest(
             modelName = chatRequest.modelName ?: model.modelName,
-            messages = messageList
+            messages = finalMessages
         ).apply {
             systemMessage = chatRequestParams.systemMessage ?: model.systemMessage
             tools = KoaksContext.getAvailableTools(clientId)?.mapNotNull { ToolManager.getTool(it) }?.toMutableList()
