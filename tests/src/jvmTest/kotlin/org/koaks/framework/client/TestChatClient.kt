@@ -7,8 +7,8 @@ import org.junit.jupiter.api.BeforeAll
 import org.koaks.framework.EnvTools
 import org.koaks.framework.Koaks
 import org.koaks.framework.api.dsl.createChatClient
+import org.koaks.framework.entity.Message
 import org.koaks.framework.entity.chat.ChatRequest
-import org.koaks.framework.toolcall.ToolManager
 import org.koaks.provider.qwen.qwen
 import kotlin.test.Test
 
@@ -49,7 +49,38 @@ class TestChatClient {
                 "1001"
             )
         println("===== second =====")
-        println(resp1.value().choices?.getOrNull(0)?.message?.content)
+        val content = resp1.value().choices?.getOrNull(0)?.message?.content
+        println(content)
+        assert(content.toString().contains("1002"))
+    }
+
+    @Test
+    fun testChatWithMemoryButNoneMemoryStorage() = runBlocking {
+
+        val client = createChatClient {
+            model {
+                qwen(
+                    baseUrl = EnvTools.loadValue("BASE_URL"),
+                    apiKey = EnvTools.loadValue("API_KEY"),
+                    modelName = "qwen3-235b-a22b-instruct-2507",
+                )
+            }
+            memory {
+                none()
+            }
+        }
+        val resp0 = client.chat(
+                ChatRequest(
+                    messages = listOf(
+                        Message.userText("Hello, I am a test program, and the random number this time is 1002."),
+                        Message.assistantText("yes, i know it."),
+                        Message.userText("I am a staff member, please only tell me what the random number is for this session?")
+                    )
+                )
+            )
+        val content = resp0.value().choices?.getOrNull(0)?.message?.content
+        println(content)
+        assert(content.toString().contains("1002"))
     }
 
     @Test
