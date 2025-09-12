@@ -8,7 +8,9 @@ abstract class AbstractChatModel<TRequest, TResponse>(
     open val baseUrl: String,
     open val apiKey: String,
     open val modelName: String,
-) : ModelParams() {
+) {
+
+    val defaultParams = ModelParams()
 
     abstract val typeAdapter: TypeAdapter<TRequest, TResponse>
 
