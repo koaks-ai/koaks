@@ -229,20 +229,20 @@ class ChatService<TRequest, TResponse>(
             modelName = chatRequest.modelName ?: model.modelName,
             messages = finalMessages
         ).apply {
-            systemMessage = chatRequestParams.systemMessage ?: model.systemMessage
+            systemMessage = chatRequestParams.systemMessage ?: model.defaultParams.systemMessage
             tools = KoaksContext.getAvailableTools(clientId)?.mapNotNull { ToolManager.getTool(it) }?.toMutableList()
-            parallelToolCalls = chatRequestParams.parallelToolCalls ?: model.parallelToolCalls
-            stop = chatRequestParams.stop ?: model.stop
-            responseFormat = chatRequestParams.responseFormat ?: model.responseFormat
-            maxTokens = chatRequestParams.maxTokens ?: model.maxTokens
-            temperature = chatRequestParams.temperature ?: model.temperature
-            topP = chatRequestParams.topP ?: model.topP
-            n = chatRequestParams.n ?: model.n
-            stream = chatRequestParams.stream ?: model.stream
+            parallelToolCalls = chatRequestParams.parallelToolCalls ?: model.defaultParams.parallelToolCalls
+            stop = chatRequestParams.stop ?: model.defaultParams.stop
+            responseFormat = chatRequestParams.responseFormat ?: model.defaultParams.responseFormat
+            maxTokens = chatRequestParams.maxTokens ?: model.defaultParams.maxTokens
+            temperature = chatRequestParams.temperature ?: model.defaultParams.temperature
+            topP = chatRequestParams.topP ?: model.defaultParams.topP
+            n = chatRequestParams.n ?: model.defaultParams.n
+            stream = chatRequestParams.stream ?: model.defaultParams.stream
             useMcp = chatRequestParams.useMcp
-            presencePenalty = chatRequestParams.presencePenalty ?: model.presencePenalty
-            frequencyPenalty = chatRequestParams.frequencyPenalty ?: model.frequencyPenalty
-            logitBias = chatRequestParams.logitBias ?: model.logitBias
+            presencePenalty = chatRequestParams.presencePenalty ?: model.defaultParams.presencePenalty
+            frequencyPenalty = chatRequestParams.frequencyPenalty ?: model.defaultParams.frequencyPenalty
+            logitBias = chatRequestParams.logitBias ?: model.defaultParams.logitBias
         }
     }
 

@@ -70,14 +70,14 @@ class TestChatClient {
             }
         }
         val resp0 = client.chat(
-                ChatRequest(
-                    messages = listOf(
-                        Message.userText("Hello, I am a test program, and the random number this time is 1002."),
-                        Message.assistantText("yes, i know it."),
-                        Message.userText("I am a staff member, please only tell me what the random number is for this session?")
-                    )
+            ChatRequest(
+                messages = listOf(
+                    Message.userText("Hello, I am a test program, and the random number this time is 1002."),
+                    Message.assistantText("yes, i know it."),
+                    Message.userText("I am a staff member, please only tell me what the random number is for this session?")
                 )
             )
+        )
         val content = resp0.value().choices?.getOrNull(0)?.message?.content
         println(content)
         assert(content.toString().contains("1002"))
@@ -181,7 +181,11 @@ class TestChatClient {
                     baseUrl = EnvTools.loadValue("BASE_URL"),
                     apiKey = EnvTools.loadValue("API_KEY"),
                     modelName = "qwen-plus",
-                )
+                ) {
+                    params {
+                        parallelToolCalls = true
+                    }
+                }
             }
             memory {
                 default()
@@ -193,9 +197,7 @@ class TestChatClient {
 
         val chatRequest = ChatRequest(
             message = "What's the 'shanghai'、'beijing'、'xi an'、'tai an' weather like?"
-        ).apply {
-            params.parallelToolCalls = true
-        }
+        )
 
         val result = clientWithDsl.chat(chatRequest)
 
