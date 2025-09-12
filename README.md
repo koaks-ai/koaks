@@ -6,8 +6,8 @@
 
 > The name **"Koaks"** is homophonic with **"coax"**.  
 <div align="center">
-  <img width="720" height="250" alt="koaks-all" 
-       src="https://github.com/user-attachments/assets/8c8b583f-410f-4957-a280-2064b47ad41c" />
+  <img width="800" height="250" alt="koaks-all" 
+       src="https://github.com/user-attachments/assets/43485b9c-b67f-4446-ab3a-3b3e5e8994ea" />
 </div>
 
 ![koaks](https://socialify.git.ci/koaks-ai/koaks/image?custom_description=Connect+your+tools%2C+compose+your+logic.&description=1&font=JetBrains+Mono&forks=1&issues=1&language=1&name=1&owner=1&pattern=Circuit+Board&pulls=1&stargazers=1&theme=Light)
