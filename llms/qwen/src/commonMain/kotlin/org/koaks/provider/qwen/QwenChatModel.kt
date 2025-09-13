@@ -44,13 +44,15 @@ class QwenChatModel(
             },
             created = providerResponse.created,
             id = providerResponse.id,
+            requestId = providerResponse.requestId,
             model = providerResponse.model,
             chatObject = providerResponse.chatObject,
             promptFilterResults = providerResponse.promptFilterResults?.map {
                 it?.let { toPromptFilterResult(it) }
             },
             systemFingerprint = providerResponse.systemFingerprint,
-            usage = providerResponse.usage?.let { toUsage(it) }
+            usage = providerResponse.usage?.let { toUsage(it) },
+            error = providerResponse.error?.let { toError(it) }
         )
     }
 
@@ -133,6 +135,15 @@ class QwenChatModel(
                 toPromptTokensDetails(it)
             },
             totalTokens = inner.totalTokens
+        )
+    }
+
+    private fun toError(inner: QwenChatResponse.ErrorOutput): ChatResponse.ErrorOutput {
+        return ChatResponse.ErrorOutput(
+            code = inner.code,
+            param = inner.param,
+            message = inner.message,
+            type = inner.type
         )
     }
 
