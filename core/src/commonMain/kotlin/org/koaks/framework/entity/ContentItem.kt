@@ -17,9 +17,9 @@ sealed class ContentItem {
      * Image content
      */
     @Serializable
-    @SerialName("image_url")
-    data class ImageUrl(
-        @SerialName("image_url")
+    @SerialName("image")
+    data class Image(
+        @SerialName("image")
         val url: String
     ) : ContentItem()
 

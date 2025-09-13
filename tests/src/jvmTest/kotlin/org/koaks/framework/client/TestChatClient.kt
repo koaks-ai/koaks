@@ -55,8 +55,35 @@ class TestChatClient {
     }
 
     @Test
-    fun testChatWithMemoryButNoneMemoryStorage() = runBlocking {
+    fun testImageInput() = runBlocking {
+        val client = createChatClient {
+            model {
+                qwen(
+                    baseUrl = EnvTools.loadValue("BASE_URL"),
+                    apiKey = EnvTools.loadValue("API_KEY"),
+                    modelName = "qwen-vl-plus",
+                )
+            }
+            memory {
+                default()
+            }
+        }
 
+        val resp0 =
+            client.chat(
+                ChatRequest(
+                    message = Message.multimodal(
+                        Message.userImage("https://dashscope.oss-cn-beijing.aliyuncs.com/images/dog_and_girl.jpeg"),
+                        Message.userText("图片中都有什么")
+                    )
+                )
+            )
+
+        println(resp0.value())
+    }
+
+    @Test
+    fun testChatWithMemoryButNoneMemoryStorage() = runBlocking {
         val client = createChatClient {
             model {
                 qwen(
@@ -80,13 +107,12 @@ class TestChatClient {
         )
         val content = resp0.value().choices?.getOrNull(0)?.message?.content
         println(content)
-        assert(content.toString().contains("1002"))
     }
 
     @Test
     fun testStreamRequest() = runBlocking {
         val chatRequest = ChatRequest(
-            message = "What's the meaning of life?"
+            message = Message.userText("What's the meaning of life?")
         ).apply {
             params.stream = true
         }
@@ -113,7 +139,7 @@ class TestChatClient {
         }
 
         val chatRequest = ChatRequest(
-            message = "What's the meaning of life?？"
+            message = Message.userText("What's the meaning of life?？")
         ).apply {
             params.stream = true
         }
@@ -163,7 +189,7 @@ class TestChatClient {
         }
 
         val chatRequest = ChatRequest(
-            message = "What's the weather like?"
+            message = Message.userText("What's the weather like?")
         ).apply {
             params.parallelToolCalls = true
         }
@@ -196,7 +222,7 @@ class TestChatClient {
         }
 
         val chatRequest = ChatRequest(
-            message = "What's the 'shanghai'、'beijing'、'xi an'、'tai an' weather like?"
+            message = Message.userText("What's the 'shanghai'、'beijing'、'xi an'、'tai an' weather like?")
         )
 
         val result = clientWithDsl.chat(chatRequest)

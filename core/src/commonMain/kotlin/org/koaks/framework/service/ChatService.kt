@@ -204,12 +204,12 @@ class ChatService<TRequest, TResponse>(
         }
     }
 
-    private suspend fun mergeMessageList(message: String, messageId: String?): MutableList<Message> {
+    private suspend fun mergeMessageList(message: Message, messageId: String?): MutableList<Message> {
         return (messageId?.let {
             // need to call toMutableList() to create a copy, avoiding modification of the original reference
             memoryStorage.getMessageList(messageId).toMutableList()
         } ?: mutableListOf()).apply {
-            saveMessage(Message.userText(message), messageId, this)
+            saveMessage(message, messageId, this)
         }
     }
 
