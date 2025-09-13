@@ -54,7 +54,7 @@ data class Message(
         fun userImage(url: String, desc: String? = null) = Message(
             role = MessageRole.USER,
             content = listOfNotNull(
-                ContentItem.ImageUrl(url),
+                ContentItem.Image(url),
                 desc?.let { ContentItem.Text(it) }
             )
         )
@@ -65,6 +65,11 @@ data class Message(
                 ContentItem.Video(frames),
                 desc?.let { ContentItem.Text(it) }
             )
+        )
+
+        fun multimodal(vararg message: Message) = Message(
+            role = MessageRole.USER,
+            content = message.flatMap { it.content }
         )
     }
 }

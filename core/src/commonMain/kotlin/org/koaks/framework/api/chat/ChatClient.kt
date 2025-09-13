@@ -1,5 +1,6 @@
 package org.koaks.framework.api.chat
 
+import org.koaks.framework.entity.Message
 import org.koaks.framework.entity.ModelResponse
 import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.entity.chat.ChatResponse
@@ -17,7 +18,7 @@ class ChatClient<TRequest, TResponse>(
 
     suspend fun generate(message: String): String {
         return chatService.execChat(
-            ChatRequest(message = message)
+            ChatRequest(message = Message.userText(message))
         ).value().choices?.getOrNull(0)?.message?.content as String
     }
 
@@ -26,7 +27,7 @@ class ChatClient<TRequest, TResponse>(
     }
 
     suspend fun chatWithMemory(message: String, memoryId: String): ModelResponse<ChatResponse> {
-        return chatService.execChat(ChatRequest(message = message), memoryId)
+        return chatService.execChat(ChatRequest(message = Message.userText(message)), memoryId)
     }
 
     suspend fun chatWithMemory(chatRequest: ChatRequest, memoryId: String): ModelResponse<ChatResponse> {

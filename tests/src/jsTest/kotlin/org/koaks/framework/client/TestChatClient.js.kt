@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.runTest
 import org.koaks.framework.EnvTools
 import org.koaks.framework.api.dsl.createChatClient
+import org.koaks.framework.entity.Message
 import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.provider.qwen.qwen
 import kotlin.test.Test
@@ -44,7 +45,7 @@ class JsTestChatClient {
     @Test
     fun jsTestStreamRequest() = runTest {
         val chatRequest = ChatRequest(
-            message = "What's the meaning of life?"
+            message = Message.userText("What's the weather like?")
         ).apply {
             params.stream = true
         }
@@ -71,7 +72,7 @@ class JsTestChatClient {
         }
 
         val chatRequest = ChatRequest(
-            message = "What's the meaning of life?？"
+            message = Message.userText("What's the weather like?")
         ).apply {
             params.stream = true
         }

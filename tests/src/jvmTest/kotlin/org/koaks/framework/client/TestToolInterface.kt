@@ -3,6 +3,7 @@ package org.koaks.framework.client
 import kotlinx.coroutines.runBlocking
 import org.koaks.framework.EnvTools
 import org.koaks.framework.api.dsl.createChatClient
+import org.koaks.framework.entity.Message
 import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.implTools.UserImplTools
 import org.koaks.framework.implTools.WeatherImplTools
@@ -37,7 +38,7 @@ class TestToolInterface {
         }
 
         val chatRequest = ChatRequest(
-            message = "What's the weather like?"
+            message = Message.userText("What's the weather like?")
         ).apply {
             params.stream = false
             params.parallelToolCalls = true
@@ -68,7 +69,7 @@ class TestToolInterface {
         }
 
         val chatRequest = ChatRequest(
-            message = "What's the 'shanghai'、'beijing'、'xi an'、'tai an' weather like?"
+            message = Message.userText("What's the 'shanghai'、'beijing'、'xi an'、'tai an' weather like?")
         ).apply {
             params.parallelToolCalls = true
         }
@@ -110,7 +111,7 @@ class TestToolInterface {
         }
 
         val chatRequest = ChatRequest(
-            message = "What's the weather like?"
+            message = Message.userText("What's the weather like?")
         ).apply {
             params.stream = false
             params.parallelToolCalls = true

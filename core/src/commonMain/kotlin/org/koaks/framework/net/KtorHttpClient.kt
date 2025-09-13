@@ -61,6 +61,7 @@ class KtorHttpClient(
     }
 
     suspend fun <T> postAsString(request: T, serializer: KSerializer<T>): Result<String> {
+        println(JsonUtil.toJson(request, serializer))
         return runCatching {
             logger.debug { "postAsString: ${config.baseUrl}" }
             val response: HttpResponse = ktorClient.post {
@@ -76,7 +77,7 @@ class KtorHttpClient(
     suspend fun <T, R> postAsObject(request: T, adapter: TypeAdapter<T, R>): Result<R> {
         return postAsString(request, adapter.serializer).mapCatching { jsonString ->
             logger.debug { "postAsObject: ${config.baseUrl}" }
-            logger.debug { "rawJson: $jsonString" }
+            logger.info { "rawJson: $jsonString" }
             JsonUtil.fromJson(jsonString, adapter.deserializer)
         }
     }
