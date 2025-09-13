@@ -92,7 +92,7 @@ interface Tool<T> {
         val input: T = if (json.isNullOrBlank() || json == "{}") {
             if (serializer.descriptor.serialName == "org.koaks.framework.toolcall.toolinterface.NoInput") {
                 @Suppress("UNCHECKED_CAST")
-                NoInput as T
+                NoneInput as T
             } else {
                 JsonUtil.fromJson("{}", serializer)
             }

@@ -7,7 +7,7 @@ import org.koaks.framework.entity.chat.ChatRequest
 import org.koaks.framework.implTools.UserImplTools
 import org.koaks.framework.implTools.WeatherImplTools
 import org.koaks.framework.implTools.WeatherInput
-import org.koaks.framework.toolcall.toolinterface.NoInput
+import org.koaks.framework.toolcall.toolinterface.NoneInput
 import org.koaks.framework.toolcall.toolinterface.createTool
 import org.koaks.provider.qwen.qwen
 import kotlin.test.Test
@@ -97,7 +97,7 @@ class JsTestToolInterface {
                     ) { input ->
                         "The weather in ${input.city} at ${input.date} is windy."
                     },
-                    createTool<NoInput>(
+                    createTool<NoneInput>(
                         name = "userLocation",
                         description = "get the city where the user is located",
                         group = "location"
