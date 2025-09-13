@@ -10,6 +10,8 @@ data class QwenChatResponse(
     val choices: List<Choice>? = null,
     val created: Long = 0,
     val id: String? = null,
+    @SerialName("request_id")
+    val requestId: String? = null,
     val model: String? = null,
     @SerialName("object")
     val chatObject: String? = null,
@@ -17,7 +19,8 @@ data class QwenChatResponse(
     val promptFilterResults: List<PromptFilterResult?>? = null,
     @SerialName("system_fingerprint")
     val systemFingerprint: String? = null,
-    val usage: Usage? = null
+    val usage: Usage? = null,
+    val error: ErrorOutput? = null
 ) : ToolCallable {
 
     override fun shouldToolCall(): Boolean {
@@ -119,4 +122,13 @@ data class QwenChatResponse(
         @SerialName("cached_tokens")
         val cachedTokens: Int? = null,
     )
+
+    @Serializable
+    data class ErrorOutput(
+        val code: String?,
+        val param: String?,
+        val message: String?,
+        val type: String?
+    )
+
 }
