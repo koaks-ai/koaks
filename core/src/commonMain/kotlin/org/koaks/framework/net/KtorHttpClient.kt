@@ -76,7 +76,7 @@ class KtorHttpClient(
     suspend fun <T, R> postAsObject(request: T, adapter: TypeAdapter<T, R>): Result<R> {
         return postAsString(request, adapter.serializer).mapCatching { jsonString ->
             logger.debug { "postAsObject: ${config.baseUrl}" }
-            logger.info { "rawJson: $jsonString" }
+            logger.debug { "rawJson: $jsonString" }
             JsonUtil.fromJson(jsonString, adapter.deserializer)
         }
     }
