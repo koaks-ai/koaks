@@ -63,7 +63,7 @@ class ChatService<TRequest, TResponse>(
         // distinguish between manually managed message records and automatically managed message records
         val messages = when {
             // if message memory are provided, use them first.
-            chatRequest.messages != null -> chatRequest.messages
+            chatRequest.messageList != null -> chatRequest.messageList
             chatRequest.message != null -> mergeMessageList(chatRequest.message, memoryId)
             // for the case, it should never come here
             else -> mutableListOf()
@@ -228,8 +228,8 @@ class ChatService<TRequest, TResponse>(
     ): FullChatRequest {
         val chatRequestParams = chatRequest.params
         // distinguish between manually managed message records and automatically managed message records
-        val finalMessages = if (chatRequest.messages != null) {
-            chatRequest.messages.toMutableList()
+        val finalMessages = if (chatRequest.messageList != null) {
+            chatRequest.messageList.toMutableList()
         } else {
             messageList
         }

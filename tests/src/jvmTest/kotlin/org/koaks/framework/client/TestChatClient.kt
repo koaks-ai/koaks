@@ -179,7 +179,7 @@ class TestChatClient {
         }
         val resp0 = client.chat(
             ChatRequest(
-                messages = listOf(
+                messageList = listOf(
                     Message.userText("Hello, I am a test program, and the random number this time is 1002."),
                     Message.assistantText("yes, i know it."),
                     Message.userText("I am a staff member, please only tell me what the random number is for this session?")
