@@ -5,7 +5,7 @@ import org.koaks.framework.entity.ModelParams
 
 class ChatRequest(
     val message: Message? = null,
-    val messages: List<Message>? = null,
+    val messageList: List<Message>? = null,
     val modelName: String? = null,
     val params: ModelParams = ModelParams()
 )
