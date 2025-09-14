@@ -11,6 +11,7 @@ object JsonUtil {
         encodeDefaults = true
         isLenient = true
         prettyPrint = false
+        explicitNulls = false
     }
 
     inline fun <reified T> toJson(obj: T): String {
