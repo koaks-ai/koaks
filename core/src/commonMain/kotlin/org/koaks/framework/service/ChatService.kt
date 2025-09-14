@@ -86,7 +86,11 @@ class ChatService<TRequest, TResponse>(
             .onEach { aggregator.accept(it) }
 
         return ModelResponse.fromStream(
-            stream.onCompletion {
+            stream.onEach { resp ->
+                if (resp.error != null) {
+                    logger.error { "response error: ${resp.error}" }
+                }
+            }.onCompletion {
                 saveMessage(
                     Message.assistantText(aggregator.result()),
                     memoryId,
@@ -107,6 +111,11 @@ class ChatService<TRequest, TResponse>(
                 model.toChatRequest(request), model.typeAdapter
             ).map { model.toChatResponse(it) }
         ) { ChatResponse() }
+
+        if (response.value().error != null) {
+            logger.error { "response error: ${response.value().error}" }
+            return response
+        }
 
         // mapper ChatMessage.id to Message.id
         response.value().choices?.forEach { it.message?.id = response.value().id }
