@@ -25,8 +25,8 @@
 ```kotlin
 // 对于 Gradle 项目, 无论是 JVM 项目还是 Kotlin Multiplatform 项目
 // 你只需要添加如下内容即可, Gradle 会自动处理不同平台的适配
-implementation("io.github.mynna404:koaks-core:0.0.1-preview3")
-implementation("io.github.mynna404:koaks-qwen:0.0.1-preview3")
+implementation("io.github.mynna404:koaks-core:0.0.1-preview6")
+implementation("io.github.mynna404:koaks-qwen:0.0.1-preview6")
 ```
 
 - Maven  
@@ -36,13 +36,13 @@ implementation("io.github.mynna404:koaks-qwen:0.0.1-preview3")
 <dependency>
     <groupId>io.github.mynna404</groupId>
     <artifactId>koaks-core-jvm</artifactId>
-    <version>0.0.1-preview3</version>
+    <version>0.0.1-preview6</version>
 </dependency>
 
 <dependency>
   <groupId>io.github.mynna404</groupId>
   <artifactId>koaks-qwen-jvm</artifactId>
-  <version>0.0.1-preview3</version>
+  <version>0.0.1-preview6</version>
 </dependency>
 ```
 
@@ -81,6 +81,8 @@ suspend fun main() {
             )
         }
         memory {
+            // manually manage message history
+            // none()
             default()
         }
     }
@@ -99,16 +101,18 @@ suspend fun main() {
                 baseUrl = "base-url",
                 apiKey = "api-key",
                 modelName = "qwen3-235b-a22b-instruct-2507",
-            )
+            ) {
+                params {
+                    stream = true
+                }
+            }
         }
     }
 
     val chatRequest = ChatRequest(
-        message = "生命的意义是什么?"
-    ).apply {
-        params.stream = true
-    }
-
+        message = Message.userText("生命的意义是什么?")
+    )
+    
     val result = client.chat(chatRequest)
 
     result.stream.map { data ->
@@ -118,8 +122,9 @@ suspend fun main() {
 }
 ```
 
-#### 工具调用
+#### 工具调用 (分为 仅JVM平台 和 全平台)
 ```kotlin
+// 仅 JVM 平台
 class WeatherTools {
 
     @Tool(
@@ -154,31 +159,234 @@ fun main() {
                     baseUrl = "base-url",
                     apiKey = "api-key",
                     modelName = "qwen3-235b-a22b-instruct-2507",
-                )
+                ) {
+                    params {
+                        parallelToolCalls = true
+                    }
+                }
             }
             memory {
                 default()
             }
             tools {
                 // 如果没有对工具进行分组，则默认会是为 'default' 的组中的工具
-                default()
+//                default()
                 groups("weather", "location")
             }
         }
 
         val chatRequest = ChatRequest(
-            message = "今天天气怎么样?"
-        ).apply {
-            // 在使用 tool_call 时, 暂不支持流式模式
-            params.stream = false
-            params.parallelToolCalls = true
-        }
+            message = Message.userText("今天天气怎么样?")
+        )
 
         val result = client.chat(chatRequest)
 
         println(result.value.choices?.getOrNull(0)?.message?.content)
     }
 
+}
+```
+
+```kotlin
+// for all platform
+
+// use Tool interface
+class WeatherImplTools : Tool<WeatherInput> {
+
+    override val name: String = "getWeather"
+    override val description: String = "获取特定城市今天的天气"
+    override val group: String = "weather"
+    override val serializer: KSerializer<WeatherInput> = WeatherInput.serializer()
+    override val returnDirectly: Boolean = false
+
+    override suspend fun execute(input: WeatherInput): String {
+        return "对于 ${input.city} 在 ${input.date}, 天气多云，伴有强风警告。"
+    }
+
+}
+
+@Serializable
+class WeatherInput(
+    @Description("城市名称，例如上海")
+    val city: String,
+    @Description("日期, 例如 2025-08-17")
+    val date: String
+)
+
+class UserImplTools() : Tool<NoneInput> {
+
+    override val name: String = "userLocation"
+    override val description: String = "获取用户所在的城市"
+    override val group: String = "location"
+    override val serializer: KSerializer<NoneInput> = NoneInput.serializer()
+    override val returnDirectly: Boolean = false
+
+    override suspend fun execute(input: NoneInput): String {
+        return "上海"
+    }
+
+}
+
+// ---------------------------------------------
+// use dsl
+val weatherTool = createTool<WeatherInput>(
+    name = "getWeather",
+    description = "获取特定城市今天的天气",
+    group = "weather"
+) { input ->
+    "${input.city} 在 ${input.date} 的天气为多云，伴有强风警告。"
+}
+
+val locationTool = createTool<NoneInput>(
+    name = "userLocation",
+    description = "获取用户所在的城市",
+    group = "location"
+) { _ ->
+    "Shanghai"
+}
+
+fun main() = runBlocking {
+    val client = createChatClient {
+        model {
+            qwen(
+                baseUrl = EnvTools.loadValue("BASE_URL"),
+                apiKey = EnvTools.loadValue("API_KEY"),
+                modelName = "qwen3-235b-a22b-instruct-2507",
+            ){
+                params {
+                    parallelToolCalls = true
+                }
+            }
+        }
+        tools {
+            addTools(
+                UserImplTools(),
+                WeatherImplTools()
+            )
+            // dsl
+//            addTools(
+//                weatherTool, locationTool
+//            )
+            groups("weather", "location")
+        }
+    }
+
+    val chatRequest = ChatRequest(
+        message = Message.userText("What's the 'shanghai'、'beijing'、'xi an'、'tai an' weather like?")
+    )
+
+    val result = client.chat(chatRequest)
+
+    println(result.value().choices?.getOrNull(0)?.message?.content)
+}
+```
+
+#### 使用多模态模型
+```kotlin
+val multimodalClient = createChatClient {
+    model {
+        qwen(
+            baseUrl = EnvTools.loadValue("BASE_URL"),
+            apiKey = EnvTools.loadValue("API_KEY"),
+            modelName = "qwen-omni-turbo-2025-03-26",
+        ) {
+            params {
+                stream = true
+                modalities = listOf(ModalitiesType.TEXT, ModalitiesType.AUDIO)
+                streamOptions = StreamOptions(true)
+            }
+        }
+    }
+    memory {
+        default()
+    }
+}
+
+@Test
+fun testImageInput() = runBlocking {
+    val resp0 = multimodalClient.chat(
+        ChatRequest(
+            message = Message.multimodal(
+                Message.userImageUrl("https://dashscope.oss-cn-beijing.aliyuncs.com/images/dog_and_girl.jpeg"),
+                Message.userText("图片里面有什么？")
+            )
+        )
+    )
+
+    resp0.stream().onEach {
+        print(it.choices?.get(0)?.delta?.content)
+    }.collect()
+}
+
+@Test
+fun testAudioInput() = runBlocking {
+    val resp0 = multimodalClient.chatWithMemory(
+        ChatRequest(
+            message = Message.multimodal(
+                Message.userAudio(
+                    "https://dashscope.oss-cn-beijing.aliyuncs.com/audios/welcome.mp3",
+                    "mp3"
+                ),
+                Message.userText("这段音频的内容是什么?")
+            )
+        ), "testAudioInput"
+    )
+
+    println("===== first =====")
+    resp0.stream().onEach {
+        print(it.choices?.get(0)?.delta?.content)
+    }.collect()
+
+    val resp1 = multimodalClient.chatWithMemory(
+        ChatRequest(
+            message = Message.userText("请介绍这家公司")
+        ), "testAudioInput"
+    )
+
+    println("===== second =====")
+    resp1.stream().onEach {
+        print(it.choices?.get(0)?.delta?.content)
+    }.collect()
+
+}
+
+@Test
+fun testVideoFrameInput() = runBlocking {
+    val resp0 = multimodalClient.chat(
+        ChatRequest(
+            message = Message.multimodal(
+                Message.userVideoFrame(
+                    "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241108/xzsgiz/football1.jpg",
+                    "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241108/tdescd/football2.jpg",
+                    "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241108/zefdja/football3.jpg",
+                    "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241108/aedbqh/football4.jpg",
+                ),
+                Message.userText("视频的内容是什么?")
+            )
+        )
+    )
+
+    resp0.stream().onEach {
+        print(it.choices?.get(0)?.delta?.content)
+    }.collect()
+}
+
+@Test
+fun testVideoUrlInput() = runBlocking {
+    val resp0 = multimodalClient.chat(
+        ChatRequest(
+            message = Message.multimodal(
+                Message.userVideoUrl(
+                    "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241115/cqqkru/1.mp4"
+                ),
+                Message.userText("视频的内容是什么?")
+            )
+        )
+    )
+
+    resp0.stream().onEach {
+        print(it.choices?.get(0)?.delta?.content)
+    }.collect()
 }
 ```
 

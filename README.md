@@ -29,8 +29,8 @@
 ```kotlin
 // For Gradle projects, whether it's a JVM project or a Kotlin Multiplatform project, 
 // you only need to add the following. Gradle will automatically handle platform adaptation.
-implementation("io.github.mynna404:koaks-core:0.0.1-preview3")
-implementation("io.github.mynna404:koaks-qwen:0.0.1-preview3")
+implementation("io.github.mynna404:koaks-core:0.0.1-preview6")
+implementation("io.github.mynna404:koaks-qwen:0.0.1-preview6")
 
 ```
 
@@ -41,13 +41,13 @@ implementation("io.github.mynna404:koaks-qwen:0.0.1-preview3")
 <dependency>
   <groupId>io.github.mynna404</groupId>
   <artifactId>koaks-core-jvm</artifactId>
-  <version>0.0.1-preview2</version>
+  <version>0.0.1-preview6</version>
 </dependency>
 
 <dependency>
   <groupId>io.github.mynna404</groupId>
   <artifactId>koaks-qwen-jvm</artifactId>
-  <version>0.0.1-preview3</version>
+  <version>0.0.1-preview6</version>
 </dependency>
 ```
 
@@ -86,12 +86,14 @@ suspend fun main() {
             )
         }
         memory {
+            // manually manage message history
+            // none()
             default()
         }
     }
 
     val result = client.chatWithMemory("What's the meaning of life?", "1001")
-    println(resp0.value.choices?.getOrNull(0)?.message?.content)
+    println(resp0.value().choices?.getOrNull(0)?.message?.content)
 }
 ```
 
@@ -104,28 +106,31 @@ suspend fun main() {
                 baseUrl = "base-url",
                 apiKey = "api-key",
                 modelName = "qwen3-235b-a22b-instruct-2507",
-            )
+            ) {
+                params {
+                    stream = true
+                }
+            }
         }
     }
 
     val chatRequest = ChatRequest(
-        message = "What's the meaning of life?"
-    ).apply {
-        params.stream = true
-    }
+        message = Message.userText("What's the meaning of life?")
+    )
 
     val result = client.chat(chatRequest)
 
-    result.stream.map { data ->
+    result.stream().map { data ->
         print(data.choices?.get(0)?.delta?.content)
     }.collect()
 
 }
 ```
 
-#### Tool Call
+#### Tool Call (JVM and all platform)
 ```kotlin
-class WeatherTools {
+// only JVM
+class WeatherToolsForJvm {
 
     @Tool(
         params = [
@@ -159,30 +164,233 @@ fun main() {
                     baseUrl = "base-url",
                     apiKey = "api-key",
                     modelName = "qwen3-235b-a22b-instruct-2507",
-                )
+                ) {
+                    params {
+                        stream = true
+                        parallelToolCalls = true
+                    }
+                }
             }
             memory {
                 default()
             }
             tools {
-                default()
                 groups("weather", "location")
             }
         }
 
         val chatRequest = ChatRequest(
-            message = "What's the weather like?"
-        ).apply {
-            // when using tool_call, stream mode is currently not supported
-            params.stream = false
-            params.parallelToolCalls = true
-        }
+            message = Message.userText("What's the weather like?")
+        )
 
         val result = client.chat(chatRequest)
 
         println(result.value.choices?.getOrNull(0)?.message?.content)
     }
 
+}
+```
+
+```kotlin
+// for all platform
+
+// use Tool interface
+class WeatherImplTools : Tool<WeatherInput> {
+
+    override val name: String = "getWeather"
+    override val description: String = "get the weather for a specific city today."
+    override val group: String = "weather"
+    override val serializer: KSerializer<WeatherInput> = WeatherInput.serializer()
+    override val returnDirectly: Boolean = false
+
+    override suspend fun execute(input: WeatherInput): String {
+        return "For ${input.city} on ${input.date}, the weather is cloudy with a high wind warning."
+    }
+
+}
+
+@Serializable
+class WeatherInput(
+    @Description("city name, like Shanghai")
+    val city: String,
+    @Description("date, like 2025-08-17")
+    val date: String
+)
+
+class UserImplTools() : Tool<NoneInput> {
+
+    override val name: String = "userLocation"
+    override val description: String = "get the city where the user is located"
+    override val group: String = "location"
+    override val serializer: KSerializer<NoneInput> = NoneInput.serializer()
+    override val returnDirectly: Boolean = false
+
+    override suspend fun execute(input: NoneInput): String {
+        return "Shanghai"
+    }
+
+}
+
+// ---------------------------------------------
+// use dsl
+val weatherTool = createTool<WeatherInput>(
+    name = "getWeather",
+    description = "get the weather for a specific city today.",
+    group = "weather"
+) { input ->
+    "The weather in ${input.city} at ${input.date} is windy."
+}
+
+val locationTool = createTool<NoneInput>(
+    name = "userLocation",
+    description = "get the city where the user is located",
+    group = "location"
+) { _ ->
+    "Shanghai"
+}
+
+fun main() = runBlocking {
+    val client = createChatClient {
+        model {
+            qwen(
+                baseUrl = EnvTools.loadValue("BASE_URL"),
+                apiKey = EnvTools.loadValue("API_KEY"),
+                modelName = "qwen3-235b-a22b-instruct-2507",
+            ){
+                params {
+                    parallelToolCalls = true
+                }
+            }
+        }
+        tools {
+            addTools(
+                UserImplTools(),
+                WeatherImplTools()
+            )
+            // dsl
+//            addTools(
+//                weatherTool, locationTool
+//            )
+            groups("weather", "location")
+        }
+    }
+
+    val chatRequest = ChatRequest(
+        message = Message.userText("What's the 'shanghai'、'beijing'、'xi an'、'tai an' weather like?")
+    )
+
+    val result = client.chat(chatRequest)
+
+    println(result.value().choices?.getOrNull(0)?.message?.content)
+}
+```
+
+#### Use Multimodal Model
+```kotlin
+val multimodalClient = createChatClient {
+    model {
+        qwen(
+            baseUrl = EnvTools.loadValue("BASE_URL"),
+            apiKey = EnvTools.loadValue("API_KEY"),
+            modelName = "qwen-omni-turbo-2025-03-26",
+        ) {
+            params {
+                stream = true
+                modalities = listOf(ModalitiesType.TEXT, ModalitiesType.AUDIO)
+                streamOptions = StreamOptions(true)
+            }
+        }
+    }
+    memory {
+        default()
+    }
+}
+
+@Test
+fun testImageInput() = runBlocking {
+    val resp0 = multimodalClient.chat(
+        ChatRequest(
+            message = Message.multimodal(
+                Message.userImageUrl("https://dashscope.oss-cn-beijing.aliyuncs.com/images/dog_and_girl.jpeg"),
+                Message.userText("What is in the picture?")
+            )
+        )
+    )
+
+    resp0.stream().onEach {
+        print(it.choices?.get(0)?.delta?.content)
+    }.collect()
+}
+
+@Test
+fun testAudioInput() = runBlocking {
+    val resp0 = multimodalClient.chatWithMemory(
+        ChatRequest(
+            message = Message.multimodal(
+                Message.userAudio(
+                    "https://dashscope.oss-cn-beijing.aliyuncs.com/audios/welcome.mp3",
+                    "mp3"
+                ),
+                Message.userText("What is in the audio?")
+            )
+        ), "testAudioInput"
+    )
+
+    println("===== first =====")
+    resp0.stream().onEach {
+        print(it.choices?.get(0)?.delta?.content)
+    }.collect()
+
+    val resp1 = multimodalClient.chatWithMemory(
+        ChatRequest(
+            message = Message.userText("introduce the company")
+        ), "testAudioInput"
+    )
+
+    println("===== second =====")
+    resp1.stream().onEach {
+        print(it.choices?.get(0)?.delta?.content)
+    }.collect()
+
+}
+
+@Test
+fun testVideoFrameInput() = runBlocking {
+    val resp0 = multimodalClient.chat(
+        ChatRequest(
+            message = Message.multimodal(
+                Message.userVideoFrame(
+                    "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241108/xzsgiz/football1.jpg",
+                    "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241108/tdescd/football2.jpg",
+                    "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241108/zefdja/football3.jpg",
+                    "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241108/aedbqh/football4.jpg",
+                ),
+                Message.userText("What is in the video?")
+            )
+        )
+    )
+
+    resp0.stream().onEach {
+        print(it.choices?.get(0)?.delta?.content)
+    }.collect()
+}
+
+@Test
+fun testVideoUrlInput() = runBlocking {
+    val resp0 = multimodalClient.chat(
+        ChatRequest(
+            message = Message.multimodal(
+                Message.userVideoUrl(
+                    "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241115/cqqkru/1.mp4"
+                ),
+                Message.userText("What is in the video?")
+            )
+        )
+    )
+
+    resp0.stream().onEach {
+        print(it.choices?.get(0)?.delta?.content)
+    }.collect()
 }
 ```
 
