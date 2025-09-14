@@ -61,7 +61,6 @@ class KtorHttpClient(
     }
 
     suspend fun <T> postAsString(request: T, serializer: KSerializer<T>): Result<String> {
-        println(JsonUtil.toJson(request, serializer))
         return runCatching {
             logger.debug { "postAsString: ${config.baseUrl}" }
             val response: HttpResponse = ktorClient.post {

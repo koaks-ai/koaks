@@ -20,6 +20,9 @@ class QwenChatModel(
         QwenChatRequest(
             modelName = fullChatRequest.modelName,
             messageList = fullChatRequest.messages,
+            modalities = fullChatRequest.modalities,
+            audio = fullChatRequest.audio,
+            streamOptions = fullChatRequest.streamOptions,
             tools = fullChatRequest.tools,
             parallelToolCalls = fullChatRequest.parallelToolCalls,
             systemMessage = fullChatRequest.systemMessage,
