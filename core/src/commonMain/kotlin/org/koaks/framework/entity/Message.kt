@@ -44,6 +44,7 @@ data class Message(
         fun tool(content: String, toolCallId: String) = Message(
             role = MessageRole.TOOL,
             content = listOf(ContentItem.Text(content)),
+            toolCallId = toolCallId
         )
 
         fun userText(text: String) = Message(
