@@ -1,10 +1,27 @@
 package org.koaks.framework.entity
 
 import kotlinx.serialization.Serializable
+import org.koaks.framework.entity.enums.ModalitiesType
 import org.koaks.framework.toolcall.ToolDefinition
 
 @Serializable
 open class ModelParams {
+
+    /**
+     * Set the output data modality.
+     *
+     * Currently supported options are: ["text","audio"], '["text"]'
+     *
+     * `optional`
+     */
+    var modalities: List<ModalitiesType>? = null
+
+    /**
+     * like {"voice": "Cherry", "format": "wav"}
+     */
+    var audio: AudioConfig? = null
+
+    var streamOptions: StreamOptions? = null
 
     /** Tool definitions */
     var tools: MutableList<ToolDefinition>? = null

@@ -14,22 +14,55 @@ sealed class ContentItem {
     data class Text(val text: String?) : ContentItem()
 
     /**
-     * Image content
+     * Url Image content
      */
     @Serializable
-    @SerialName("image")
+    @SerialName("image_url")
     data class Image(
-        @SerialName("image")
-        val url: String
-    ) : ContentItem()
+        @SerialName("image_url")
+        val imagePath: Url
+    ) : ContentItem() {
+        @Serializable
+        data class Url(
+            val url: String
+        )
+    }
+
+    /**
+     * Audio content
+     */
+    @Serializable
+    @SerialName("input_audio")
+    data class InputAudio(
+        @SerialName("input_audio")
+        val audioContent: AudioContent
+    ) : ContentItem() {
+        @Serializable
+        data class AudioContent(
+            val data: String,
+            val format: String,
+        )
+    }
 
     /**
      * Video content, represented as a list of frames/segments
      */
     @Serializable
     @SerialName("video")
-    data class Video(
+    data class VideoFrame(
         val video: List<String>
     ) : ContentItem()
+
+    @Serializable
+    @SerialName("video_url")
+    data class VideoUrl(
+        @SerialName("video_url")
+        val url: Url
+    ) : ContentItem() {
+        @Serializable
+        data class Url(
+            val url: String
+        )
+    }
 
 }

@@ -2,7 +2,10 @@ package org.koaks.provider.qwen
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import org.koaks.framework.entity.AudioConfig
 import org.koaks.framework.entity.Message
+import org.koaks.framework.entity.StreamOptions
+import org.koaks.framework.entity.enums.ModalitiesType
 import org.koaks.framework.toolcall.ToolDefinition
 
 @Serializable
@@ -13,6 +16,15 @@ data class QwenChatRequest(
 
     @SerialName("messages")
     var messageList: MutableList<Message>?,
+
+    @SerialName("modalities")
+    val modalities: List<ModalitiesType>? = null,
+
+    @SerialName("audio")
+    val audio: AudioConfig? = null,
+
+    @SerialName("stream_options")
+    val streamOptions: StreamOptions? = null,
 
     @SerialName("tools")
     var tools: List<ToolDefinition>? = null,

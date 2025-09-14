@@ -51,20 +51,52 @@ data class Message(
             content = listOf(ContentItem.Text(text))
         )
 
-        fun userImage(url: String, desc: String? = null) = Message(
+        fun userImageUrl(url: String) = Message(
             role = MessageRole.USER,
             content = listOfNotNull(
-                ContentItem.Image(url),
-                desc?.let { ContentItem.Text(it) }
+                ContentItem.Image(
+                    ContentItem.Image.Url(url)
+                )
             )
         )
 
-        fun userVideo(frames: List<String>, desc: String? = null) = Message(
+        fun userImageBase64(base64: String) = Message(
             role = MessageRole.USER,
             content = listOfNotNull(
-                ContentItem.Video(frames),
-                desc?.let { ContentItem.Text(it) }
+                ContentItem.Image(
+                    ContentItem.Image.Url("data:image/png;base64,$base64")
+                )
             )
+        )
+
+        fun userVideoFrame(frames: List<String>) = Message(
+            role = MessageRole.USER,
+            content = listOfNotNull(
+                ContentItem.VideoFrame(frames)
+            )
+        )
+
+        fun userVideoFrame(vararg frames: String) = Message(
+            role = MessageRole.USER,
+            content = listOfNotNull(
+                ContentItem.VideoFrame(frames.toList())
+            )
+        )
+
+        fun userVideoUrl(videoUrl: String) = Message(
+            role = MessageRole.USER,
+            content = listOfNotNull(
+                ContentItem.VideoUrl(ContentItem.VideoUrl.Url(videoUrl))
+            )
+        )
+
+        fun userAudio(url: String, format: String) = Message(
+            role = MessageRole.USER,
+            content = listOfNotNull(
+                ContentItem.InputAudio(
+                    ContentItem.InputAudio.AudioContent(url, format)
+                )
+            ),
         )
 
         fun multimodal(vararg message: Message) = Message(
