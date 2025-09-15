@@ -36,11 +36,6 @@ data class Message(
             content = listOf(ContentItem.Text(text))
         )
 
-        fun assistantText(text: String?) = Message(
-            role = MessageRole.ASSISTANT,
-            content = listOf(ContentItem.Text(text))
-        )
-
         fun tool(content: String, toolCallId: String) = Message(
             role = MessageRole.TOOL,
             content = listOf(ContentItem.Text(content)),
@@ -52,8 +47,22 @@ data class Message(
             content = listOf(ContentItem.Text(text))
         )
 
+        fun assistantText(text: String?) = Message(
+            role = MessageRole.ASSISTANT,
+            content = listOf(ContentItem.Text(text))
+        )
+
         fun userImageUrl(url: String) = Message(
             role = MessageRole.USER,
+            content = listOfNotNull(
+                ContentItem.Image(
+                    ContentItem.Image.Url(url)
+                )
+            )
+        )
+
+        fun assistantImageUrl(url: String) = Message(
+            role = MessageRole.ASSISTANT,
             content = listOfNotNull(
                 ContentItem.Image(
                     ContentItem.Image.Url(url)
@@ -70,8 +79,24 @@ data class Message(
             )
         )
 
+        fun assistantImageBase64(base64: String) = Message(
+            role = MessageRole.ASSISTANT,
+            content = listOfNotNull(
+                ContentItem.Image(
+                    ContentItem.Image.Url("data:image/png;base64,$base64")
+                )
+            )
+        )
+
         fun userVideoFrame(frames: List<String>) = Message(
             role = MessageRole.USER,
+            content = listOfNotNull(
+                ContentItem.VideoFrame(frames)
+            )
+        )
+
+        fun assistantVideoFrame(frames: List<String>) = Message(
+            role = MessageRole.ASSISTANT,
             content = listOfNotNull(
                 ContentItem.VideoFrame(frames)
             )
@@ -84,6 +109,13 @@ data class Message(
             )
         )
 
+        fun assistantVideoFrame(vararg frames: String) = Message(
+            role = MessageRole.ASSISTANT,
+            content = listOfNotNull(
+                ContentItem.VideoFrame(frames.toList())
+            )
+        )
+
         fun userVideoUrl(videoUrl: String) = Message(
             role = MessageRole.USER,
             content = listOfNotNull(
@@ -91,8 +123,24 @@ data class Message(
             )
         )
 
+        fun assistantVideoUrl(videoUrl: String) = Message(
+            role = MessageRole.ASSISTANT,
+            content = listOfNotNull(
+                ContentItem.VideoUrl(ContentItem.VideoUrl.Url(videoUrl))
+            )
+        )
+
         fun userAudio(url: String, format: String) = Message(
             role = MessageRole.USER,
+            content = listOfNotNull(
+                ContentItem.InputAudio(
+                    ContentItem.InputAudio.AudioContent(url, format)
+                )
+            ),
+        )
+
+        fun assistantAudio(url: String, format: String) = Message(
+            role = MessageRole.ASSISTANT,
             content = listOfNotNull(
                 ContentItem.InputAudio(
                     ContentItem.InputAudio.AudioContent(url, format)

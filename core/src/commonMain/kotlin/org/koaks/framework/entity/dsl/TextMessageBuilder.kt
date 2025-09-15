@@ -2,7 +2,7 @@ package org.koaks.framework.entity.dsl
 
 import org.koaks.framework.entity.Message
 
-class MessageBuilder {
+class TextMessageBuilder {
     private val parts = mutableListOf<Message>()
 
     fun userText(value: String) {
@@ -16,6 +16,6 @@ class MessageBuilder {
     fun build(): MutableList<Message> = parts
 }
 
-fun textMessages(block: MessageBuilder.() -> Unit): MutableList<Message> {
-    return MessageBuilder().apply(block).build()
+fun textMessages(block: TextMessageBuilder.() -> Unit): MutableList<Message> {
+    return TextMessageBuilder().apply(block).build()
 }
