@@ -162,6 +162,7 @@ class TestChatClient {
                         "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241108/zefdja/football3.jpg",
                         "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241108/aedbqh/football4.jpg",
                     )
+                    userText("这段视频中都有什么")
                 }
             )
         )
