@@ -57,7 +57,11 @@ class TestToolInterface {
                     baseUrl = EnvTools.loadValue("BASE_URL"),
                     apiKey = EnvTools.loadValue("API_KEY"),
                     modelName = "qwen3-235b-a22b-instruct-2507",
-                )
+                ) {
+                    params {
+                        parallelToolCalls = true
+                    }
+                }
             }
             tools {
                 addTools(
@@ -70,9 +74,7 @@ class TestToolInterface {
 
         val chatRequest = ChatRequest(
             message = Message.userText("What's the 'shanghai'、'beijing'、'xi an'、'tai an' weather like?")
-        ).apply {
-            params.parallelToolCalls = true
-        }
+        )
 
         val result = clientWithDsl.chat(chatRequest)
 
@@ -81,6 +83,23 @@ class TestToolInterface {
 
     @Test
     fun testToolCallDsl() = runBlocking {
+
+        val weatherTool = createTool<WeatherInput>(
+            name = "getWeather",
+            description = "get the weather for a specific city today.",
+            group = "weather"
+        ) { input ->
+            "The weather in ${input.city} at ${input.date} is windy."
+        }
+
+        val locationTool = createTool<NoneInput>(
+            name = "userLocation",
+            description = "get the city where the user is located",
+            group = "location"
+        ) { _ ->
+            "Shanghai"
+        }
+
         val client = createChatClient {
             model {
                 qwen(
@@ -91,20 +110,7 @@ class TestToolInterface {
             }
             tools {
                 addTools(
-                    createTool<WeatherInput>(
-                        name = "getWeather",
-                        description = "get the weather for a specific city today.",
-                        group = "weather"
-                    ) { input ->
-                        "The weather in ${input.city} at ${input.date} is windy."
-                    },
-                    createTool<NoneInput>(
-                        name = "userLocation",
-                        description = "get the city where the user is located",
-                        group = "location"
-                    ) { _ ->
-                        "Shanghai"
-                    }
+                    weatherTool, locationTool
                 )
                 groups("weather", "location")
             }
@@ -119,7 +125,10 @@ class TestToolInterface {
 
         val result = client.chat(chatRequest)
 
+
+
         println(result.value().choices?.getOrNull(0)?.message?.content)
     }
+
 
 }
