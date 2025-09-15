@@ -11,6 +11,8 @@ object Koaks {
     private val logger = KotlinLogging.logger {}
 
     fun init(vararg packageName: String) {
+        logger.info { "surrounding platform: ${PlatformUtils.platformType()}" }
+
         if (PlatformUtils.platformType() == PlatformType.JVM) {
             packageName.forEach {
                 KoaksContext.addPackageName(it)
