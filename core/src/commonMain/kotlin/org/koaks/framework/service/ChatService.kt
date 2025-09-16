@@ -41,7 +41,7 @@ class ChatService<TRequest, TResponse>(
         private const val MAX_TOOL_CALL_EPOCH = 30
     }
 
-    private var httpClient = KtorHttpClient(
+    private val httpClient = KtorHttpClient(
         HttpClientConfig(
             baseUrl = model.baseUrl,
             apiKey = model.apiKey
