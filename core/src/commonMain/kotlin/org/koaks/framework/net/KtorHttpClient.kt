@@ -56,7 +56,9 @@ class KtorHttpClient(
             url(config.baseUrl)
             contentType(ContentType.Application.Json)
             accept(ContentType.Application.Json)
-            header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
+            if (!config.apiKey.isNullOrBlank()) {
+                header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
+            }
         }
     }
 
