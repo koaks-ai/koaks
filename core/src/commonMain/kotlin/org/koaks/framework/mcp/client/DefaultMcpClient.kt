@@ -27,11 +27,11 @@ class DefaultMcpClient(
         val typeAdapter = TypeAdapter(InitRequest.serializer(), InitResponse.serializer())
         return httpClient.postAsObject(request, typeAdapter).fold(
             onSuccess = {
-                logger.debug { "MCP initialized successfully" }
+                logger.info { "mcp server initialized successfully" }
                 it
             },
             onFailure = {
-                logger.error { "Failed to initialize MCP, url: $mcpUrl, error:${it.message}" }
+                logger.error { "failed to initialize mcp server, url: $mcpUrl, error:${it.message}" }
                 InitResponse()
             }
         )
@@ -40,10 +40,10 @@ class DefaultMcpClient(
     override suspend fun initialized(request: InitializedRequest) {
         httpClient.postAsString(request, InitializedRequest.serializer()).fold(
             onSuccess = {
-                logger.debug { "MCP initialized successfully" }
+                logger.debug { "mcp client initialized successfully" }
             },
             onFailure = {
-                logger.error { "Failed to initialize MCP, url: $mcpUrl, error:${it.message}" }
+                logger.error { "failed to initialized mcp client, url: $mcpUrl, error:${it.message}" }
             }
         )
     }
