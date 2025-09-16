@@ -2,7 +2,7 @@ package org.koaks.framework.net
 
 data class HttpClientConfig(
     val baseUrl: String,
-    val apiKey: String?,
+    val apiKey: String? = null,
     val connectTimeout: Long = 5,
     val writeTimeout: Long = 60,
     // todo: need to distinguish between `streaming` and `non-streaming`
