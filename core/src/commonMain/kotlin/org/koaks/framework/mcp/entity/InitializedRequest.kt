@@ -1,4 +1,4 @@
-package org.koaks.framework.mcp
+package org.koaks.framework.mcp.entity
 
 import kotlinx.serialization.Serializable
 

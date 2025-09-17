@@ -1,4 +1,4 @@
-package org.koaks.framework.mcp
+package org.koaks.framework.mcp.entity
 
 import kotlinx.serialization.Serializable
 
@@ -7,7 +7,7 @@ data class InitRequest(
     var jsonrpc: String = "2.0",
     val id: Int,
     var method: String = "initialize",
-    val params: Params
+    val params: Params? = null
 ) {
     @Serializable
     data class Params(
