@@ -8,7 +8,7 @@ import org.koaks.framework.toolcall.ToolType
 import org.koaks.framework.utils.json.JsonUtil
 
 
-object ToolCaller : IOutCaller {
+object ToolExecuter : OuterExecuter {
 
     val logger = KotlinLogging.logger {}
 
@@ -16,7 +16,7 @@ object ToolCaller : IOutCaller {
         return ToolManager.getTool(toolname)?.let { tool ->
             if (tool.toolType == ToolType.ANNOTATION) {
                 val args = parseToolArguments(tool, json)
-                AnnoTypeCaller.call(tool, args.toTypedArray())
+                AnnoTypeExecuter.call(tool, args.toTypedArray())
             } else {
                 // only two types: ANNOTATION and INTERFACE
                 // for tools of type INTERFACE, toolImplementation can never be null
