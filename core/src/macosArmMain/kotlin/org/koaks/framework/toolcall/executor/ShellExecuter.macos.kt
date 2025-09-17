@@ -1,9 +1,9 @@
-package org.koaks.framework.toolcall.executer
+package org.koaks.framework.toolcall.executor
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 @Suppress(names = ["EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING"])
-actual object ShellCodeExecuter : CodeExecuter {
+actual object ShellCodeExecutor : CodeExecutor {
 
     private val logger = KotlinLogging.logger {}
 

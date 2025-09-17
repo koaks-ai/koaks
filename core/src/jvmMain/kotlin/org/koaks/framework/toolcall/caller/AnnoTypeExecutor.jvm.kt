@@ -5,7 +5,7 @@ import org.koaks.framework.toolcall.ToolDefinition
 import org.koaks.framework.toolcall.ToolInstanceContainer
 
 @Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING")
-actual object AnnoTypeExecuter {
+actual object AnnoTypeExecutor {
 
     private val logger = KotlinLogging.logger {}
 

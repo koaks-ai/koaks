@@ -1,4 +1,4 @@
-package org.koaks.framework.toolcall.executer
+package org.koaks.framework.toolcall.executor
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.BufferedReader
@@ -9,7 +9,7 @@ import java.io.InputStreamReader
 import java.util.Locale
 
 @Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING", "DEPRECATION")
-actual object ShellCodeExecuter : CodeExecuter {
+actual object ShellCodeExecutor : CodeExecutor {
 
     private val logger = KotlinLogging.logger {}
 
