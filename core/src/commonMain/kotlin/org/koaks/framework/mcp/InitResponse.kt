@@ -6,7 +6,8 @@ import kotlinx.serialization.Serializable
 data class InitResponse(
     var jsonrpc: String = "2.0",
     val id: Int? = null,
-    val result: Result? = null
+    val result: Result? = null,
+    val error: McpError? = null
 ) {
     @Serializable
     data class Result(
