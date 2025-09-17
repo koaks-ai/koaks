@@ -9,5 +9,6 @@ data class HttpClientConfig(
     val readTimeout: Long = 600,
     // todo: need to distinguish between `chat` and `agent`
     val callTimeout: Long = 600,
-    val streamEndMarker: String = "[DONE]"
+    val streamEndMarker: String = "[DONE]",
+    val customHeaders: Map<String, String> = emptyMap()
 )
