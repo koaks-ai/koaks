@@ -9,7 +9,7 @@ import java.io.InputStreamReader
 import java.util.Locale
 
 @Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING", "DEPRECATION")
-actual object ShellExecuter : Executer {
+actual object ShellCodeExecuter : CodeExecuter {
 
     private val logger = KotlinLogging.logger {}
 
