@@ -25,7 +25,7 @@ import org.koaks.framework.model.AbstractChatModel
 import org.koaks.framework.net.KtorHttpClient
 import org.koaks.framework.net.HttpClientConfig
 import org.koaks.framework.toolcall.ToolManager
-import org.koaks.framework.toolcall.caller.ToolCaller
+import org.koaks.framework.toolcall.caller.ToolExecuter
 
 
 class ChatService<TRequest, TResponse>(
@@ -138,7 +138,7 @@ class ChatService<TRequest, TResponse>(
         val messages = request.messages
         var response = initialResponse
         var toolCallCount = 0
-        val caller = ToolCaller
+        val caller = ToolExecuter
 
         while (response.value().shouldToolCall && toolCallCount < MAX_TOOL_CALL_EPOCH) {
             val responseMessage = response.value().choices?.firstOrNull()?.message
@@ -178,7 +178,7 @@ class ChatService<TRequest, TResponse>(
      * Executes tool call.
      */
     private suspend fun executeToolCall(
-        tool: ChatResponse.ToolCall, caller: ToolCaller, request: FullChatRequest, messages: MutableList<Message>
+        tool: ChatResponse.ToolCall, caller: ToolExecuter, request: FullChatRequest, messages: MutableList<Message>
     ) {
         val toolName = tool.function?.name.orEmpty()
         val argsJson = tool.function?.arguments ?: ""
