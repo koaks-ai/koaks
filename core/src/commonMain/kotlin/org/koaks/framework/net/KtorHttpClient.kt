@@ -59,6 +59,12 @@ class KtorHttpClient(
             if (!config.apiKey.isNullOrBlank()) {
                 header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
             }
+            // support custom headers
+            if (!config.customHeaders.isNotEmpty()) {
+                for ((key, value) in config.customHeaders) {
+                    header(key, value)
+                }
+            }
         }
     }
 
