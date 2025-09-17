@@ -1,6 +1,6 @@
 package org.koaks.framework.toolcall.executer
 
-interface Executer {
+interface CodeExecuter {
 
     fun exec(cmd: String): String?
 
