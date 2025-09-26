@@ -8,6 +8,7 @@ kotlin {
             dependencies {
                 implementation(project(":core"))
                 implementation(project(":llms:qwen"))
+                implementation(project(":llms:ollama"))
                 implementation(libs.coroutines.test)
                 implementation(kotlin("test"))
             }
