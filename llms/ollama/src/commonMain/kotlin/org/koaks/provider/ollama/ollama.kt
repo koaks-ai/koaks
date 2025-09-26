@@ -4,7 +4,7 @@ import org.koaks.framework.api.dsl.ModelSelector
 
 fun ModelSelector.ollama(
     baseUrl: String,
-    apiKey: String,
+    apiKey: String = "ollama",
     modelName: String,
     block: (OllamaChatModel.() -> Unit)? = null
 ): OllamaChatModel {

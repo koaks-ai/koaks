@@ -10,7 +10,7 @@ import org.koaks.framework.model.TypeAdapter
 
 class OllamaChatModel(
     override val baseUrl: String,
-    override val apiKey: String,
+    override val apiKey: String = "ollama",
     override var modelName: String,
 ) : AbstractChatModel<OllamaChatRequest, OllamaChatResponse>(baseUrl, apiKey, modelName) {
 
