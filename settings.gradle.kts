@@ -15,4 +15,5 @@ rootProject.name = "koaks"
 
 include("core")
 include("llms:qwen")
+include("llms:ollama")
 include("tests")
