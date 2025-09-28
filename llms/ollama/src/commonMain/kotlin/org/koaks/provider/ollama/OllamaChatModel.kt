@@ -35,7 +35,11 @@ class OllamaChatModel(
                         }
 
                         is ContentItem.Image -> {
-                            images.add(item.imagePath.url.split("data:image/png;base64,")[1])
+                            val base64ContentArray = item.imagePath.url.split("data:image/png;base64,")
+                            if (base64ContentArray.isEmpty()) {
+                                throw IllegalArgumentException("Invalid image content")
+                            }
+                            images.add(base64ContentArray[1])
                         }
 
                         else -> logger.error { "unsupported $item." }
