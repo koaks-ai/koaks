@@ -14,6 +14,7 @@ plugins {
 rootProject.name = "koaks"
 
 include("core")
+include("graph")
 include("llms:qwen")
 include("llms:ollama")
 include("tests")
