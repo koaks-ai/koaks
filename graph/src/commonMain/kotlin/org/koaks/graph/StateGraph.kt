@@ -4,9 +4,7 @@ import kotlin.collections.mutableListOf
 
 class StateGraph(
     val name: String,
-    initialState: Map<String, Any> = emptyMap()
 ) {
-    val context = GraphContext(initialState)
     private val nodes = mutableMapOf<String, Node>()
     private val edges = mutableListOf<Edge>()
 
