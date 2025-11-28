@@ -16,7 +16,15 @@ class EdgeRouter(graph: StateGraph) {
         // 找到该节点出发的 ConditionalEdge
         edges.filterIsInstance<ConditionalEdge>().firstOrNull()?.let { edge ->
             val key = edge.router(context)
-            return edge.cases[key]
+            // 隐式路由，[不添加边映射]并且[未开启严格模式], 默认映射自身
+            return edge.cases[key] ?: if (edge.useImplicitRouting) {
+                key
+            } else {
+                throw GraphException(
+                    "Conditional edge from '$from' returned unmapped key '$key'. " +
+                            "Available mappings: ${edge.cases.keys}"
+                )
+            }
         }
 
         return null
