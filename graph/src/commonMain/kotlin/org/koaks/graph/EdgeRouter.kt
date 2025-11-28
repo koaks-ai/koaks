@@ -5,28 +5,32 @@ class EdgeRouter(graph: StateGraph) {
     private val edgeIndex: Map<String, List<Edge>> = graph.getAllEdges()
         .groupBy { it.from }
 
-    suspend fun route(from: String, context: GraphContext): String? {
-        val edges = edgeIndex[from] ?: return null
+    suspend fun route(from: String, context: GraphContext): Result<String> {
+        val edges = edgeIndex[from] ?: return Result.failure(MissingRouteException(from))
 
-        // 直接边优先级最高 (DirectEdge)
-        edges.firstOrNull { it is DirectEdge }?.let {
-            return it.to
+        // DirectEdge 优先
+        val direct = edges.firstOrNull { it is DirectEdge }
+        if (direct is DirectEdge) {
+            return Result.success(direct.to)
         }
 
-        // 找到该节点出发的 ConditionalEdge
-        edges.filterIsInstance<ConditionalEdge>().firstOrNull()?.let { edge ->
-            val key = edge.router(context)
-            // 隐式路由，[不添加边映射]并且[未开启严格模式], 默认映射自身
-            return edge.cases[key] ?: if (edge.useImplicitRouting) {
-                key
-            } else {
-                throw GraphException(
-                    "Conditional edge from '$from' returned unmapped key '$key'. " +
-                            "Available mappings: ${edge.cases.keys}"
-                )
-            }
-        }
+        // ConditionalEdge
+        val conditional = edges.filterIsInstance<ConditionalEdge>().firstOrNull()
+            ?: return Result.failure(MissingRouteException(from))
 
-        return null
+        val key = conditional.router(context)
+
+        // 隐式路由，[不添加边映射]并且[未开启严格模式], 默认映射自身
+        val target = conditional.cases[key]
+            ?: if (conditional.useImplicitRouting) key else null
+
+        return if (target != null) {
+            Result.success(target)
+        } else {
+            Result.failure(
+                RoutingException(from, key, conditional.cases.keys)
+            )
+        }
     }
+
 }
