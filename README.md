@@ -45,7 +45,7 @@ implementation("io.github.mynna404:koaks-qwen:0.0.1-preview6")
 </dependency>
 
 <dependency>
-  <groupId>io.github.mynna404</groupId>
+  <groupId>org.koaks.framework</groupId>
   <artifactId>koaks-qwen-jvm</artifactId>
   <version>0.0.1-preview6</version>
 </dependency>
