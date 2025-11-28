@@ -35,7 +35,7 @@ class EmailGraph {
 
             model("draft_response") { ctx ->
                 println("5. 起草回复...")
-                val needReview = false
+                val needReview = true
                 ctx.setValue("draft", "这是回复内容")
                 // 将路由决策存储到 state
                 ctx.setValue("route_to", if (needReview) "human_review" else "send_reply")
@@ -53,10 +53,12 @@ class EmailGraph {
             // ----------- 线性边 -----------
             start to "read_email"
             "read_email" to "classify_intent"
+
             "search_documentation" to "draft_response"
             "bug_tracking" to "draft_response"
-            "draft_response" to "send_reply"
+
             "human_review" to "send_reply"
+
             "send_reply" to end
 
             // ----------- 条件边 -----------
