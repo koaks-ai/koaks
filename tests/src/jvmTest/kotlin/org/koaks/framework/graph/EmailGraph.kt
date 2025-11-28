@@ -76,6 +76,7 @@ class EmailGraph {
                 // 从 state 中读取路由决策
                 ctx.getValue<String>("route_to") ?: "send_reply"
             }) {
+//                strict()
                 "human_review" to "human_review"
                 "send_reply" to "send_reply"
             }
@@ -85,7 +86,6 @@ class EmailGraph {
             GraphEngine(emailGraph)
                 .addInterceptor(TestInterceptor())
                 .execute()
-            println(emailGraph.context.snapshot())
         }
 
     }

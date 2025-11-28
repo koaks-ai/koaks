@@ -4,6 +4,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 
 class GraphEngine(
     private val graph: StateGraph,
+    private val initialState: Map<String, Any> = emptyMap(),
     private val config: EngineRunnableConfig = EngineRunnableConfig()
 ) {
     private val logger = KotlinLogging.logger {}
@@ -11,15 +12,16 @@ class GraphEngine(
     private val router = EdgeRouter(graph)
     private val interceptors = mutableListOf<NodeInterceptor>()
 
-    fun addInterceptor(interceptor: NodeInterceptor): GraphEngine = apply {
+    fun createContext() = GraphContext(initialState)
+
+    fun addInterceptor(interceptor: NodeInterceptor) = apply {
         interceptors.add(interceptor)
     }
 
     suspend fun execute() {
-        val context = graph.context
         try {
             logger.debug { "[${graph.name}] starting execution" }
-            executeGraph(context)
+            executeGraph(createContext())
             logger.info { "[${graph.name}] execution completed successfully" }
         } catch (e: Exception) {
             logger.error(e) { "[${graph.name}] execution failed" }
