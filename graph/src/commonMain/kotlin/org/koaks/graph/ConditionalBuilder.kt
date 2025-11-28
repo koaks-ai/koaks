@@ -4,19 +4,17 @@ class ConditionalEdgeBuilder(
     private val from: String,
     private val router: suspend (GraphContext) -> String
 ) {
-    private val mappings = mutableMapOf<String, String>()
+    private val mappings = linkedMapOf<String, String>()
 
     infix fun String.to(target: String) {
         mappings[this] = target
     }
 
-    internal fun build(): List<ConditionalEdge> {
-        return mappings.map { (key, target) ->
-            ConditionalEdge(
-                from = from,
-                to = target,
-                condition = { ctx -> router(ctx) == key }
-            )
-        }
+    internal fun build(): Edge {
+        return ConditionalEdge(
+            from = from,
+            router = router,
+            cases = mappings.toMap()
+        )
     }
 }

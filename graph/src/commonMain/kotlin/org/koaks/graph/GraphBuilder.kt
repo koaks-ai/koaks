@@ -34,7 +34,7 @@ class StateGraphBuilder(name: String) {
     ) {
         val builder = ConditionalEdgeBuilder(from, router)
         builder.block()
-        builder.build().forEach { graph.addEdge(it) }
+        builder.build().let { graph.addEdge(it) }
     }
 
     fun build(): StateGraph {

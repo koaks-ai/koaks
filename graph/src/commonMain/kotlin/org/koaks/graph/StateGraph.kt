@@ -4,11 +4,9 @@ import kotlin.collections.mutableListOf
 
 class StateGraph(
     val name: String,
-    val initialState: Map<String, Any> = emptyMap()
+    initialState: Map<String, Any> = emptyMap()
 ) {
-
     val context = GraphContext(initialState)
-
     private val nodes = mutableMapOf<String, Node>()
     private val edges = mutableListOf<Edge>()
 
@@ -34,32 +32,45 @@ class StateGraph(
     }
 
     fun getNode(id: String): Node? = nodes[id]
-
     fun getAllNodes(): List<Node> = nodes.values.toList()
-
     fun getAllEdges(): List<Edge> = edges.toList()
 
-    // 返回详细的验证结果
     fun validate(): ValidationResult {
         val errors = mutableListOf<String>()
 
-        // 检查边引用的节点是否存在
-        edges.forEach { edge ->
-            if (edge.from !in nodes) {
-                errors.add("[$name] --  Edge from non-existent node: ${edge.from}")
-            }
-            if (edge.to !in nodes) {
-                errors.add("[$name] -- Edge to non-existent node: ${edge.to}")
+        // 获取一个边所有的目标节点
+        fun getEdgeTargets(edge: Edge): List<String> {
+            return when (edge) {
+                is DirectEdge -> listOf(edge.to)
+                is ConditionalEdge -> edge.cases.values.toList()
             }
         }
 
-        // 检查 START 节点必须有出边
+        // 1. 检查边引用的节点是否存在
+        edges.forEach { edge ->
+            if (edge.from !in nodes) {
+                errors.add("[$name] -- Edge from non-existent node: ${edge.from}")
+            }
+
+            getEdgeTargets(edge).forEach { targetId ->
+                if (targetId !in nodes) {
+                    errors.add("[$name] -- Edge to non-existent node: $targetId")
+                }
+            }
+        }
+
+        // 2. 检查 START 节点必须有出边
         if (edges.none { it.from == START }) {
             errors.add("[$name] -- START node has no outgoing edges")
         }
 
-        // 检查孤立节点 (除了 START 和 END)
-        val connectedNodes = edges.flatMap { listOf(it.from, it.to) }.toSet()
+        // 3. 检查孤立节点 (计算 connectivity)
+        val connectedNodes = mutableSetOf<String>()
+        edges.forEach { edge ->
+            connectedNodes.add(edge.from)
+            connectedNodes.addAll(getEdgeTargets(edge))
+        }
+
         nodes.keys.forEach { id ->
             if (id != START && id != END && id !in connectedNodes) {
                 errors.add("[$name] -- Isolated node: $id")
