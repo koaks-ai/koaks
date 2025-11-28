@@ -13,7 +13,8 @@ data class DirectEdge(
 data class ConditionalEdge(
     override val from: String,
     val router: suspend (GraphContext) -> String,
-    val cases: Map<String, String>
+    val cases: Map<String, String>,
+    val useImplicitRouting: Boolean = true
 ) : Edge() {
     override val to: String = "__CONDITIONAL__"
 }
