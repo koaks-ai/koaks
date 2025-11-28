@@ -1,9 +1,13 @@
 package org.koaks.graph
 
+import io.github.oshai.kotlinlogging.KotlinLogging
+
 class GraphEngine(
     private val graph: StateGraph,
     private val config: EngineRunnableConfig = EngineRunnableConfig()
 ) {
+    private val logger = KotlinLogging.logger {}
+
     private val router = EdgeRouter(graph)
     private val interceptors = mutableListOf<NodeInterceptor>()
 
@@ -11,19 +15,15 @@ class GraphEngine(
         interceptors.add(interceptor)
     }
 
-    suspend fun execute(): ExecutionResult {
+    suspend fun execute() {
         val context = graph.context
-
-        return try {
+        try {
+            logger.debug { "[${graph.name}] starting execution" }
             executeGraph(context)
-            ExecutionResult.Success(context.snapshot())
-        } catch (e: GraphException) {
-            ExecutionResult.Failure(e, context.snapshot())
+            logger.info { "[${graph.name}] execution completed successfully" }
         } catch (e: Exception) {
-            ExecutionResult.Failure(
-                GraphException("Unexpected error: ${e.message}", e),
-                context.snapshot()
-            )
+            logger.error(e) { "[${graph.name}] execution failed" }
+            throw e
         }
     }
 
@@ -33,29 +33,45 @@ class GraphEngine(
 
             val nodeId = context.currentNode()
             val node = graph.getNode(nodeId)
-                ?: throw GraphException("Node not found: $nodeId")
 
             executeNode(context, node)
 
-            val nextNode = router.route(nodeId, context) ?: StateGraph.END
+            val nextNode = router.route(nodeId, context).getOrThrow()
             context.moveTo(nextNode)
         }
     }
 
     private suspend fun executeNode(context: GraphContext, node: Node) {
-        interceptors.forEach { it.beforeNode(context, node) }
+        interceptors.forEach {
+            try {
+                it.beforeNode(context, node)
+            } catch (e: Exception) {
+                logger.error(e) { "Interceptor failed: beforeNode" }
+            }
+        }
 
         try {
-            // START 和 END 节点不执行 action
-            if ((node.type != NodeType.START) && (node.type != NodeType.END)) {
+            if (node.type != NodeType.START && node.type != NodeType.END) {
                 node.action(context)
             }
         } catch (e: Exception) {
-            interceptors.forEach { it.onError(context, node, e) }
-            throw GraphException("Error in node ${node.id}: ${e.message}", e)
+            interceptors.forEach {
+                try {
+                    it.onError(context, node, e)
+                } catch (interceptorError: Exception) {
+                    logger.error(interceptorError) { "Interceptor failed: onError" }
+                }
+            }
+            throw NodeExecutionException(node.id, e)
         }
 
-        interceptors.forEach { it.afterNode(context, node) }
+        interceptors.forEach {
+            try {
+                it.afterNode(context, node)
+            } catch (e: Exception) {
+                logger.error(e) { "Interceptor failed: afterNode" }
+            }
+        }
     }
 
     private fun checkLimits(context: GraphContext) {
@@ -66,12 +82,4 @@ class GraphEngine(
         }
     }
 
-}
-
-sealed class ExecutionResult {
-    data class Success(val state: Map<String, Any>) : ExecutionResult()
-    data class Failure(
-        val error: GraphException,
-        val stateAtFailure: Map<String, Any>
-    ) : ExecutionResult()
 }

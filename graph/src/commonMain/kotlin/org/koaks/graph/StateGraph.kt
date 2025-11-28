@@ -31,7 +31,9 @@ class StateGraph(
         edges.add(edge)
     }
 
-    fun getNode(id: String): Node? = nodes[id]
+    fun getNode(id: String): Node = nodes[id]
+        ?: error("Node not found: $id")
+
     fun getAllNodes(): List<Node> = nodes.values.toList()
     fun getAllEdges(): List<Edge> = edges.toList()
 
