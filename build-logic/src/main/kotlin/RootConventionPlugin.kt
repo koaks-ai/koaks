@@ -5,7 +5,7 @@ import org.gradle.kotlin.dsl.repositories
 class RootConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {
         subprojects {
-            group = "io.github.mynna404"
+            group = "org.koaks.framework"
             version = "0.0.1-snapshot1"
 
             repositories {
