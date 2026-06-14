@@ -8,8 +8,9 @@ kotlin {
             dependencies {
                 implementation(project(":core"))
                 implementation(project(":graph"))
-                implementation(project(":llms:qwen"))
-                implementation(project(":llms:ollama"))
+                implementation(project(":koaks-model:qwen"))
+                // TODO(Stage 2): re-enable once ollama is migrated.
+                // implementation(project(":koaks-model:ollama"))
                 implementation(libs.coroutines.test)
                 implementation(kotlin("test"))
             }

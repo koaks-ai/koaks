@@ -19,8 +19,6 @@ kotlin {
                 api(libs.ktor.client.okhttp)
 //                api(libs.coroutines.reactor)
                 api(libs.logback.classic)
-                api(libs.reflections)
-                api(libs.kotlin.reflect)
             }
         }
         val jsMain by getting {
