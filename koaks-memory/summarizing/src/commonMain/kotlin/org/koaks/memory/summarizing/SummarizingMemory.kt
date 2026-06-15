@@ -15,9 +15,9 @@ import org.koaks.framework.model.Role
  * Memory that summarizes older history once it exceeds [maxMessages], using a
  * [LanguageModel] to compress the oldest turns into a single system "summary so far"
  * message. Lives in its own module (`koaks-memory:summarizing`) since it depends on a
- * model — the core stays dependency-free (design §4.5 module placement).
+ * model — the core stays dependency-free.
  *
- * Trimming/summarizing happens on [load] only; [commit] faithfully appends (§4.5).
+ * Trimming/summarizing happens on [load] only; [commit] faithfully appends.
  * Turn boundaries are respected so assistant↔toolResult pairings are never split.
  */
 class SummarizingMemory(

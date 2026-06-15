@@ -6,7 +6,7 @@ import kotlinx.serialization.json.JsonObject
 /**
  * A callable unit of functionality an agent can invoke.
  *
- * Design §3.5: tools keep a single typed input parameter [In]; [execute] returns
+ * Tools keep a single typed input parameter [In]; [execute] returns
  * the string fed back to the model. Tools needing structured results serialize
  * them inside [execute] themselves.
  *
@@ -26,7 +26,7 @@ interface Tool<In> {
     /** When true, the agent loop finishes immediately after this tool succeeds. */
     val returnDirectly: Boolean get() = false
 
-    /** When true, this tool has external side effects (email/charge/db). Affects rollback semantics (§4.5). */
+    /** When true, this tool has external side effects (email/charge/db). Affects rollback semantics. */
     val hasSideEffects: Boolean get() = false
 
     /**

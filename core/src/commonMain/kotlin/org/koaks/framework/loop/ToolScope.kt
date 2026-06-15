@@ -30,14 +30,14 @@ class ToolScope(@PublishedApi internal val registry: ToolRegistry) {
         registry.register(InlineTool(name, description, serializer, returnDirectly, hasSideEffects, execute))
     }
 
-    /** Adds a deferred tool source resolved on the first run (e.g. MCP discovery, §5.1). */
+    /** Adds a deferred tool source resolved on the first run (e.g. MCP discovery). */
     fun source(source: LazyToolSource) {
         registry.addLazySource(source)
     }
 
     /**
      * Connects an MCP server by [gateway]; its tools are discovered lazily on the
-     * first run via `tools/list` and appended to the registry (§5.1). Discovery is
+     * first run via `tools/list` and appended to the registry. Discovery is
      * deferred because it requires a suspend handshake the synchronous DSL can't await.
      */
     fun mcp(gateway: McpToolGateway) {

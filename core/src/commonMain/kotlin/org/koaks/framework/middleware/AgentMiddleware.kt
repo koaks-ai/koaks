@@ -15,7 +15,7 @@ data class ToolContext(val call: ToolCall, val state: AgentState)
 /**
  * Around-style cross-cutting extension point (tracing-of-flow, cache, guardrail,
  * tool timeout). Covers ONLY around-type concerns; control-flow decisions
- * (returnDirectly / handoff / error recovery) live in the loop, not here (§3.7).
+ * (returnDirectly / handoff / error recovery) live in the loop, not here.
  *
  * Contract for [aroundModelCall]: an implementation must EITHER return `next()`
  * verbatim (pass-through) OR return a self-made flow (cache hit / short-circuit,

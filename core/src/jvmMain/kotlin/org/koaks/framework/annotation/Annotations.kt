@@ -2,7 +2,7 @@ package org.koaks.framework.annotation
 
 /**
  * JVM convenience annotation marking a tool's input type (a data class) with the
- * metadata the model needs. This is **sugar only** (design §3.5 / §8.2 Phase 4):
+ * metadata the model needs. This is **sugar only**:
  * it carries `name`/`description`, and [annotatedTool] turns an annotated input type
  * plus an `execute` lambda into a regular [org.koaks.framework.tool.Tool].
  *

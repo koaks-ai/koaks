@@ -17,7 +17,7 @@ import kotlinx.serialization.json.buildJsonObject
  * `SerialDescriptor → JSON Schema` generator, running purely in commonMain (no JVM
  * reflection).
  *
- * Full coverage (design §8.2 Phase 2):
+ * Full coverage:
  *  - flat & nested data classes (objects)
  *  - primitives: String / Int / Long / Boolean / Double / Float (+ Short/Byte/Char)
  *  - enum → `{ "type": "string", "enum": [...] }`

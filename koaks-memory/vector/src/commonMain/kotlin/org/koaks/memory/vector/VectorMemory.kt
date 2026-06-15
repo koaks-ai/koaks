@@ -8,11 +8,11 @@ import org.koaks.framework.model.Role
 /**
  * Memory backed by semantic recall over a [VectorStore]. Lives in its own module
  * (`koaks-memory:vector`) since it depends on an embedding store — core stays
- * dependency-free (§4.5 module placement).
+ * dependency-free.
  *
  * [commit] indexes the run's messages; [load] recalls the [topK] most relevant past
  * messages for the latest user query (no fixed window). As with all memories,
- * filtering/recall happens on the load side; commit faithfully appends (§4.5).
+ * filtering/recall happens on the load side; commit faithfully appends.
  *
  * Recall is keyed off the most recent USER message in the working set. Because a
  * Thread loads BEFORE appending the new user message, this memory is most useful

@@ -6,7 +6,7 @@ import org.koaks.framework.model.ToolCall
 
 /**
  * Accumulates the messages produced during a single run by observing the outward
- * [AgentEvent] stream, so the loop itself never has to know about [Memory] (§4.5).
+ * [AgentEvent] stream, so the loop itself never has to know about [Memory].
  *
  * The buffer reconstructs, in order: the user message (seeded), then for each model
  * step an assistant message (text + any requested tool calls) followed by its tool

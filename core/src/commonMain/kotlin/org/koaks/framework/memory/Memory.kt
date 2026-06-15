@@ -11,7 +11,7 @@ import org.koaks.framework.model.Message
 value class ThreadId(val value: String)
 
 /**
- * Pluggable conversation memory (design §3.6 / §4.5).
+ * Pluggable conversation memory.
  *
  * Strict data-flow contract:
  *  - [load] returns the "view fed to the model" — trimming/summarizing happens

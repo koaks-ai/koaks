@@ -8,7 +8,7 @@ import org.koaks.framework.model.Usage
 /**
  * Side-channel accumulator for one model step. The loop forwards (emits)
  * [ModelEvent]s immediately for streaming, while feeding them here in parallel to
- * build the terminal assistant message and assembled tool calls (the "tee", §4.1).
+ * build the terminal assistant message and assembled tool calls.
  * It does NOT emit anything itself.
  */
 class TurnAccumulator {

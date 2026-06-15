@@ -4,7 +4,7 @@ import org.koaks.framework.model.AgentError
 import org.koaks.framework.tool.ToolOutcome
 
 /**
- * Human-in-the-loop approval for tool calls (design §7). Before a guarded tool runs,
+ * Human-in-the-loop approval for tool calls. Before a guarded tool runs,
  * [approve] is consulted (a suspend hook — wire it to a UI prompt, a queue, etc.).
  * If it returns false the call is denied via the explicit failure channel.
  *

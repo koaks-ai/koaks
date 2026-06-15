@@ -17,7 +17,7 @@ interface McpToolGateway {
 }
 
 /**
- * A [LazyToolSource] that discovers an MCP server's tools at run time (§5.1). The
+ * A [LazyToolSource] that discovers an MCP server's tools at run time. The
  * synchronous `agent { }` builder records this source; [org.koaks.framework.loop.AgentRunner]
  * resolves it once on the first run inside a suspend context.
  */

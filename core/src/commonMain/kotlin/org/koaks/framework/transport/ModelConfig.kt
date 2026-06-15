@@ -32,8 +32,8 @@ data class ModelConfig(
 enum class StreamFormat { SSE, NDJSON }
 
 /**
- * Connection-level (L0) retry budget. Per design §3.4 this only covers transparent,
- * pre-first-byte retries (connection/DNS/5xx/first-packet timeout) and is strictly
+ * Connection-level retry budget. This only covers transparent, pre-first-byte
+ * retries (connection/DNS/5xx/first-packet timeout) and is strictly
  * separate from the loop's session-level `Recovery.Retry`, so the two never multiply.
  */
 data class RetryBudget(

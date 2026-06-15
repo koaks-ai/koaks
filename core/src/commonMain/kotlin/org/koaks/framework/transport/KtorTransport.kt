@@ -30,8 +30,8 @@ import org.koaks.framework.utils.json.JsonUtil
  *
  * Streaming line-reader supports both [StreamFormat.SSE] (`data:` lines) and
  * [StreamFormat.NDJSON] (raw JSON per line). Connection-level retry is transparent
- * and ONLY applies before the first chunk has been emitted downstream (§3.4): once
- * any byte has been forwarded, no retry happens here — that becomes the loop's call.
+ * and ONLY applies before the first chunk has been emitted downstream: once any
+ * byte has been forwarded, no retry happens here — that becomes the loop's call.
  */
 class KtorTransport(
     private val engineClient: HttpClient = HttpClient(provideEngine()) {
