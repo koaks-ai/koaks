@@ -15,7 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class ThreadTest {
+class AgentThreadTest {
 
     @Test
     fun commits_turn_on_success_and_carries_history() = runTest {

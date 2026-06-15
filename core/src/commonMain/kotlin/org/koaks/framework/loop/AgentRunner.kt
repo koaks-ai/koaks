@@ -15,6 +15,7 @@ import org.koaks.framework.model.Message
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.policy.Recovery
 import org.koaks.framework.tool.ToolOutcome
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The independent, strongly-typed agent loop. NOT graph-based — it is just a
@@ -61,10 +62,13 @@ class AgentRunner(private val agent: Agent) {
                             emittedText = true
                             emitEvent(AgentEvent.TextDelta(event.text))
                         }
+
                         is ModelEvent.ToolCallCompleted ->
                             emitEvent(AgentEvent.ToolCallRequested(event.call))
+
                         is ModelEvent.Failed ->
                             throw ModelFailure(event.error)
+
                         else -> {}
                     }
                 }
@@ -79,14 +83,16 @@ class AgentRunner(private val agent: Agent) {
                     is Recovery.Retry -> {
                         if (!emittedText && retries < r.maxRetries) {
                             retries++
-                            delay(r.delayMs)
+                            delay(r.delayMs.milliseconds)
                             continue
                         }
                         emitEvent(AgentEvent.Failed(error)); return@flow
                     }
+
                     is Recovery.Substitute -> {
                         state = state.append(r.message); continue
                     }
+
                     is Recovery.Propagate -> {
                         emitEvent(AgentEvent.Failed(error)); return@flow
                     }

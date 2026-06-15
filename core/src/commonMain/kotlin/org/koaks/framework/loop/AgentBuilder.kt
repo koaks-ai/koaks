@@ -15,7 +15,7 @@ import org.koaks.framework.tool.ToolRegistry
  * Builder backing the `agent { }` DSL. A thin sugar over the [Agent] constructor —
  * it only assembles the immutable object, holding no logic itself.
  */
-@AgentDsl
+@AgentDSL
 class AgentBuilder {
     var name: String = "agent"
     var instructions: String? = null
@@ -94,7 +94,7 @@ class AgentBuilder {
 fun agent(block: AgentBuilder.() -> Unit): Agent = AgentBuilder().apply(block).build()
 
 /** DSL scope for selecting conversation memory. */
-@AgentDsl
+@AgentDSL
 class MemoryScope {
     private var memory: Memory = NoMemory
 

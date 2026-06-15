@@ -4,7 +4,7 @@ import kotlin.jvm.JvmInline
 import org.koaks.framework.model.Message
 
 /**
- * A conversation thread identifier. Carried by a [Thread]; replaces the old
+ * A conversation thread identifier. Carried by a [AgentThread]; replaces the old
  * hand-passed `memoryId`.
  */
 @JvmInline
@@ -17,7 +17,7 @@ value class ThreadId(val value: String)
  *  - [load] returns the "view fed to the model" — trimming/summarizing happens
  *    HERE (load side), never on commit.
  *  - [commit] faithfully appends this run's successful messages — it never trims.
- *  - The agent loop never touches Memory; only [Thread] calls load/commit at the
+ *  - The agent loop never touches Memory; only [AgentThread] calls load/commit at the
  *    run boundary.
  */
 interface Memory {

@@ -24,7 +24,7 @@ private val logger = KotlinLogging.logger {}
  * The loop itself stays Memory-agnostic; All persistence lives here at the run
  * boundary.
  */
-class Thread(private val agent: Agent, val id: ThreadId) {
+class AgentThread(private val agent: Agent, val id: ThreadId) {
 
     /** Streams events while transparently loading history and committing on success. */
     fun stream(input: String): Flow<AgentEvent> = flow {

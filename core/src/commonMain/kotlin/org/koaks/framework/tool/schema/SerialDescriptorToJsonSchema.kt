@@ -72,8 +72,10 @@ object SerialDescriptorToJsonSchema {
                 StructureKind.MAP -> mapSchema(descriptor)
                 StructureKind.CLASS, StructureKind.OBJECT ->
                     if (inlineTopLevel) objectSchema(descriptor) else refForNamed(descriptor) { objectSchema(it) }
+
                 PolymorphicKind.SEALED, PolymorphicKind.OPEN ->
                     if (inlineTopLevel) sealedSchema(descriptor) else refForNamed(descriptor) { sealedSchema(it) }
+
                 else -> error("unsupported descriptor kind $kind for '${descriptor.serialName}'")
             }
         }

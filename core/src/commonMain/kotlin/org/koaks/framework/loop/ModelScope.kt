@@ -12,7 +12,7 @@ import org.koaks.framework.transport.Transport
  * The scope lazily creates a default [KtorTransport] (owned by the agent) unless an
  * external transport was injected.
  */
-@AgentDsl
+@AgentDSL
 class ModelScope {
     private var external: Transport? = null
     private var lazyTransport: Transport? = null
