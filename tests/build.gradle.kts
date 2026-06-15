@@ -9,9 +9,11 @@ kotlin {
                 implementation(project(":core"))
                 implementation(project(":graph"))
                 implementation(project(":koaks-model:qwen"))
-                // TODO(Stage 2): re-enable once ollama is migrated.
-                // implementation(project(":koaks-model:ollama"))
+                implementation(project(":koaks-model:ollama"))
+                implementation(project(":koaks-memory:summarizing"))
+                implementation(project(":koaks-memory:vector"))
                 implementation(libs.coroutines.test)
+                implementation(libs.ktor.client.mock)
                 implementation(kotlin("test"))
             }
         }

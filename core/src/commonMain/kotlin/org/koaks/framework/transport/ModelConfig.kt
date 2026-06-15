@@ -21,6 +21,7 @@ data class ModelConfig(
     val requestTimeoutMs: Long = 600_000,
     val socketTimeoutMs: Long = 600_000,
     val retry: RetryBudget = RetryBudget(),
+    val rateLimit: RateLimit? = null,
 )
 
 /**
@@ -38,4 +39,15 @@ enum class StreamFormat { SSE, NDJSON }
 data class RetryBudget(
     val maxRetries: Int = 2,
     val initialBackoffMs: Long = 200,
+)
+
+/**
+ * Client-side rate limit applied before each request leaves the transport. A simple
+ * token-bucket: up to [permitsPerInterval] requests are allowed per [intervalMs],
+ * with excess requests suspending until a permit frees up. Shared across all calls
+ * made through one [KtorTransport] instance.
+ */
+data class RateLimit(
+    val permitsPerInterval: Int,
+    val intervalMs: Long = 1_000,
 )

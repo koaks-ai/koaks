@@ -2,7 +2,7 @@
 
 > 本次重构依据 `Koaks Agent 框架重构架构设计方案.md`，将 koaks 从"带工具循环的 Chat Client"重构为通用 Agent 框架。
 > **本轮范围**：垂直切片（§8.1）+ §8.2 Phase 1–5（L1 连接层、JSON Schema 生成器、L2 Memory、L3 工具、L4 终止/错误/结构化输出）。**不含 L5**（多 agent/handoff/graph）。
-> 彻底重构，不保留向后兼容（§8.3）。详细计划见 `C:\Users\StarFall\.claude\plans\toasty-forging-nova.md`。
+> 彻底重构，不保留向后兼容（§8.3）。详细计划见 `doc/toasty-forging-nova.md`。
 
 ---
 
@@ -42,37 +42,40 @@
 
 ---
 
-## 二、剩余（Stage 2，§8.2 Phase 1–5，本轮范围）
+## 二、Stage 2 已完成（§8.2 Phase 1–5，JVM/JS/macosArm 三端编译通过，JVM+JS 测试全绿，45 tests）
 
-### ⚠️ 立即欠债（切片为通过编译临时搁置的）
-- [ ] **Ollama 迁移**：现仍是旧 `AbstractChatModel`，已在 `settings.gradle.kts` 和 `tests/build.gradle.kts` **注释禁用**。需改写为 `OllamaChatModel`+`OllamaWireDecoder`（NDJSON，用 `StreamFormat.NDJSON`），完成后取消注释。搜 `TODO(Stage 2`
+### ⚠️ 立即欠债 → 已清
+- [x] **Ollama 迁移**：重写为 `OllamaChatModel`+`OllamaWireDecoder`（NDJSON，`StreamFormat.NDJSON`），arguments 为 JSON object、合成 `call_<n>` id；`settings.gradle.kts`/`tests/build.gradle.kts` 已取消注释重新启用
 
 ### Phase 1 — 连接层完善
-- [ ] KtorTransport 退避/限流策略完善（RetryBudget 已有骨架，RateLimiter 待加）
-- [ ] ModelCapabilities 驱动自适应（jsonMode fallback、并行工具开关）
-- [ ] 解码器边缘：多并行工具按 index、空末包、`[DONE]`
-- [ ] Ollama 迁移（见上）+ MockEngine 测透明重试 / 首字节后不重试
+- [x] `RateLimiter`（token-bucket，单调时钟，commonMain 安全）+ `ModelConfig.rateLimit` 接入 KtorTransport
+- [x] ModelCapabilities 驱动自适应：`capabilities.tools=false` 时 `Agent.toRequest` 不下发 schema
+- [x] 解码器边缘：qwen `finish()` 按 index 排序发 tool call、跳过空累积器；空包/`[DONE]` 已由 transport `parseLine` 覆盖
+- [x] MockEngine 测试：透明重试、预算耗尽、**首字节后不重试**（`KtorTransportTest`×3）
 
 ### Phase 2 — 完整 JSON Schema 生成器
-- [ ] 扩展：嵌套对象、sealed/多态(oneOf+判别符)、Map、递归($ref/$defs)、默认值
-- [ ] 当前生成器对未覆盖类型是 `error()` 抛出（非静默错误），扩展时替换这些分支
+- [x] 嵌套对象（`$ref`/`$defs` 提升）、sealed/多态（`oneOf`+`type` const 判别符）、Map（`additionalProperties`）、递归（自引用走 `$ref`）、可空 union（`[T,"null"]`/oneOf-with-null）；枚举仍内联
+- [x] golden 矩阵扩到 10 tests（含 nested/Map/sealed/recursion/nullable）
 
 ### Phase 3 — L2 Memory
-- [ ] Memory 接口 + NoMemory/WindowMemory（turn 原子裁剪，load 侧裁剪/commit 忠实追加）
-- [ ] ThreadId/Thread(run/stream)/TurnCommitBuffer（仅 Finished 整轮提交）
-- [ ] 新模块 `koaks-memory:summarizing` / `:vector`
-- [ ] 副作用工具回滚 `log.warn`（`Tool.hasSideEffects` 字段已预留）
+- [x] `Memory`/`NoMemory`/`WindowMemory`（turn 原子裁剪 `dropTurnsToFit`，保 assistant↔toolResult 配对，保留前导 system，load 侧裁剪/commit 忠实追加）
+- [x] `ThreadId`/`Thread(run/stream)`/`TurnCommitBuffer`（从 AgentEvent 流重建消息，仅 `Finished` 整轮提交，失败/cancel 丢弃 → loop 不碰 Memory）
+- [x] 新模块 `koaks-memory:summarizing`（`SummarizingMemory`）/ `:vector`（`VectorMemory`+`VectorStore`）
+- [x] 副作用工具回滚 `log.warn`（`Thread.warnOnDiscardedSideEffects` + `ToolRegistry.hasSideEffectingTools`）
+- [x] DSL `memory { window(n) / none() / custom(m) }`
 
 ### Phase 4 — L3 工具
-- [ ] `@Tool`/`@Param` JVM 语法糖委托到 `Tool<In>`（无独立反射执行路径）
-- [ ] MCP 延迟发现：`ToolScope.mcp(url)` 登记 LazyToolSource，首次 run 时 `tools/list` 追加（复用现有 `mcp/client/DefaultMcpClient`，ToolRegistry 已支持 registerAll）
+- [x] `@Tool`/`@Param` JVM 注解 + `annotatedTool<In>`（委托到 `InlineTool`，经 **Java 反射**读注解，无 kotlin-reflect 依赖、无独立反射执行路径）
+- [x] MCP 延迟发现：`tools { mcp(gateway) }` → `LazyToolSource`，`ToolRegistry.resolveLazySources()` 首次 run 解析一次并缓存；`Tool.acceptsRawJson`/`parametersOverride` 支持透传工具
+- [x] `DefaultMcpClient` 实现 `listTools`/`callTool`（经 `HttpMcpTransport` JSON-RPC），并实现 `McpToolGateway`
 
 ### Phase 5 — L4 完善
-- [ ] ErrorPolicy/Recovery 接入已就绪（AgentRunner catch 块已消费 Retry/Substitute/Propagate），待补内置策略 + middleware（RetryOnError/Cache/Guardrail/HumanApproval）
-- [ ] 结构化输出 `run<T>` + OutputSpec（jsonMode fallback、围栏剥离、"最后一步才约束格式"）
-- [ ] RunBudget（globalStep/usage 永不重置）—— AgentState 字段已预留
+- [x] 内置 `ErrorPolicy.retryRetriable`/`substituteOnError`（loop catch 块消费 Retry/Substitute/Propagate）
+- [x] middleware：`Cache`（短路型 `aroundModelCall`+listener 录制）、`Guardrail`、`HumanApproval`（`aroundToolCall`）
+- [x] 结构化输出 `run<T>` + `OutputSpec`（capabilities 驱动 jsonMode-vs-prompt、`JsonExtractor` 围栏剥离/首对象提取、"最后一步才约束格式"）
+- [x] `RunBudget`（globalStep/usage 永不重置）接入 loop 最外层条件 + DSL `runBudget(...)`
 
-### 本轮不做（L5）
+### 本轮不做（L5）—— 仍未做，留待后续
 - handoff / asTool / planner / graph 依赖反转。AgentState 已留 `globalStep`/`localStep`，可非破坏性接入；AgentEvent 待加 `HandoffOccurred`
 
 ---
@@ -85,7 +88,9 @@
 5. **Agent 持有 Transport 且 AutoCloseable**；custom model 不创建 transport
 
 ## 四、构建/验证命令
-- 快速：`./gradlew :tests:jvmTest`
-- 跨端：`./gradlew :tests:jsNodeTest`
-- macosArm 当前开发机（非 mac）禁用，CI 上需另跑
-- 真实 Qwen 集成测试尚未加（EnvTools 已就绪，建议 Phase 1 加，key 缺失时跳过）
+- **JDK 21 必需**：默认 JDK 25 会让 Gradle 8.14.3 的 Kotlin 编译器抛 `IllegalArgumentException: 25.0.3`。先 `export JAVA_HOME=.../azul-21.0.11/...`
+- **代理坑**：macOS 系统代理设在 127.0.0.1:7890（常关）。下载新依赖时追加 `-DsocksProxyHost= -Dsocks.proxyHost= -Dhttp.proxyHost= -Dhttps.proxyHost=` 强制直连
+- 快速：`./gradlew :tests:jvmTest`（45 tests 全绿）
+- 跨端：`./gradlew :tests:jsNodeTest`（全绿）
+- macosArm：三模块 `compileKotlinMacosArm` 通过（目标名是 `macosArm` 非 `macosArm64`）
+- 真实 Qwen 集成测试尚未加（EnvTools 已就绪，建议后续加，key 缺失时跳过）

@@ -2,8 +2,12 @@ package org.koaks.framework.loop
 
 import org.koaks.framework.middleware.AgentListener
 import org.koaks.framework.middleware.AgentMiddleware
+import org.koaks.framework.memory.Memory
+import org.koaks.framework.memory.NoMemory
+import org.koaks.framework.memory.WindowMemory
 import org.koaks.framework.model.GenerationParams
 import org.koaks.framework.policy.ErrorPolicy
+import org.koaks.framework.policy.RunBudget
 import org.koaks.framework.policy.TerminationPolicy
 import org.koaks.framework.tool.ToolRegistry
 
@@ -23,6 +27,8 @@ class AgentBuilder {
     private val listeners = mutableListOf<AgentListener>()
     private var termination: TerminationPolicy = TerminationPolicy.maxSteps(10)
     private var errorPolicy: ErrorPolicy = ErrorPolicy.PROPAGATE
+    private var memory: Memory = NoMemory
+    private var runBudget: RunBudget = RunBudget.UNLIMITED
 
     fun model(block: ModelScope.() -> Unit) {
         modelScope = ModelScope().apply(block)
@@ -30,6 +36,11 @@ class AgentBuilder {
 
     fun tools(block: ToolScope.() -> Unit) {
         ToolScope(tools).apply(block)
+    }
+
+    /** Configures conversation memory: `memory { window(40) }` / `none()` / `custom(...)`. */
+    fun memory(block: MemoryScope.() -> Unit) {
+        memory = MemoryScope().apply(block).build()
     }
 
     /** Installs around-style middleware. */
@@ -50,6 +61,11 @@ class AgentBuilder {
         termination = policy
     }
 
+    /** Sets the whole-run global guard (§4.3.1): caps total steps / tokens across the run. */
+    fun runBudget(maxTotalSteps: Int? = null, maxTotalTokens: Int? = null) {
+        runBudget = RunBudget(maxTotalSteps, maxTotalTokens)
+    }
+
     fun onError(policy: ErrorPolicy) {
         errorPolicy = policy
     }
@@ -65,7 +81,9 @@ class AgentBuilder {
             listeners = listeners.toList(),
             termination = termination,
             errorPolicy = errorPolicy,
+            runBudget = runBudget,
             params = params,
+            memory = memory,
             transport = built.transport,
             ownsTransport = built.ownsTransport,
         )
@@ -74,3 +92,26 @@ class AgentBuilder {
 
 /** Top-level entry point: `val a = agent { ... }`. */
 fun agent(block: AgentBuilder.() -> Unit): Agent = AgentBuilder().apply(block).build()
+
+/** DSL scope for selecting conversation memory. */
+@AgentDsl
+class MemoryScope {
+    private var memory: Memory = NoMemory
+
+    /** Sliding-window memory with turn-atomic trimming (load-side). */
+    fun window(maxMessages: Int) {
+        memory = WindowMemory(maxMessages)
+    }
+
+    /** No persistence (the default). */
+    fun none() {
+        memory = NoMemory
+    }
+
+    /** Plug in a custom [Memory] implementation (e.g. summarizing / vector). */
+    fun custom(memory: Memory) {
+        this.memory = memory
+    }
+
+    internal fun build(): Memory = memory
+}

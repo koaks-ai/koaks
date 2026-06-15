@@ -74,4 +74,84 @@ class SerialDescriptorToJsonSchemaTest {
 
     private fun typeOf(el: kotlinx.serialization.json.JsonElement): String =
         ((el as JsonObject)["type"] as JsonPrimitive).content
+
+    // ---- Phase 2: nested objects, Map, sealed, recursion, nullable unions ----
+
+    @Serializable
+    data class Address(val street: String, val zip: String)
+
+    @Serializable
+    data class Person(val name: String, val address: Address, val tags: Map<String, Int>)
+
+    @Test
+    fun nested_object_is_hoisted_into_defs_and_referenced() {
+        val s = SerialDescriptorToJsonSchema.generate(serializer<Person>().descriptor)
+        val props = s["properties"] as JsonObject
+        // The nested Address is referenced, not inlined.
+        val addr = props["address"] as JsonObject
+        val ref = (addr["\$ref"] as JsonPrimitive).content
+        assertTrue(ref.startsWith("#/\$defs/"), "nested object must be a \$ref, was $ref")
+        val defs = s["\$defs"] as JsonObject
+        val addressDef = defs["Address"] as JsonObject
+        assertEquals("object", (addressDef["type"] as JsonPrimitive).content)
+        assertTrue("street" in (addressDef["properties"] as JsonObject))
+    }
+
+    @Test
+    fun map_becomes_object_with_additional_properties() {
+        val s = SerialDescriptorToJsonSchema.generate(serializer<Person>().descriptor)
+        val props = s["properties"] as JsonObject
+        val tags = props["tags"] as JsonObject
+        assertEquals("object", (tags["type"] as JsonPrimitive).content)
+        assertEquals("integer", typeOf(tags["additionalProperties"]!!))
+    }
+
+    @Serializable
+    sealed interface Shape {
+        @Serializable @SerialName("circle") data class Circle(val radius: Double) : Shape
+        @Serializable @SerialName("rect") data class Rect(val w: Double, val h: Double) : Shape
+    }
+
+    @Test
+    fun sealed_becomes_oneOf_with_discriminator_const() {
+        val s = SerialDescriptorToJsonSchema.generate(serializer<Shape>().descriptor)
+        val oneOf = s["oneOf"] as JsonArray
+        assertEquals(2, oneOf.size)
+        val discriminators = oneOf.map { variant ->
+            val props = (variant as JsonObject)["properties"] as JsonObject
+            ((props["type"] as JsonObject)["const"] as JsonPrimitive).content
+        }
+        assertTrue("circle" in discriminators)
+        assertTrue("rect" in discriminators)
+    }
+
+    @Serializable
+    data class TreeNode(val value: Int, val children: List<TreeNode> = emptyList())
+
+    @Test
+    fun recursive_type_terminates_via_ref() {
+        val s = SerialDescriptorToJsonSchema.generate(serializer<TreeNode>().descriptor)
+        // children: array whose items is a $ref back to TreeNode.
+        val props = s["properties"] as JsonObject
+        val children = props["children"] as JsonObject
+        assertEquals("array", (children["type"] as JsonPrimitive).content)
+        val items = children["items"] as JsonObject
+        assertTrue((items["\$ref"] as JsonPrimitive).content.endsWith("/TreeNode"))
+        val defs = s["\$defs"] as JsonObject
+        assertTrue("TreeNode" in defs)
+    }
+
+    @Serializable
+    data class WithNullableNested(val maybe: Address?)
+
+    @Test
+    fun nullable_nested_object_unions_with_null() {
+        val s = SerialDescriptorToJsonSchema.generate(serializer<WithNullableNested>().descriptor)
+        val props = s["properties"] as JsonObject
+        val maybe = props["maybe"] as JsonObject
+        // Nullable composite → oneOf [ <ref>, {type: null} ].
+        val oneOf = maybe["oneOf"] as JsonArray
+        assertTrue(oneOf.any { (it as JsonObject)["\$ref"] != null })
+        assertTrue(oneOf.any { (it as JsonObject)["type"]?.let { t -> (t as JsonPrimitive).content } == "null" })
+    }
 }

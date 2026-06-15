@@ -16,6 +16,7 @@ rootProject.name = "koaks"
 include("core")
 include("graph")
 include("koaks-model:qwen")
-// TODO(Stage 2 / Phase 1): migrate ollama provider to the new ChatModel base, then re-enable.
-// include("koaks-model:ollama")
+include("koaks-model:ollama")
+include("koaks-memory:summarizing")
+include("koaks-memory:vector")
 include("tests")
