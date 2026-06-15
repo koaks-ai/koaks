@@ -1,7 +1,7 @@
 package org.koaks.framework.model
 
 /**
- * Declares what a model can do. Per design §3.2, capabilities are declared by the
+ * Declares what a model can do. The capabilities are declared by the
  * developer in the DSL; the framework maintains no "model → capability" table.
  * The runtime only reads these to adapt (e.g. fall back to prompt-based JSON when
  * [jsonMode] is false), never to guess.

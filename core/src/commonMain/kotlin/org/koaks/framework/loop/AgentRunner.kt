@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.toList
 import org.koaks.framework.middleware.StepContext
 import org.koaks.framework.middleware.ToolContext
 import org.koaks.framework.model.AgentError
+import org.koaks.framework.model.Message
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.policy.Recovery
 import org.koaks.framework.tool.ToolOutcome
@@ -19,7 +20,7 @@ import org.koaks.framework.tool.ToolOutcome
  * The independent, strongly-typed agent loop. NOT graph-based — it is just a
  * `while` with a model step, a tool step, and a "more tool calls?" branch.
  *
- * The critical behaviors (design §4):
+ * The critical behaviors:
  *  - **tee streaming**: while collecting model events it forwards (`emit`)
  *    TextDelta/ToolCallRequested immediately AND accumulates terminal state in
  *    parallel — never collect-then-emit.
@@ -31,9 +32,9 @@ import org.koaks.framework.tool.ToolOutcome
  */
 class AgentRunner(private val agent: Agent) {
 
-    fun stream(initial: List<org.koaks.framework.model.Message>): Flow<AgentEvent> = flow {
+    fun stream(initial: List<Message>): Flow<AgentEvent> = flow {
         // Resolve any deferred tool sources (e.g. MCP tools/list) once, in this
-        // suspend context, before the first model step (§5.1).
+        // suspend context, before the first model step.
         agent.tools.resolveLazySources()
 
         var state = AgentState(messages = initial, activeAgentName = agent.name)
@@ -121,10 +122,10 @@ class AgentRunner(private val agent: Agent) {
             }
             state = state.appendToolResults(calls, outcomes)
 
-            // returnDirectly is loop control (§3.7): finish immediately, skip next model step.
+            // returnDirectly is loop control: finish immediately, skip next model step.
             outcomes.firstOrNull { it is ToolOutcome.Success && it.returnDirectly }?.let { direct ->
                 val out = (direct as ToolOutcome.Success).output
-                emitEvent(AgentEvent.Finished(org.koaks.framework.model.Message.assistant(out), state.usage))
+                emitEvent(AgentEvent.Finished(Message.assistant(out), state.usage))
                 return@flow
             }
         }
@@ -132,13 +133,13 @@ class AgentRunner(private val agent: Agent) {
         emitEvent(AgentEvent.Finished(state.lastAssistantOrEmpty(), state.usage))
     }
 
-    suspend fun run(initial: List<org.koaks.framework.model.Message>): AgentResult {
+    suspend fun run(initial: List<Message>): AgentResult {
         val events = stream(initial).toList()
         val finished = events.filterIsInstance<AgentEvent.Finished>().lastOrNull()
         if (finished != null) return AgentResult(finished.message, finished.usage)
         val failed = events.filterIsInstance<AgentEvent.Failed>().lastOrNull()
         return AgentResult(
-            message = org.koaks.framework.model.Message.assistant(""),
+            message = Message.assistant(""),
             usage = org.koaks.framework.model.Usage.ZERO,
             error = failed?.error,
         )
@@ -146,13 +147,13 @@ class AgentRunner(private val agent: Agent) {
 
     /**
      * Runs to a terminal answer, then issues ONE final format-constrained request to
-     * produce structured output (design §5.2: "format only on the last step"). The
+     * produce structured output (design: "format only on the last step"). The
      * tool loop above runs WITHOUT a json constraint so the model can call tools
      * freely; only this finalization step constrains the format, choosing native
-     * jsonMode vs prompt injection from [LanguageModel.capabilities].
+     * jsonMode vs prompt injection from [org.koaks.framework.model.LanguageModel.capabilities].
      */
     suspend fun runStructured(
-        initial: List<org.koaks.framework.model.Message>,
+        initial: List<Message>,
         spec: OutputSpec,
     ): AgentResult {
         val base = run(initial)
@@ -179,7 +180,7 @@ class AgentRunner(private val agent: Agent) {
         agent.model.generate(request).collect { acc.observe(it) }
         val text = acc.assistantMessage().text
         return AgentResult(
-            org.koaks.framework.model.Message.assistant(text),
+            Message.assistant(text),
             base.usage + acc.usage(),
             base.error,
         )

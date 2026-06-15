@@ -6,7 +6,7 @@ import org.koaks.framework.tool.schema.SerialDescriptorToJsonSchema
 import org.koaks.framework.utils.json.JsonExtractor
 
 /**
- * Structured-output run (design §5.2): returns a typed [T] decoded from the model's
+ * Structured-output run: returns a typed [T] decoded from the model's
  * final answer. The schema is derived from [T]'s serializer; the loop runs tools
  * freely and only the final step is format-constrained. The response is tolerantly
  * parsed (fences stripped, first JSON object extracted) before decoding.

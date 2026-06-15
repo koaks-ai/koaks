@@ -1,8 +1,8 @@
 package org.koaks.framework.utils.json
 
 /**
- * Tolerant extraction of a single JSON object/array from a model's free-form text
- * (design §5.2). Handles the common ways models wrap structured output:
+ * Tolerant extraction of a single JSON object/array from a model's free-form text.
+ * Handles the common ways models wrap structured output:
  *  - ```` ```json ... ``` ```` and bare ```` ``` ... ``` ```` fences
  *  - leading prose before the object ("Here is the result: { ... }")
  *

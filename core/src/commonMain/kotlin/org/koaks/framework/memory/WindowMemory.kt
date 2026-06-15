@@ -9,7 +9,7 @@ import org.koaks.framework.model.Role
  * Sliding-window memory (core default). Persists every committed message faithfully;
  * trimming happens only on [load].
  *
- * **Turn-atomic trimming** (design §4.5): the window unit is a complete turn, NOT a
+ * **Turn-atomic trimming**: the window unit is a complete turn, NOT a
  * single message. A turn is a USER message plus every assistant/tool message that
  * follows it until the next USER message. Dropping whole turns guarantees we never
  * orphan a `tool` result from its `assistant` tool-call (which providers reject).

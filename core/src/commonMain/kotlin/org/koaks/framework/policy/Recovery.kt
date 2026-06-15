@@ -6,7 +6,7 @@ import org.koaks.framework.model.Message
 
 /**
  * How the loop should recover from an [AgentError]. These are control-flow
- * decisions consumed by the loop (§3.7/§4.2), not middleware.
+ * decisions consumed by the loop, not middleware.
  */
 sealed interface Recovery {
     /** Abort the agent, surfacing the error. */
@@ -33,7 +33,7 @@ fun interface ErrorPolicy {
         /**
          * Retries retriable errors up to [maxRetries] with [delayMs] backoff; everything
          * else propagates. The loop only honors a retry before any TextDelta was emitted
-         * this step (§4.2), so this is safe to combine with streaming.
+         * this step, so this is safe to combine with streaming.
          */
         fun retryRetriable(maxRetries: Int = 2, delayMs: Long = 200): ErrorPolicy =
             ErrorPolicy { error, _ ->

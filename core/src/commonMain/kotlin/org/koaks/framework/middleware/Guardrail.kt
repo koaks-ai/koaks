@@ -4,7 +4,7 @@ import org.koaks.framework.model.AgentError
 import org.koaks.framework.tool.ToolOutcome
 
 /**
- * A guardrail that can block tool calls before they execute (design §7). The
+ * A guardrail that can block tool calls before they execute. The
  * [check] returns null to allow the call, or a reason string to deny it. A denied
  * call short-circuits to a [ToolOutcome.Failure] without invoking the tool — the
  * loop surfaces it on the explicit error channel like any other tool failure.

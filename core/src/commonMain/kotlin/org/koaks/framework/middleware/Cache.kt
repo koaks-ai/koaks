@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.flowOf
 import org.koaks.framework.model.ModelEvent
 
 /**
- * A short-circuiting cache middleware (design §3.7). On a cache hit it returns a
+ * A short-circuiting cache middleware. On a cache hit it returns a
  * self-made flow of the cached [ModelEvent]s and NEVER calls `next()`, so the model
  * is not hit. On a miss it returns `next()` verbatim (the loop is the sole consumer)
  * and records the events as they flow past via [AgentListener.onModelEvent].

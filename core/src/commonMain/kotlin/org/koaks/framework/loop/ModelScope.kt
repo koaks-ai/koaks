@@ -25,7 +25,7 @@ class ModelScope {
     }
 
     /**
-     * Escape hatch (§2.1): use a hand-written [LanguageModel] directly (self-hosted
+     * Escape hatch: use a hand-written [LanguageModel] directly (self-hosted
      * model / internal gateway / test mock) instead of a provider DSL.
      */
     fun custom(model: LanguageModel) {

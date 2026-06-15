@@ -61,7 +61,7 @@ class AgentBuilder {
         termination = policy
     }
 
-    /** Sets the whole-run global guard (§4.3.1): caps total steps / tokens across the run. */
+    /** Sets the whole-run global guard: caps total steps / tokens across the run. */
     fun runBudget(maxTotalSteps: Int? = null, maxTotalTokens: Int? = null) {
         runBudget = RunBudget(maxTotalSteps, maxTotalTokens)
     }

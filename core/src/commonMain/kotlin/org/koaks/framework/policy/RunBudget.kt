@@ -3,7 +3,7 @@ package org.koaks.framework.policy
 import org.koaks.framework.loop.AgentState
 
 /**
- * The whole-run global guard (design §4.3.1). Independent of any single agent's
+ * The whole-run global guard. Independent of any single agent's
  * [TerminationPolicy], it accumulates across the entire run — and (in L5) across
  * handoffs — using [AgentState.globalStep] and [AgentState.usage], which are NEVER
  * reset. It is the final brake against runaway loops (e.g. agents handing off back

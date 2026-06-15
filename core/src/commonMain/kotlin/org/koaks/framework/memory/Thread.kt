@@ -12,16 +12,16 @@ private val logger = KotlinLogging.logger {}
 
 /**
  * A multi-turn conversation bound to one [ThreadId]. Carries history so callers
- * never hand-pass a `memoryId` (design §3.6).
+ * never hand-pass a `memoryId`.
  *
- * Implements the §4.5 data flow exactly:
+ * The data flow:
  *  1. `history = memory.load(id)`  (already trimmed/summarized on the load side)
  *  2. `initial = system? + history + user`
  *  3. run the loop, buffering new messages locally (never touching memory mid-run)
  *  4. on [AgentEvent.Finished]: commit the whole turn atomically
  *     on failure/cancel: discard the buffer, leaving persistent history untouched
  *
- * The loop itself stays Memory-agnostic; all persistence lives here at the run
+ * The loop itself stays Memory-agnostic; All persistence lives here at the run
  * boundary.
  */
 class Thread(private val agent: Agent, val id: ThreadId) {
@@ -72,7 +72,7 @@ class Thread(private val agent: Agent, val id: ThreadId) {
     }
 
     /**
-     * §4.5 side-effect warning: when a turn is discarded on failure, any tool with
+     * `side-effect warning`: when a turn is discarded on failure, any tool with
      * external side effects may already have run, yet leaves no trace in persistent
      * history — risking a duplicate on the next run. We cannot detect that the tool
      * actually ran here (the loop owns that), so we warn whenever the agent exposes

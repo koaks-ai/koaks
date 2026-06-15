@@ -8,7 +8,7 @@ import org.koaks.framework.utils.json.JsonUtil
  * A scoped tool registry — an instance, NOT a global object. Tool names are
  * unique within this registry only, so different agents never collide globally.
  *
- * Supports runtime appension (for later MCP lazy discovery, §5.1) rather than
+ * Supports runtime appension (for later MCP lazy discovery) rather than
  * being fixed at construction.
  */
 class ToolRegistry {
@@ -26,7 +26,7 @@ class ToolRegistry {
     /** Registers a batch of tools (used by runtime sources such as MCP discovery). */
     fun registerAll(newTools: Iterable<Tool<*>>) = newTools.forEach { register(it) }
 
-    /** Registers a deferred tool source, resolved once on the first run (§5.1). */
+    /** Registers a deferred tool source, resolved once on the first run. */
     fun addLazySource(source: LazyToolSource) {
         lazySources += source
     }
@@ -49,7 +49,7 @@ class ToolRegistry {
 
     fun names(): Set<String> = tools.keys.toSet()
 
-    /** True if any registered tool declares external side effects (§4.5). */
+    /** True if any registered tool declares external side effects. */
     fun hasSideEffectingTools(): Boolean = tools.values.any { it.hasSideEffects }
 
     /** Produces the JSON-schema descriptions handed to the model. */

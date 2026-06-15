@@ -1,6 +1,7 @@
 package org.koaks.framework.loop
 
 import kotlinx.coroutines.flow.Flow
+import org.koaks.framework.memory.Memory
 import org.koaks.framework.middleware.AgentListener
 import org.koaks.framework.middleware.AgentMiddleware
 import org.koaks.framework.model.ChatRequest
@@ -8,13 +9,14 @@ import org.koaks.framework.model.GenerationParams
 import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.model.Message
 import org.koaks.framework.policy.ErrorPolicy
+import org.koaks.framework.policy.RunBudget
 import org.koaks.framework.policy.TerminationPolicy
 import org.koaks.framework.tool.ToolRegistry
 import org.koaks.framework.transport.Transport
 
 /**
  * An immutable agent: instructions + model + tools + termination + middleware.
- * Built via the `agent { }` DSL.
+ * Built via the `agent {}` DSL.
  *
  * Implements [AutoCloseable]: when the agent created its own [Transport] (via the
  * DSL), [close] closes it. An externally-injected transport is the caller's to
@@ -29,9 +31,9 @@ class Agent internal constructor(
     val listeners: List<AgentListener>,
     val termination: TerminationPolicy,
     val errorPolicy: ErrorPolicy,
-    val runBudget: org.koaks.framework.policy.RunBudget,
+    val runBudget: RunBudget,
     val params: GenerationParams,
-    private val memory: org.koaks.framework.memory.Memory,
+    private val memory: Memory,
     private val transport: Transport?,
     private val ownsTransport: Boolean,
 ) : AutoCloseable {
@@ -62,9 +64,9 @@ class Agent internal constructor(
         org.koaks.framework.memory.Thread(this, org.koaks.framework.memory.ThreadId(id))
 
     /** The agent's configured memory (used by [org.koaks.framework.memory.Thread]). */
-    internal val memoryStore: org.koaks.framework.memory.Memory get() = memory
+    internal val memoryStore: Memory get() = memory
 
-    /** Whether any registered tool has external side effects (§4.5 rollback warning). */
+    /** Whether any registered tool has external side effects. */
     internal val hasSideEffectingTools: Boolean get() = tools.hasSideEffectingTools()
 
     /** Builds the initial messages: system instructions (if any) + user input. */

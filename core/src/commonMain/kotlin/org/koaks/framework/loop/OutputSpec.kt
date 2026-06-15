@@ -3,7 +3,7 @@ package org.koaks.framework.loop
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Describes how the agent should produce structured output for `run<T>` (design §5.2).
+ * Describes how the agent should produce structured output for `run<T>`.
  *
  * Strategy is capabilities-driven and decided at run time:
  *  - if the model supports native JSON mode, the final request sets `jsonMode = true`;
