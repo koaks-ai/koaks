@@ -5,10 +5,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.Json
+import org.koaks.framework.mcp.McpToolGateway
 import org.koaks.framework.mcp.entity.InitRequest
 import org.koaks.framework.mcp.entity.InitResponse
 import org.koaks.framework.mcp.entity.InitializedRequest
+import org.koaks.framework.mcp.entity.ListToolsResult
 import org.koaks.framework.mcp.entity.McpClientConfig
 import org.koaks.framework.mcp.entity.McpTool
 import org.koaks.framework.mcp.entity.Prompt
@@ -20,13 +25,18 @@ import org.koaks.framework.model.TypeAdapter
 import org.koaks.framework.net.HttpClientConfig
 import org.koaks.framework.net.KtorHttpClient
 
+@Serializable
+private data class CallToolParams(val name: String, val arguments: JsonObject)
+
 class DefaultMcpClient(
     private val mcpUrl: String,
     private val mcpClientConfig: McpClientConfig,
     private val customHeaders: Map<String, String> = emptyMap(),
-) : McpClient {
+) : McpClient, McpToolGateway {
 
     private val logger = KotlinLogging.logger {}
+
+    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     private var httpClient = KtorHttpClient(
         HttpClientConfig(
@@ -34,6 +44,8 @@ class DefaultMcpClient(
             customHeaders = customHeaders
         )
     )
+
+    private val transport = HttpMcpTransport(httpClient)
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
@@ -91,14 +103,32 @@ class DefaultMcpClient(
     }
 
     override suspend fun listTools(): List<McpTool> {
-        TODO("Not yet implemented")
+        return transport.request<JsonElement, ListToolsResult>(
+            method = "tools/list",
+            params = null,
+            requestSerializer = JsonElement.serializer(),
+            responseSerializer = ListToolsResult.serializer(),
+        ).tools
     }
 
     override suspend fun callTool(
         name: String,
         arguments: JsonElement
     ): ToolResponse {
-        TODO("Not yet implemented")
+        val args = arguments as? JsonObject ?: JsonObject(emptyMap())
+        return transport.request(
+            method = "tools/call",
+            params = CallToolParams(name, args),
+            requestSerializer = CallToolParams.serializer(),
+            responseSerializer = ToolResponse.serializer(),
+        )
+    }
+
+    /** [McpToolGateway] entry point: invoke a tool with raw JSON arguments, return the result as a string. */
+    override suspend fun callTool(name: String, argumentsJson: String): String {
+        val args = if (argumentsJson.isBlank()) JsonObject(emptyMap())
+        else json.parseToJsonElement(argumentsJson) as? JsonObject ?: JsonObject(emptyMap())
+        return callTool(name, args).result.toString()
     }
 
     override suspend fun listPrompts(): List<Prompt> {

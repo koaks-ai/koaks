@@ -14,6 +14,8 @@ import org.koaks.framework.utils.json.JsonUtil
 class ToolRegistry {
 
     private val tools = LinkedHashMap<String, Tool<*>>()
+    private val lazySources = mutableListOf<LazyToolSource>()
+    private var sourcesResolved = false
 
     /** Registers a tool. Fails fast on a duplicate name within this registry. */
     fun register(tool: Tool<*>) {
@@ -24,16 +26,39 @@ class ToolRegistry {
     /** Registers a batch of tools (used by runtime sources such as MCP discovery). */
     fun registerAll(newTools: Iterable<Tool<*>>) = newTools.forEach { register(it) }
 
+    /** Registers a deferred tool source, resolved once on the first run (§5.1). */
+    fun addLazySource(source: LazyToolSource) {
+        lazySources += source
+    }
+
+    /**
+     * Resolves any pending [LazyToolSource]s exactly once and appends the discovered
+     * tools. Idempotent — subsequent calls are no-ops. Called by [AgentRunner] in a
+     * suspend context before the first model step.
+     */
+    suspend fun resolveLazySources() {
+        if (sourcesResolved || lazySources.isEmpty()) {
+            sourcesResolved = true
+            return
+        }
+        sourcesResolved = true
+        for (source in lazySources) registerAll(source.discover())
+    }
+
     fun isEmpty(): Boolean = tools.isEmpty()
 
     fun names(): Set<String> = tools.keys.toSet()
+
+    /** True if any registered tool declares external side effects (§4.5). */
+    fun hasSideEffectingTools(): Boolean = tools.values.any { it.hasSideEffects }
 
     /** Produces the JSON-schema descriptions handed to the model. */
     fun toSchemas(): List<ToolSchema> = tools.values.map { tool ->
         ToolSchema(
             name = tool.name,
             description = tool.description,
-            parameters = SerialDescriptorToJsonSchema.generate(tool.inputSerializer.descriptor),
+            parameters = tool.parametersOverride
+                ?: SerialDescriptorToJsonSchema.generate(tool.inputSerializer.descriptor),
         )
     }
 
@@ -50,6 +75,24 @@ class ToolRegistry {
 
     @Suppress("UNCHECKED_CAST")
     private suspend fun <In> invoke(tool: Tool<In>, argsJson: String): ToolOutcome {
+        // Passthrough tools (e.g. MCP adapters) receive the raw arguments string directly.
+        if (tool.acceptsRawJson) {
+            return try {
+                ToolOutcome.Success((tool as Tool<String>).execute(argsJson), tool.returnDirectly)
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ToolOutcome.Failure(
+                    AgentError.ToolError(
+                        toolName = tool.name,
+                        message = e.message ?: "tool '${tool.name}' execution failed",
+                        retriable = false,
+                        cause = e,
+                    )
+                )
+            }
+        }
+
         val input: In = try {
             val raw = if (argsJson.isBlank()) "{}" else argsJson
             JsonUtil.fromJson(raw, tool.inputSerializer)

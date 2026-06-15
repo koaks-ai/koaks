@@ -1,103 +1,89 @@
 package org.koaks.provider.ollama
 
-import io.github.oshai.kotlinlogging.KotlinLogging
-import org.koaks.framework.entity.ContentItem
-import org.koaks.framework.entity.Message
-import org.koaks.framework.entity.chat.ChatResponse
-import org.koaks.framework.entity.inner.FullChatRequest
-import org.koaks.framework.model.AbstractChatModel
-import org.koaks.framework.model.TypeAdapter
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import org.koaks.framework.model.ChatRequest
+import org.koaks.framework.model.ContentPart
+import org.koaks.framework.model.Message
+import org.koaks.framework.model.ModelCapabilities
+import org.koaks.framework.model.Role
+import org.koaks.framework.provider.ChatModel
+import org.koaks.framework.provider.WireDecoder
+import org.koaks.framework.transport.ModelConfig
+import org.koaks.framework.transport.Transport
+import org.koaks.framework.transport.WireAdapter
 
+/**
+ * Ollama provider. Implements only [toWire] / [adapter] / [newDecoder] / [capabilities];
+ * fully decoupled from the agent loop. Streams NDJSON (see [OllamaWireDecoder]).
+ *
+ * Ollama's default models do not support native JSON mode the OpenAI way and tool
+ * support varies by model, so [capabilities] leaves those to the developer to set.
+ */
 class OllamaChatModel(
-    override val baseUrl: String,
-    override val apiKey: String = "ollama",
-    override var modelName: String,
-) : AbstractChatModel<OllamaChatRequest, OllamaChatResponse>(baseUrl, apiKey, modelName) {
+    config: ModelConfig,
+    transport: Transport,
+    override val capabilities: ModelCapabilities = ModelCapabilities(parallelToolCalls = false),
+) : ChatModel<OllamaChatRequest, OllamaChatResponse>(config, transport) {
 
-    private val logger = KotlinLogging.logger {}
-
-    override val typeAdapter = TypeAdapter(
-        serializer = OllamaChatRequest.serializer(),
-        deserializer = OllamaChatResponse.serializer(),
+    override val adapter = WireAdapter(
+        requestSerializer = OllamaChatRequest.serializer(),
+        responseSerializer = OllamaChatResponse.serializer(),
     )
 
-    override fun toChatRequest(fullChatRequest: FullChatRequest): OllamaChatRequest =
-        OllamaChatRequest(
-            modelName = fullChatRequest.modelName,
-            messageList = fullChatRequest.messages.map { msg ->
-                val textBuilder = StringBuilder()
-                val images = mutableListOf<String>()
+    override fun newDecoder(): WireDecoder<OllamaChatResponse> = OllamaWireDecoder()
 
-                msg.content.forEach { item ->
-                    when (item) {
-                        is ContentItem.Text -> {
-                            item.text?.let { textBuilder.append(it) }
-                        }
-
-                        is ContentItem.Image -> {
-                            val base64ContentArray = item.imagePath.url.split("data:image/png;base64,")
-                            if (base64ContentArray.isEmpty() || base64ContentArray.size != 2) {
-                                throw IllegalArgumentException("empty or invalid image content.")
-                            }
-                            images.add(base64ContentArray[1])
-                        }
-
-                        else -> logger.error { "unsupported $item." }
-                    }
-                }
-
-                OllamaMessage(
-                    id = msg.id,
-                    content = textBuilder.toString(),
-                    images = images,
-                    role = msg.role,
-                    toolCalls = msg.toolCalls,
-                )
-            }.toMutableList()
+    override fun toWire(req: ChatRequest): OllamaChatRequest {
+        val p = req.params
+        val defaults = config.defaultParams
+        val options = OllamaOptions(
+            temperature = p.temperature ?: defaults.temperature,
+            topP = p.topP ?: defaults.topP,
+            numPredict = p.maxTokens ?: defaults.maxTokens,
+            stop = p.stop ?: defaults.stop,
         )
-
-    // TODO: 待完善
-    override fun toChatResponse(providerResponse: OllamaChatResponse): ChatResponse {
-        val message = providerResponse.message
-
-        val choice = message?.let {
-            ChatResponse.Choice(
-                message = Message(
-                    role = it.role,
-                    content = listOf(ContentItem.Text(it.content)),
-                ),
-                text = it.content,
-                index = 0,
-                finishReason = if (providerResponse.done) "stop" else null
-            )
-        }
-
-        val usage = if (providerResponse.promptEvalCount != null || providerResponse.evalCount != null) {
-            ChatResponse.Usage(
-                promptTokens = providerResponse.promptEvalCount,
-                completionTokens = providerResponse.evalCount,
-                totalTokens = listOfNotNull(
-                    providerResponse.promptEvalCount,
-                    providerResponse.evalCount
-                ).sum()
-            )
-        } else null
-
-        return ChatResponse(
-            shouldToolCall = providerResponse.shouldToolCall(),
-            choices = choice?.let { listOf(it) },
-            created = 0,// TODO: 待完善
-            model = providerResponse.model,
-            usage = usage,
-            error = providerResponse.error?.let {
-                ChatResponse.ErrorOutput(
-                    code = it.code,
-                    param = it.param,
-                    message = it.message,
-                    type = it.type
-                )
-            }
+        return OllamaChatRequest(
+            model = config.modelName,
+            messages = req.messages.map { it.toWire() },
+            tools = req.tools.takeIf { it.isNotEmpty() }?.map { schema ->
+                OllamaTool(function = OllamaFunctionDef(schema.name, schema.description, schema.parameters))
+            },
+            stream = req.stream,
+            format = if (req.jsonMode) "json" else null,
+            options = options.takeIf { it != OllamaOptions() },
         )
     }
+}
 
+private val argsJson = Json { ignoreUnknownKeys = true; isLenient = true }
+
+private fun parseArgs(raw: String): JsonObject =
+    if (raw.isBlank()) JsonObject(emptyMap())
+    else runCatching { argsJson.parseToJsonElement(raw).jsonObject }.getOrElse { JsonObject(emptyMap()) }
+
+private fun Message.toWire(): OllamaMessage {
+    val roleStr = when (role) {
+        Role.SYSTEM -> "system"
+        Role.USER -> "user"
+        Role.ASSISTANT -> "assistant"
+        Role.TOOL -> "tool"
+    }
+
+    // Tool result message: single ToolResultPart → role=tool.
+    val toolResult = parts.filterIsInstance<ContentPart.ToolResultPart>().firstOrNull()
+    if (toolResult != null) {
+        return OllamaMessage(role = "tool", content = toolResult.output)
+    }
+
+    val images = parts.filterIsInstance<ContentPart.Image>().mapNotNull { it.base64 }
+    val toolCalls = parts.filterIsInstance<ContentPart.ToolCallPart>().map { it.call }
+    return OllamaMessage(
+        role = roleStr,
+        content = text,
+        toolCalls = toolCalls.takeIf { it.isNotEmpty() }?.map {
+            OllamaReqToolCall(function = OllamaReqFunction(it.name, parseArgs(it.arguments)))
+        },
+        images = images.takeIf { it.isNotEmpty() },
+    )
 }

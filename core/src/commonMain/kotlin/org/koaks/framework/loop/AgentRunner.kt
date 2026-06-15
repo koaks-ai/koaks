@@ -32,10 +32,14 @@ import org.koaks.framework.tool.ToolOutcome
 class AgentRunner(private val agent: Agent) {
 
     fun stream(initial: List<org.koaks.framework.model.Message>): Flow<AgentEvent> = flow {
+        // Resolve any deferred tool sources (e.g. MCP tools/list) once, in this
+        // suspend context, before the first model step (§5.1).
+        agent.tools.resolveLazySources()
+
         var state = AgentState(messages = initial, activeAgentName = agent.name)
         var retries = 0
 
-        while (!agent.termination.shouldStop(state)) {
+        while (!agent.runBudget.exceeded(state) && !agent.termination.shouldStop(state)) {
             val acc = TurnAccumulator()
             agent.listeners.forEach { it.onStep(state) }
 
@@ -137,6 +141,47 @@ class AgentRunner(private val agent: Agent) {
             message = org.koaks.framework.model.Message.assistant(""),
             usage = org.koaks.framework.model.Usage.ZERO,
             error = failed?.error,
+        )
+    }
+
+    /**
+     * Runs to a terminal answer, then issues ONE final format-constrained request to
+     * produce structured output (design §5.2: "format only on the last step"). The
+     * tool loop above runs WITHOUT a json constraint so the model can call tools
+     * freely; only this finalization step constrains the format, choosing native
+     * jsonMode vs prompt injection from [LanguageModel.capabilities].
+     */
+    suspend fun runStructured(
+        initial: List<org.koaks.framework.model.Message>,
+        spec: OutputSpec,
+    ): AgentResult {
+        val base = run(initial)
+        if (!base.isSuccess) return base
+
+        val useJsonMode = agent.model.capabilities.jsonMode
+        val formatInstruction = org.koaks.framework.model.Message.user(
+            buildString {
+                append("Return ONLY a JSON value matching this schema for '${spec.schemaName}', with no prose or code fences:\n")
+                append(spec.schema.toString())
+            }
+        )
+        // Conversation so far (the loop's final answer) + the format ask.
+        val convo = initial + base.message + formatInstruction
+        val request = org.koaks.framework.model.ChatRequest(
+            messages = convo,
+            tools = emptyList(),          // no tools on the finalization step
+            params = agent.params,
+            stream = false,
+            jsonMode = useJsonMode,
+        )
+
+        val acc = TurnAccumulator()
+        agent.model.generate(request).collect { acc.observe(it) }
+        val text = acc.assistantMessage().text
+        return AgentResult(
+            org.koaks.framework.model.Message.assistant(text),
+            base.usage + acc.usage(),
+            base.error,
         )
     }
 

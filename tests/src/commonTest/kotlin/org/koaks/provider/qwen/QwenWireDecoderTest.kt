@@ -54,4 +54,23 @@ class QwenWireDecoderTest {
         )
         assertTrue(events.single() is ModelEvent.Failed)
     }
+
+    @Test
+    fun assembles_parallel_tool_calls_in_index_order() {
+        val decoder = QwenWireDecoder()
+        buildList {
+            // Two parallel calls whose fragments interleave; index 1 even arrives before index 0.
+            addAll(decoder.accept(delta(tc = QwenChatResponse.ToolCallChunk(index = 1, id = "call_b", function = QwenChatResponse.FunctionChunk(name = "second")))))
+            addAll(decoder.accept(delta(tc = QwenChatResponse.ToolCallChunk(index = 0, id = "call_a", function = QwenChatResponse.FunctionChunk(name = "first")))))
+            addAll(decoder.accept(delta(tc = QwenChatResponse.ToolCallChunk(index = 0, function = QwenChatResponse.FunctionChunk(arguments = "{}")))))
+            addAll(decoder.accept(delta(tc = QwenChatResponse.ToolCallChunk(index = 1, function = QwenChatResponse.FunctionChunk(arguments = "{}")))))
+        }
+        val completed = decoder.finish().filterIsInstance<ModelEvent.ToolCallCompleted>()
+        assertEquals(2, completed.size)
+        // Emitted sorted by index regardless of arrival order.
+        assertEquals("first", completed[0].call.name)
+        assertEquals("call_a", completed[0].call.id)
+        assertEquals("second", completed[1].call.name)
+        assertEquals("call_b", completed[1].call.id)
+    }
 }

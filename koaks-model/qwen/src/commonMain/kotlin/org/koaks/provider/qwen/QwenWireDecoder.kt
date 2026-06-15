@@ -70,7 +70,10 @@ class QwenWireDecoder : WireDecoder<QwenChatResponse> {
     override fun finish(): List<ModelEvent> {
         if (failed != null) return emptyList()
         val events = mutableListOf<ModelEvent>()
-        toolCalls.values.forEach { acc ->
+        // Emit in tool-call index order — chunks for parallel calls may interleave.
+        toolCalls.entries.sortedBy { it.key }.forEach { (_, acc) ->
+            // Skip stray empty accumulators (e.g. an index that only ever carried a null fragment).
+            if (acc.name.isEmpty() && acc.args.isEmpty() && acc.id == null) return@forEach
             events += ModelEvent.ToolCallCompleted(
                 ToolCall(
                     id = acc.id ?: "",

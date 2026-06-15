@@ -1,6 +1,7 @@
 package org.koaks.framework.tool
 
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.json.JsonObject
 
 /**
  * A callable unit of functionality an agent can invoke.
@@ -27,6 +28,20 @@ interface Tool<In> {
 
     /** When true, this tool has external side effects (email/charge/db). Affects rollback semantics (§4.5). */
     val hasSideEffects: Boolean get() = false
+
+    /**
+     * Optional pre-built JSON Schema for the parameters. When non-null it is used
+     * verbatim instead of deriving one from [inputSerializer] — needed for tools
+     * whose schema is supplied externally (e.g. MCP `tools/list`).
+     */
+    val parametersOverride: JsonObject? get() = null
+
+    /**
+     * When true, the registry skips JSON decoding and passes the model's raw
+     * arguments string directly to [execute] (so [In] must be `String`). Used by
+     * passthrough tools like MCP adapters that forward arguments verbatim.
+     */
+    val acceptsRawJson: Boolean get() = false
 
     /** Performs the tool logic. The returned string is fed back to the model. */
     suspend fun execute(input: In): String

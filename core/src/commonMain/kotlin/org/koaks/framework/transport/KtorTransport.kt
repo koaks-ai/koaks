@@ -20,6 +20,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.KSerializer
 import org.koaks.framework.net.provideEngine
 import org.koaks.framework.utils.json.JsonUtil
@@ -40,6 +41,13 @@ class KtorTransport(
 
     private val logger = KotlinLogging.logger {}
 
+    // One limiter per distinct RateLimit config, shared across requests on this transport.
+    private val limiters = mutableMapOf<RateLimit, RateLimiter>()
+    private val limitersLock = kotlinx.coroutines.sync.Mutex()
+
+    private suspend fun limiterFor(limit: RateLimit): RateLimiter =
+        limitersLock.withLock { limiters.getOrPut(limit) { RateLimiter(limit) } }
+
     override fun <TReq, TResp> stream(
         config: ModelConfig,
         req: TReq,
@@ -48,6 +56,7 @@ class KtorTransport(
         val body = JsonUtil.toJson(req, adapter.requestSerializer)
         var attempt = 0
         while (true) {
+            config.rateLimit?.let { limiterFor(it).acquire() }
             var emittedAny = false
             try {
                 openStream(config, body) { line ->
