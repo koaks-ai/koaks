@@ -3,6 +3,7 @@ package org.koaks.framework.transport
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
 /**
@@ -33,7 +34,7 @@ internal class RateLimiter(private val limit: RateLimit) {
                 }
             }
             if (waitMs == 0L) return
-            delay(waitMs)
+            delay(waitMs.milliseconds)
         }
     }
 

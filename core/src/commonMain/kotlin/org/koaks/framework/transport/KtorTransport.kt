@@ -24,6 +24,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.KSerializer
 import org.koaks.framework.net.provideEngine
 import org.koaks.framework.utils.json.JsonUtil
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Default [Transport] backed by a single shared Ktor [HttpClient] (connection pool).
@@ -74,7 +75,7 @@ class KtorTransport(
                     val backoff = config.retry.initialBackoffMs * (1L shl attempt)
                     logger.warn { "transport retry ${attempt + 1}/${config.retry.maxRetries} after ${backoff}ms: ${e.message}" }
                     attempt++
-                    delay(backoff)
+                    delay(backoff.milliseconds)
                 } else {
                     throw e
                 }
@@ -135,6 +136,7 @@ class KtorTransport(
                 val content = trimmed.removePrefix("data:").trim()
                 if (content == config.streamEndMarker) null else content
             }
+
             StreamFormat.NDJSON -> trimmed
         }
     }

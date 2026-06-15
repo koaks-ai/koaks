@@ -33,6 +33,7 @@ class TurnCommitBuffer(userMessage: Message) {
                 anyToolResult = true
                 pendingToolResults += Message.tool(event.callId, event.output, event.isError)
             }
+
             is AgentEvent.StepCompleted -> flushStep()
             is AgentEvent.Finished -> sawFinished = true
             is AgentEvent.Failed -> {} // non-terminal failures may still be followed by Finished

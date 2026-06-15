@@ -10,7 +10,7 @@ import org.koaks.framework.tool.Tool
 import org.koaks.framework.tool.ToolRegistry
 
 /** DSL scope for registering tools into a scoped [ToolRegistry]. */
-@AgentDsl
+@AgentDSL
 class ToolScope(@PublishedApi internal val registry: ToolRegistry) {
 
     /** Registers a class-based tool. */

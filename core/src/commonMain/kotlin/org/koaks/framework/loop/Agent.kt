@@ -50,7 +50,7 @@ class Agent internal constructor(
     suspend fun runStructured(input: String, spec: OutputSpec): AgentResult =
         runner.runStructured(initialMessages(input), spec)
 
-    /** Streams from an explicit message list (used by [org.koaks.framework.memory.Thread]). */
+    /** Streams from an explicit message list (used by [org.koaks.framework.memory.AgentThread]). */
     internal fun streamMessages(initial: List<Message>): Flow<AgentEvent> = runner.stream(initial)
 
     /** Prepends the system instructions (if any) to a pre-built message list. */
@@ -59,11 +59,11 @@ class Agent internal constructor(
         addAll(messages)
     }
 
-    /** Opens a conversation [org.koaks.framework.memory.Thread] backed by this agent's memory. */
-    fun thread(id: String): org.koaks.framework.memory.Thread =
-        org.koaks.framework.memory.Thread(this, org.koaks.framework.memory.ThreadId(id))
+    /** Opens a conversation [org.koaks.framework.memory.AgentThread] backed by this agent's memory. */
+    fun thread(id: String): org.koaks.framework.memory.AgentThread =
+        org.koaks.framework.memory.AgentThread(this, org.koaks.framework.memory.ThreadId(id))
 
-    /** The agent's configured memory (used by [org.koaks.framework.memory.Thread]). */
+    /** The agent's configured memory (used by [org.koaks.framework.memory.AgentThread]). */
     internal val memoryStore: Memory get() = memory
 
     /** Whether any registered tool has external side effects. */

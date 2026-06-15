@@ -1,6 +1,6 @@
 package org.koaks.provider.qwen
 
-import org.koaks.framework.loop.AgentDsl
+import org.koaks.framework.loop.AgentDSL
 import org.koaks.framework.loop.ModelScope
 import org.koaks.framework.model.GenerationParams
 import org.koaks.framework.model.ModelCapabilities
@@ -10,7 +10,7 @@ import org.koaks.framework.transport.ModelConfig
  * Configuration scope for the Qwen provider DSL: `model { qwen(...) { ... } }`.
  * Only fields that differ from the [ModelCapabilities] defaults need to be set.
  */
-@AgentDsl
+@AgentDSL
 class QwenConfig(
     var baseUrl: String,
     var apiKey: String,
@@ -35,7 +35,7 @@ class QwenConfig(
     internal fun capabilities(): ModelCapabilities = caps
 }
 
-@AgentDsl
+@AgentDSL
 class CapabilitiesScope(initial: ModelCapabilities) {
     var streaming: Boolean = initial.streaming
     var tools: Boolean = initial.tools

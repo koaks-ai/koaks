@@ -1,6 +1,6 @@
 package org.koaks.provider.ollama
 
-import org.koaks.framework.loop.AgentDsl
+import org.koaks.framework.loop.AgentDSL
 import org.koaks.framework.loop.ModelScope
 import org.koaks.framework.model.GenerationParams
 import org.koaks.framework.model.ModelCapabilities
@@ -11,7 +11,7 @@ import org.koaks.framework.transport.StreamFormat
  * Configuration scope for the Ollama provider DSL: `model { ollama(...) { ... } }`.
  * Only fields differing from the [ModelCapabilities] defaults need to be set.
  */
-@AgentDsl
+@AgentDSL
 class OllamaConfig(
     var baseUrl: String,
     var modelName: String,
@@ -37,7 +37,7 @@ class OllamaConfig(
     internal fun capabilities(): ModelCapabilities = caps
 }
 
-@AgentDsl
+@AgentDSL
 class OllamaCapabilitiesScope(initial: ModelCapabilities) {
     var streaming: Boolean = initial.streaming
     var tools: Boolean = initial.tools

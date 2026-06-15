@@ -24,10 +24,12 @@ class TurnAccumulator {
                 toolCalls.getOrPut(key) { ToolCallBuilder() }
                     .mergeDelta(event.id.ifBlank { null }, event.nameDelta, event.argumentsDelta)
             }
+
             is ModelEvent.ToolCallCompleted -> {
                 val key = event.call.id.ifBlank { "idx-${toolCalls.size}" }
                 toolCalls.getOrPut(key) { ToolCallBuilder() }.mergeComplete(event.call)
             }
+
             is ModelEvent.Completed -> usage = event.usage
             is ModelEvent.Failed -> {}
         }
