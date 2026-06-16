@@ -37,13 +37,11 @@ class QwenConfig(
 
 @AgentDSL
 class CapabilitiesScope(initial: ModelCapabilities) {
-    var streaming: Boolean = initial.streaming
-    var tools: Boolean = initial.tools
     var parallelToolCalls: Boolean = initial.parallelToolCalls
     var vision: Boolean = initial.vision
     var jsonMode: Boolean = initial.jsonMode
 
-    internal fun build() = ModelCapabilities(streaming, tools, parallelToolCalls, vision, jsonMode)
+    internal fun build() = ModelCapabilities(parallelToolCalls, vision, jsonMode)
 }
 
 /**
