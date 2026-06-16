@@ -47,6 +47,7 @@ class QwenChatModel(
             presencePenalty = p.presencePenalty ?: defaults.presencePenalty,
             frequencyPenalty = p.frequencyPenalty ?: defaults.frequencyPenalty,
             responseFormat = if (req.jsonMode) mapOf("type" to "json_object") else null,
+            enableThinking = p.reasoning ?: defaults.reasoning,
         )
     }
 }

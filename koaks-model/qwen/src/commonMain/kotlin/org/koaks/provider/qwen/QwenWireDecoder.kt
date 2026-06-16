@@ -9,6 +9,7 @@ import org.koaks.framework.provider.WireDecoder
 /**
  * Stateful decoder for Qwen's OpenAI-compatible stream.
  *
+ *  - assistant `reasoning_content` deltas → [ModelEvent.ReasoningDelta] (forwarded immediately)
  *  - assistant `content` deltas → [ModelEvent.TextDelta] (forwarded immediately)
  *  - tool call fragments (name/arguments split across chunks, keyed by `index`) are
  *    accumulated and emitted as [ModelEvent.ToolCallCompleted] at [finish]
@@ -49,6 +50,7 @@ class QwenWireDecoder : WireDecoder<QwenChatResponse> {
         // delta (streaming) or message (non-streaming) carry the same shape.
         val payload = choice.delta ?: choice.message
 
+        payload?.reasoningContent?.let { if (it.isNotEmpty()) events += ModelEvent.ReasoningDelta(it) }
         payload?.content?.let { if (it.isNotEmpty()) events += ModelEvent.TextDelta(it) }
 
         payload?.toolCalls?.forEach { tc ->

@@ -9,13 +9,14 @@ class OllamaWireDecoderTest {
 
     private fun chunk(
         content: String = "",
+        thinking: String? = null,
         toolCalls: List<OllamaRespToolCall>? = null,
         done: Boolean = false,
         promptEval: Int? = null,
         eval: Int? = null,
     ) = OllamaChatResponse(
         model = "llama3.1",
-        message = OllamaRespMessage(role = "assistant", content = content, toolCalls = toolCalls),
+        message = OllamaRespMessage(role = "assistant", content = content, thinking = thinking, toolCalls = toolCalls),
         done = done,
         promptEvalCount = promptEval,
         evalCount = eval,
@@ -60,6 +61,23 @@ class OllamaWireDecoderTest {
         assertEquals("call_0", completed.call.id)
         assertTrue(completed.call.arguments.contains("\"city\""))
         assertTrue(completed.call.arguments.contains("NYC"))
+    }
+
+    @Test
+    fun forwards_thinking_as_reasoning_distinct_from_content() {
+        val decoder = OllamaWireDecoder()
+        val events = buildList {
+            addAll(decoder.accept(chunk(thinking = "hmm ")))
+            addAll(decoder.accept(chunk(thinking = "ok", content = "answer")))
+            addAll(decoder.accept(chunk(done = true, eval = 2)))
+            addAll(decoder.finish())
+        }
+
+        val reasoning = events.filterIsInstance<ModelEvent.ReasoningDelta>().joinToString("") { it.text }
+        assertEquals("hmm ok", reasoning)
+
+        val text = events.filterIsInstance<ModelEvent.TextDelta>().joinToString("") { it.text }
+        assertEquals("answer", text)
     }
 
     @Test

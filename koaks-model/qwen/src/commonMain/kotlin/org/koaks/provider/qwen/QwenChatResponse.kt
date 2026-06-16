@@ -28,6 +28,7 @@ data class QwenChatResponse(
     data class Delta(
         @SerialName("role") val role: String? = null,
         @SerialName("content") val content: String? = null,
+        @SerialName("reasoning_content") val reasoningContent: String? = null,
         @SerialName("tool_calls") val toolCalls: List<ToolCallChunk>? = null,
     )
 

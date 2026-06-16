@@ -14,6 +14,13 @@ sealed interface AgentEvent {
     /** Incremental assistant text, forwarded immediately (tee), not buffered. */
     data class TextDelta(val text: String) : AgentEvent
 
+    /**
+     * Incremental reasoning/thinking text, forwarded immediately (tee). Distinct from
+     * [TextDelta]: it is the model's thinking trace, not part of the final answer, and
+     * is never persisted to the message history.
+     */
+    data class ReasoningDelta(val text: String) : AgentEvent
+
     /** The model requested a (complete) tool call. */
     data class ToolCallRequested(val call: ToolCall) : AgentEvent
 

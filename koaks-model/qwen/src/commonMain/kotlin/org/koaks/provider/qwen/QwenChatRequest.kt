@@ -23,6 +23,7 @@ data class QwenChatRequest(
     @SerialName("presence_penalty") val presencePenalty: Double? = null,
     @SerialName("frequency_penalty") val frequencyPenalty: Double? = null,
     @SerialName("response_format") val responseFormat: Map<String, String>? = null,
+    @SerialName("enable_thinking") val enableThinking: Boolean? = null,
 )
 
 @Serializable
