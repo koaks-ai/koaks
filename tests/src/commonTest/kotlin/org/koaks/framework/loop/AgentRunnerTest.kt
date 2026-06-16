@@ -67,6 +67,36 @@ class AgentRunnerTest {
     }
 
     @Test
+    fun phantom_tool_call_delta_is_not_dispatched() = runTest {
+        // A model hallucinates a stray tool_calls fragment at a second index: it arrives
+        // only as a ToolCallDelta with no id/name, and the decoder never promotes it to a
+        // ToolCallCompleted. The accumulator must drop it rather than dispatch a nameless
+        // call (which would surface a fabricated `tool not found: ` error).
+        val model = FakeLanguageModel(
+            listOf(
+                ModelEvent.ToolCallDelta(id = "c1", index = 0, nameDelta = "noop", argumentsDelta = "{}"),
+                ModelEvent.ToolCallDelta(id = "", index = 1), // phantom: blank id, no name
+                ModelEvent.ToolCallCompleted(ToolCall("c1", "noop", "{}")),
+                ModelEvent.Completed(Usage.ZERO),
+            ),
+            listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
+        )
+        val a = agentWith(model) {
+            tool<NoArgs>(name = "noop", description = "no-op") { "ok" }
+        }
+
+        val events = a.stream("hi").toList()
+
+        // Exactly one tool result (the real call); the phantom produced none.
+        val toolResults = events.filterIsInstance<AgentEvent.ToolResult>()
+        assertEquals(1, toolResults.size, "phantom fragment must not be dispatched")
+        assertTrue(!toolResults.single().isError)
+        // No fabricated tool-not-found failure.
+        assertTrue(events.none { it is AgentEvent.Failed }, "phantom must not surface a Failed event")
+        assertTrue(events.any { it is AgentEvent.Finished })
+    }
+
+    @Test
     fun finishes_when_no_tool_calls() = runTest {
         val model = FakeLanguageModel(
             listOf(ModelEvent.TextDelta("hello"), ModelEvent.Completed(Usage(2, 3, 5))),
