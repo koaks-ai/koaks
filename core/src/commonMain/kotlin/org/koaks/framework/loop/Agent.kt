@@ -77,12 +77,10 @@ class Agent internal constructor(
 
     /** Builds the model request for the current state. */
     internal fun toRequest(state: AgentState): ChatRequest = ChatRequest(
-        // Capabilities-driven adaptation: omit tool schemas entirely for models that
-        // don't support tool calling, rather than sending schemas the model ignores.
         messages = state.messages,
-        tools = if (model.capabilities.tools) tools.toSchemas() else emptyList(),
+        tools = tools.toSchemas(),
         params = params,
-        stream = model.capabilities.streaming,
+        stream = true,
     )
 
     override fun close() {
