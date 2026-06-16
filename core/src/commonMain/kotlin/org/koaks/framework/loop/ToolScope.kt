@@ -53,3 +53,12 @@ inline fun <reified In> ToolScope.tool(
     hasSideEffects: Boolean = false,
     noinline execute: suspend (In) -> String,
 ) = register(name, description, serializer<In>(), returnDirectly, hasSideEffects, execute)
+
+/** Alias for [tool] with reified input type. */
+inline fun <reified In> ToolScope.createTool(
+    name: String,
+    description: String,
+    returnDirectly: Boolean = false,
+    hasSideEffects: Boolean = false,
+    noinline execute: suspend (In) -> String,
+) = tool<In>(name, description, returnDirectly, hasSideEffects, execute)
