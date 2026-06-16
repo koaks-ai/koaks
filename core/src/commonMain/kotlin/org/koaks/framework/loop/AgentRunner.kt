@@ -63,6 +63,9 @@ class AgentRunner(private val agent: Agent) {
                             emitEvent(AgentEvent.TextDelta(event.text))
                         }
 
+                        is ModelEvent.ReasoningDelta ->
+                            emitEvent(AgentEvent.ReasoningDelta(event.text))
+
                         is ModelEvent.ToolCallCompleted ->
                             emitEvent(AgentEvent.ToolCallRequested(event.call))
 

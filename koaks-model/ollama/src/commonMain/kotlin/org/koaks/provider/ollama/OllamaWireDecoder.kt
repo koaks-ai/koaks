@@ -11,6 +11,7 @@ import org.koaks.framework.provider.WireDecoder
  * Stateful decoder for Ollama's NDJSON `/api/chat` stream.
  *
  *  - `message.content` deltas → [ModelEvent.TextDelta] (forwarded immediately)
+ *  - `message.thinking` deltas → [ModelEvent.ReasoningDelta] (forwarded immediately)
  *  - `message.tool_calls` arrive complete (Ollama does not fragment them); each is
  *    accumulated and emitted as [ModelEvent.ToolCallCompleted] at [finish]
  *  - eval counters on the `done` chunk → [ModelEvent.Completed]
@@ -44,6 +45,7 @@ class OllamaWireDecoder : WireDecoder<OllamaChatResponse> {
 
         val message = chunk.message ?: return events
 
+        message.thinking?.let { if (it.isNotEmpty()) events += ModelEvent.ReasoningDelta(it) }
         if (message.content.isNotEmpty()) events += ModelEvent.TextDelta(message.content)
 
         message.toolCalls?.forEach { tc ->

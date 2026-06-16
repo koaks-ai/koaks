@@ -19,6 +19,8 @@ class TurnAccumulator {
     fun observe(event: ModelEvent) {
         when (event) {
             is ModelEvent.TextDelta -> text.append(event.text)
+            // Reasoning is a side trace, not part of the assistant message — drop it here.
+            is ModelEvent.ReasoningDelta -> {}
             is ModelEvent.ToolCallDelta -> {
                 val key = event.id.ifBlank { "idx-${event.index ?: 0}" }
                 toolCalls.getOrPut(key) { ToolCallBuilder() }

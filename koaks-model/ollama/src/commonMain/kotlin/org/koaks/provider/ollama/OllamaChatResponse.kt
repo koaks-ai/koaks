@@ -27,6 +27,7 @@ data class OllamaChatResponse(
 data class OllamaRespMessage(
     @SerialName("role") val role: String? = null,
     @SerialName("content") val content: String = "",
+    @SerialName("thinking") val thinking: String? = null,
     @SerialName("tool_calls") val toolCalls: List<OllamaRespToolCall>? = null,
 )
 

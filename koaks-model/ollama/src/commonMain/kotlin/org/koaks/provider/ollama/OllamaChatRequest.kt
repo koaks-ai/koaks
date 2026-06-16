@@ -18,6 +18,7 @@ data class OllamaChatRequest(
     @SerialName("tools") val tools: List<OllamaTool>? = null,
     @SerialName("stream") val stream: Boolean = true,
     @SerialName("format") val format: String? = null,
+    @SerialName("think") val think: Boolean? = null,
     @SerialName("options") val options: OllamaOptions? = null,
 )
 

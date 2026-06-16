@@ -20,6 +20,28 @@ class AgentRunnerTest {
         }
 
     @Test
+    fun reasoning_is_streamed_but_dropped_from_message() = runTest {
+        val model = FakeLanguageModel(
+            listOf(
+                ModelEvent.ReasoningDelta("let me "),
+                ModelEvent.ReasoningDelta("think"),
+                ModelEvent.TextDelta("answer"),
+                ModelEvent.Completed(Usage(1, 1, 2)),
+            ),
+        )
+        val a = agentWith(model)
+        val events = a.stream("hi").toList()
+
+        // Surfaced on the event stream, distinct from assistant text.
+        val reasoning = events.filterIsInstance<AgentEvent.ReasoningDelta>().joinToString("") { it.text }
+        assertEquals("let me think", reasoning)
+
+        // But never folded into the assistant message text.
+        val finished = events.filterIsInstance<AgentEvent.Finished>().single()
+        assertEquals("answer", finished.message.text)
+    }
+
+    @Test
     fun tee_emits_text_before_tool_call() = runTest {
         // One model step that streams text deltas THEN a completed tool call.
         val model = FakeLanguageModel(

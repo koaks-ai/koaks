@@ -51,6 +51,7 @@ class OllamaChatModel(
             },
             stream = req.stream,
             format = if (req.jsonMode) "json" else null,
+            think = p.reasoning ?: defaults.reasoning,
             options = options.takeIf { it != OllamaOptions() },
         )
     }

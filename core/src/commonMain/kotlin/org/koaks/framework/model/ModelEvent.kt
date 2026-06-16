@@ -11,6 +11,14 @@ sealed interface ModelEvent {
     data class TextDelta(val text: String) : ModelEvent
 
     /**
+     * An incremental chunk of the model's reasoning/thinking trace (e.g. Qwen/DeepSeek
+     * `reasoning_content`, Ollama `thinking`). Carried separately from [TextDelta] so
+     * consumers can surface it distinctly; it is NOT part of the assistant message and
+     * is never fed back to the model on a subsequent step.
+     */
+    data class ReasoningDelta(val text: String) : ModelEvent
+
+    /**
      * A fragment of a tool call. Provider streams deliver a tool call's name and
      * arguments across multiple chunks; the decoder accumulates these.
      */

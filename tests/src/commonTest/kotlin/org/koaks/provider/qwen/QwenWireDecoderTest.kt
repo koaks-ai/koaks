@@ -7,12 +7,13 @@ import kotlin.test.assertTrue
 
 class QwenWireDecoderTest {
 
-    private fun delta(content: String? = null, tc: QwenChatResponse.ToolCallChunk? = null) =
+    private fun delta(content: String? = null, reasoning: String? = null, tc: QwenChatResponse.ToolCallChunk? = null) =
         QwenChatResponse(
             choices = listOf(
                 QwenChatResponse.Choice(
                     delta = QwenChatResponse.Delta(
                         content = content,
+                        reasoningContent = reasoning,
                         toolCalls = tc?.let { listOf(it) },
                     )
                 )
@@ -44,6 +45,24 @@ class QwenWireDecoderTest {
         // Usage surfaced on completion.
         val done = events.filterIsInstance<ModelEvent.Completed>().single()
         assertEquals(15, done.usage.totalTokens)
+    }
+
+    @Test
+    fun forwards_reasoning_before_content_as_distinct_events() {
+        val decoder = QwenWireDecoder()
+        val events = buildList {
+            addAll(decoder.accept(delta(reasoning = "let me ")))
+            addAll(decoder.accept(delta(reasoning = "think")))
+            addAll(decoder.accept(delta(content = "the answer")))
+            addAll(decoder.finish())
+        }
+
+        val reasoning = events.filterIsInstance<ModelEvent.ReasoningDelta>()
+        assertEquals(listOf("let me ", "think"), reasoning.map { it.text })
+
+        // Reasoning is NOT conflated with assistant text.
+        val text = events.filterIsInstance<ModelEvent.TextDelta>().single()
+        assertEquals("the answer", text.text)
     }
 
     @Test

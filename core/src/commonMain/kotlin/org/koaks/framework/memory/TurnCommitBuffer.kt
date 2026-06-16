@@ -28,6 +28,8 @@ class TurnCommitBuffer(userMessage: Message) {
     fun observe(event: AgentEvent) {
         when (event) {
             is AgentEvent.TextDelta -> pendingText.append(event.text)
+            // Reasoning is a transient trace, never persisted to history.
+            is AgentEvent.ReasoningDelta -> {}
             is AgentEvent.ToolCallRequested -> pendingCalls += event.call
             is AgentEvent.ToolResult -> {
                 anyToolResult = true
