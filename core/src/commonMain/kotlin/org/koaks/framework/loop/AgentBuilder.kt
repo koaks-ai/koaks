@@ -22,6 +22,7 @@ class AgentBuilder {
     var params: GenerationParams = GenerationParams()
 
     private var modelScope: ModelScope? = null
+    private var selection: ModelSelection? = null
     private val tools = ToolRegistry()
     private val middlewares = mutableListOf<AgentMiddleware>()
     private val listeners = mutableListOf<AgentListener>()
@@ -30,8 +31,10 @@ class AgentBuilder {
     private var memory: Memory = NoMemory
     private var runBudget: RunBudget = RunBudget.UNLIMITED
 
-    fun model(block: ModelScope.() -> Unit) {
-        modelScope = ModelScope().apply(block)
+    fun model(block: ModelScope.() -> ModelSelection) {
+        val scope = ModelScope()
+        selection = scope.block()
+        modelScope = scope
     }
 
     fun tools(block: ToolScope.() -> Unit) {
@@ -71,11 +74,15 @@ class AgentBuilder {
     }
 
     internal fun build(): Agent {
-        val built = requireNotNull(modelScope) { "model { } block is required" }.build()
+        val scope = requireNotNull(modelScope) { "model { } block is required" }
+        val model = requireNotNull(selection) {
+            "a model is required (e.g. model { qwen(...) })"
+        }.toModel()
+        val transportInfo = scope.transportInfo()
         return Agent(
             name = name,
             instructions = instructions,
-            model = built.model,
+            model = model,
             tools = tools,
             middlewares = middlewares.toList(),
             listeners = listeners.toList(),
@@ -84,8 +91,8 @@ class AgentBuilder {
             runBudget = runBudget,
             params = params,
             memory = memory,
-            transport = built.transport,
-            ownsTransport = built.ownsTransport,
+            transport = transportInfo.transport,
+            ownsTransport = transportInfo.ownsTransport,
         )
     }
 }

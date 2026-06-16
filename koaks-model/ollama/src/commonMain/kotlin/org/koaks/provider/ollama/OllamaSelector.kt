@@ -2,6 +2,7 @@ package org.koaks.provider.ollama
 
 import org.koaks.framework.loop.AgentDSL
 import org.koaks.framework.loop.ModelScope
+import org.koaks.framework.loop.ModelSelection
 import org.koaks.framework.model.GenerationParams
 import org.koaks.framework.model.ModelCapabilities
 import org.koaks.framework.transport.ModelConfig
@@ -14,8 +15,8 @@ import org.koaks.framework.transport.StreamFormat
 @AgentDSL
 class OllamaConfig(
     var baseUrl: String,
-    var modelName: String,
     var apiKey: String = "ollama",
+    var modelName: String,
 ) {
     var temperature: Double? = null
     var maxTokens: Int? = null
@@ -48,14 +49,15 @@ class OllamaCapabilitiesScope(initial: ModelCapabilities) {
 
 /**
  * Selects Ollama as the agent's model. Builds an [OllamaChatModel] using the
- * transport from [ModelScope] (agent-owned unless externally injected).
+ * transport from [ModelScope] (agent-owned unless externally injected), returning it
+ * as a [ModelSelection] so callers can chain `.fallback(...)`.
  */
 fun ModelScope.ollama(
     baseUrl: String,
-    modelName: String,
     apiKey: String = "ollama",
+    modelName: String,
     block: OllamaConfig.() -> Unit = {},
-) {
-    val cfg = OllamaConfig(baseUrl, modelName, apiKey).apply(block)
-    selected = OllamaChatModel(cfg.toConfig(), transport, cfg.capabilities())
+): ModelSelection {
+    val cfg = OllamaConfig(baseUrl, apiKey, modelName).apply(block)
+    return custom(OllamaChatModel(cfg.toConfig(), transport, cfg.capabilities()))
 }
