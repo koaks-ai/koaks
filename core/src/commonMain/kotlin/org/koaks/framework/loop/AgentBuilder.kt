@@ -93,6 +93,9 @@ class AgentBuilder {
 /** Top-level entry point: `val a = agent { ... }`. */
 fun agent(block: AgentBuilder.() -> Unit): Agent = AgentBuilder().apply(block).build()
 
+/** Alias for `agent { ... }` to improve readability at the call site. E.g. `createAgent { ... }`. */
+fun createAgent(block: AgentBuilder.() -> Unit): Agent = agent(block)
+
 /** DSL scope for selecting conversation memory. */
 @AgentDSL
 class MemoryScope {
