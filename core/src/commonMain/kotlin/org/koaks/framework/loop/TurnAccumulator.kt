@@ -37,7 +37,18 @@ class TurnAccumulator {
 
     fun assistantMessage(): Message = Message.assistant(text.toString(), toolCalls())
 
-    fun toolCalls(): List<ToolCall> = toolCalls.values.map { it.build() }
+    /**
+     * Assembled tool calls for the terminal step. Builders with a blank name are
+     * dropped: a streamed fragment carrying neither id nor name is a phantom (e.g. a
+     * model that hallucinates a stray `tool_calls` entry at a second index). The wire
+     * decoder already discards these at `finish()`, so the authoritative
+     * [ModelEvent.ToolCallCompleted] never arrives for them — only the orphan
+     * [ModelEvent.ToolCallDelta] does. A nameless call can never be dispatched; surfacing
+     * it would fabricate a `ToolNotFound("")` failure that the model never truly requested.
+     */
+    fun toolCalls(): List<ToolCall> = toolCalls.values
+        .map { it.build() }
+        .filter { it.name.isNotBlank() }
 
     fun usage(): Usage = usage
 }
