@@ -2,6 +2,7 @@ package org.koaks.provider.qwen
 
 import org.koaks.framework.loop.AgentDSL
 import org.koaks.framework.loop.ModelScope
+import org.koaks.framework.loop.ModelSelection
 import org.koaks.framework.model.GenerationParams
 import org.koaks.framework.model.ModelCapabilities
 import org.koaks.framework.transport.ModelConfig
@@ -46,14 +47,15 @@ class CapabilitiesScope(initial: ModelCapabilities) {
 
 /**
  * Selects Qwen as the agent's model. The provider builds a [QwenChatModel] using the
- * transport from [ModelScope] (agent-owned unless externally injected).
+ * transport from [ModelScope] (agent-owned unless externally injected), returning it
+ * as a [ModelSelection] so callers can chain `.fallback(...)`.
  */
 fun ModelScope.qwen(
     baseUrl: String,
     apiKey: String,
     modelName: String,
     block: QwenConfig.() -> Unit = {},
-) {
+): ModelSelection {
     val cfg = QwenConfig(baseUrl, apiKey, modelName).apply(block)
-    selected = QwenChatModel(cfg.toConfig(), transport, cfg.capabilities())
+    return custom(QwenChatModel(cfg.toConfig(), transport, cfg.capabilities()))
 }
