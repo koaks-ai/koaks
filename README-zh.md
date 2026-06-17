@@ -1,4 +1,4 @@
-# Koaks-ai  
+# Koaks
 
 > The name **"Koaks"** is homophonic with **"coax"**.  
 
@@ -6,7 +6,7 @@
 🌐 &nbsp<a href="/README.md">English</a> | 中文
 </div>
 
-![koaks](https://socialify.git.ci/koaks-ai/koaks/image?custom_description=Connect+your+tools%2C+compose+your+logic.&description=1&font=JetBrains+Mono&forks=1&issues=1&language=1&name=1&owner=1&pattern=Circuit+Board&pulls=1&stargazers=1&theme=Light)
+<img width="2171" height="724" alt="icon" src="https://github.com/user-attachments/assets/c6ecc47c-57b0-4c48-a4fc-cddc3e810632" />
 
 🧩 Connect your tools, compose your logic, rule your agents.
 
