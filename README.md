@@ -14,18 +14,12 @@
 
 ## ✨ Highlights
 
-- **One declarative DSL** — `agent { }` assembles an immutable, reusable agent.
-- **Real streaming** — token-by-token `TextDelta`, separate `ReasoningDelta`, plus
-  tool-call and lifecycle events, all forwarded as they happen (tee, never buffered).
-- **First-class tools** — define a tool inline with a typed input; its JSON Schema is
-  derived from your `@Serializable` class. Class-based tools, JVM `@Tool` annotations,
-  and lazy **MCP** discovery are all supported.
-- **Pluggable memory** — sliding-window, summarizing, or vector memory, committed
-  atomically per turn (a failed or cancelled run never corrupts history).
-- **Structured output** — `agent.run<T>()` returns a typed, decoded result.
-- **Resilient by design** — model fallbacks, retry/substitute error policies, step &
-  token budgets, and around-style middleware (cache, guardrail, human-approval).
-- **Kotlin Multiplatform** — JVM, JS, and macOS (Apple Silicon) from a single codebase.
+- **One declarative DSL**: `agent { }` assembles an immutable, reusable agent.
+- **First-class tools**: define a tool inline with a typed input; its JSON Schema is derived from your `@Serializable` class. Class-based tools, JVM `@Tool` annotations, and lazy **MCP** discovery are all supported.
+- **Pluggable memory**: sliding-window, summarizing, or vector memory, committed atomically per turn (a failed or cancelled run won't corrupt history).
+- **Structured output**: `agent.run<T>()` returns a typed, decoded result.
+- **Resilient by design**: model fallbacks, retry/substitute error policies, step & token budgets, and Around middleware (cache, guardrail, human-approval).
+- **Kotlin Multiplatform**: JVM, JS, and macOS (Apple Silicon) from a single codebase.
 
 ---
 
