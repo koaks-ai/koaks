@@ -1,4 +1,4 @@
-# koaks
+# Koaks
 
 <div align="right">
 🌐 &nbsp English | <a href="/README-zh.md">中文</a>
