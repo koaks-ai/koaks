@@ -4,7 +4,9 @@ import org.koaks.framework.loop.AgentDSL
 import org.koaks.framework.loop.ModelScope
 import org.koaks.framework.loop.ModelSelection
 import org.koaks.framework.model.GenerationParams
+import org.koaks.framework.model.GenerationParamsScope
 import org.koaks.framework.model.ModelCapabilities
+import org.koaks.framework.model.generationParams
 import org.koaks.framework.transport.ModelConfig
 import org.koaks.framework.transport.StreamFormat
 
@@ -18,9 +20,15 @@ class OllamaConfig(
     var apiKey: String = "ollama",
     var modelName: String,
 ) {
-    var temperature: Double? = null
-    var maxTokens: Int? = null
-    var topP: Double? = null
+    private var params = GenerationParams()
+
+    /**
+     * The model's default generation params: `params { temperature = 0.7 }`. These
+     * are overridden per request by the agent's own params (see [GenerationParams.over]).
+     */
+    fun params(block: GenerationParamsScope.() -> Unit) {
+        params = generationParams(block)
+    }
 
     private var caps = ModelCapabilities(parallelToolCalls = false)
     fun capabilities(block: OllamaCapabilitiesScope.() -> Unit) {
@@ -31,7 +39,7 @@ class OllamaConfig(
         baseUrl = baseUrl,
         apiKey = apiKey,
         modelName = modelName,
-        defaultParams = GenerationParams(temperature = temperature, maxTokens = maxTokens, topP = topP),
+        defaultParams = params,
         streamFormat = StreamFormat.NDJSON,
     )
 
