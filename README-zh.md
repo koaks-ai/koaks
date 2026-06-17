@@ -10,27 +10,16 @@
 
 🧩 **Connect your tools, compose your logic, rule your agents.**
 
-Koaks 是一个 Kotlin Multiplatform **Agent 框架**。你只需用一个 `agent { }` 代码块描述
-Agent——它的指令、模型、工具、记忆与终止规则——Koaks 便会为你运行完整的
-"推理 → 行动 → 观察" 循环：流式输出 token、调用工具、把结果回喂给模型，并在终止策略
-命中时停止。
-
 ---
 
 ## ✨ 核心特性
 
-- **一个声明式 DSL** —— `agent { }` 组装出一个不可变、可复用的 Agent。
-- **真正的流式** —— 逐 token 的 `TextDelta`、独立的 `ReasoningDelta`（思考过程），以及
-  工具调用与生命周期事件，全部即时转发（tee，绝不先聚合再发）。
-- **一等公民的工具** —— 用带类型的输入内联定义工具，其 JSON Schema 由你的
-  `@Serializable` 类自动生成。同时支持类式工具、JVM 的 `@Tool` 注解，以及 **MCP** 工具的
-  懒发现。
-- **可插拔的记忆** —— 滑动窗口、摘要式或向量式记忆，按对话轮次原子提交（运行失败或被取消
-  绝不会污染历史）。
-- **结构化输出** —— `agent.run<T>()` 直接返回解码后的强类型结果。
-- **天生健壮** —— 模型回退（fallback）、重试/替换错误策略、步数与 token 预算，以及环绕式
-  中间件（缓存、护栏、人工审批）。
-- **Kotlin Multiplatform** —— 一套代码同时支持 JVM、JS 与 macOS（Apple Silicon）。
+- **一个声明式 DSL**: `agent { }` 组装出一个不可变、可复用的 Agent。
+- **一等公民的工具**: 用带类型的输入内联定义工具，其 JSON Schema 由你的 `@Serializable` 类自动生成。同时支持类式工具、JVM 的 `@Tool` 注解，以及 **MCP** 工具的懒发现。
+- **可插拔的记忆**: 滑动窗口、摘要式或向量式记忆，按对话轮次原子提交（运行失败或被取消，不污染历史）。
+- **结构化输出**: `agent.run<T>()` 直接返回解码后的强类型结果。
+- **天生健壮**: 模型回退（fallback）、重试/替换错误策略、步数与 token 预算，以及 Around 中间件（缓存、护栏、人工审批）。
+- **Kotlin Multiplatform**: 一套代码同时支持 JVM、JS 与 macOS（Apple Silicon）。
 
 ---
 
