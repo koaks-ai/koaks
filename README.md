@@ -10,11 +10,6 @@
 
 🧩 **Connect your tools, compose your logic, rule your agents.**
 
-Koaks is a Kotlin Multiplatform **agent framework**. You describe an agent — its
-instructions, model, tools, memory, and stopping rules — with one `agent { }` block,
-and Koaks runs the full reason→act→observe loop for you: streaming tokens, calling
-tools, feeding results back to the model, and stopping when the policy says so.
-
 ---
 
 ## ✨ Highlights
