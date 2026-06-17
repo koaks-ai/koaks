@@ -35,13 +35,13 @@ class OllamaChatModel(
     override fun newDecoder(): WireDecoder<OllamaChatResponse> = OllamaWireDecoder()
 
     override fun toWire(req: ChatRequest): OllamaChatRequest {
-        val p = req.params
-        val defaults = config.defaultParams
+        // Agent (request-level) params override the model's defaults, field by field.
+        val p = req.params.over(config.defaultParams)
         val options = OllamaOptions(
-            temperature = p.temperature ?: defaults.temperature,
-            topP = p.topP ?: defaults.topP,
-            numPredict = p.maxTokens ?: defaults.maxTokens,
-            stop = p.stop ?: defaults.stop,
+            temperature = p.temperature,
+            topP = p.topP,
+            numPredict = p.maxTokens,
+            stop = p.stop,
         )
         return OllamaChatRequest(
             model = config.modelName,
@@ -51,7 +51,7 @@ class OllamaChatModel(
             },
             stream = req.stream,
             format = if (req.jsonMode) "json" else null,
-            think = p.reasoning ?: defaults.reasoning,
+            think = p.reasoning,
             options = options.takeIf { it != OllamaOptions() },
         )
     }

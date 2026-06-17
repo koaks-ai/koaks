@@ -4,7 +4,9 @@ import org.koaks.framework.loop.AgentDSL
 import org.koaks.framework.loop.ModelScope
 import org.koaks.framework.loop.ModelSelection
 import org.koaks.framework.model.GenerationParams
+import org.koaks.framework.model.GenerationParamsScope
 import org.koaks.framework.model.ModelCapabilities
+import org.koaks.framework.model.generationParams
 import org.koaks.framework.transport.ModelConfig
 
 /**
@@ -17,9 +19,15 @@ class QwenConfig(
     var apiKey: String,
     var modelName: String,
 ) {
-    var temperature: Double? = null
-    var maxTokens: Int? = null
-    var topP: Double? = null
+    private var params = GenerationParams()
+
+    /**
+     * The model's default generation params: `params { temperature = 0.7 }`. These
+     * are overridden per request by the agent's own params (see [GenerationParams.over]).
+     */
+    fun params(block: GenerationParamsScope.() -> Unit) {
+        params = generationParams(block)
+    }
 
     private var caps = ModelCapabilities()
     fun capabilities(block: CapabilitiesScope.() -> Unit) {
@@ -30,7 +38,7 @@ class QwenConfig(
         baseUrl = baseUrl,
         apiKey = apiKey,
         modelName = modelName,
-        defaultParams = GenerationParams(temperature = temperature, maxTokens = maxTokens, topP = topP),
+        defaultParams = params,
     )
 
     internal fun capabilities(): ModelCapabilities = caps

@@ -29,8 +29,8 @@ class QwenChatModel(
     override fun newDecoder(): WireDecoder<QwenChatResponse> = QwenWireDecoder()
 
     override fun toWire(req: ChatRequest): QwenChatRequest {
-        val p = req.params
-        val defaults = config.defaultParams
+        // Agent (request-level) params override the model's defaults, field by field.
+        val p = req.params.over(config.defaultParams)
         return QwenChatRequest(
             model = config.modelName,
             messages = req.messages.map { it.toWire() },
@@ -40,14 +40,14 @@ class QwenChatModel(
             parallelToolCalls = if (req.tools.isNotEmpty()) capabilities.parallelToolCalls else null,
             stream = req.stream,
             streamOptions = if (req.stream) QwenStreamOptions(includeUsage = true) else null,
-            temperature = p.temperature ?: defaults.temperature,
-            maxTokens = p.maxTokens ?: defaults.maxTokens,
-            topP = p.topP ?: defaults.topP,
-            stop = p.stop ?: defaults.stop,
-            presencePenalty = p.presencePenalty ?: defaults.presencePenalty,
-            frequencyPenalty = p.frequencyPenalty ?: defaults.frequencyPenalty,
+            temperature = p.temperature,
+            maxTokens = p.maxTokens,
+            topP = p.topP,
+            stop = p.stop,
+            presencePenalty = p.presencePenalty,
+            frequencyPenalty = p.frequencyPenalty,
             responseFormat = if (req.jsonMode) mapOf("type" to "json_object") else null,
-            enableThinking = p.reasoning ?: defaults.reasoning,
+            enableThinking = p.reasoning,
         )
     }
 }
