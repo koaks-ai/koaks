@@ -4,405 +4,284 @@
 🌐 &nbsp English | <a href="/README-zh.md">中文</a>
 </div>
 
-> The name **"Koaks"** is homophonic with **"coax"**.  
-<div align="center">
-  <img width="800" height="250" alt="koaks-all" 
-       src="https://github.com/user-attachments/assets/43485b9c-b67f-4446-ab3a-3b3e5e8994ea" />
-</div>
+> The name **"Koaks"** is homophonic with **"coax"**.
 
-![koaks](https://socialify.git.ci/koaks-ai/koaks/image?custom_description=Connect+your+tools%2C+compose+your+logic.&description=1&font=JetBrains+Mono&forks=1&issues=1&language=1&name=1&owner=1&pattern=Circuit+Board&pulls=1&stargazers=1&theme=Light)
+<img width="2171" height="724" alt="icon" src="https://github.com/user-attachments/assets/c6ecc47c-57b0-4c48-a4fc-cddc3e810632" />
 
-🧩 Connect your tools, compose your logic, rule your agents.
+🧩 **Connect your tools, compose your logic, rule your agents.**
 
+Koaks is a Kotlin Multiplatform **agent framework**. You describe an agent — its
+instructions, model, tools, memory, and stopping rules — with one `agent { }` block,
+and Koaks runs the full reason→act→observe loop for you: streaming tokens, calling
+tools, feeding results back to the model, and stopping when the policy says so.
+
+---
+
+## ✨ Highlights
+
+- **One declarative DSL** — `agent { }` assembles an immutable, reusable agent.
+- **Real streaming** — token-by-token `TextDelta`, separate `ReasoningDelta`, plus
+  tool-call and lifecycle events, all forwarded as they happen (tee, never buffered).
+- **First-class tools** — define a tool inline with a typed input; its JSON Schema is
+  derived from your `@Serializable` class. Class-based tools, JVM `@Tool` annotations,
+  and lazy **MCP** discovery are all supported.
+- **Pluggable memory** — sliding-window, summarizing, or vector memory, committed
+  atomically per turn (a failed or cancelled run never corrupts history).
+- **Structured output** — `agent.run<T>()` returns a typed, decoded result.
+- **Resilient by design** — model fallbacks, retry/substitute error policies, step &
+  token budgets, and around-style middleware (cache, guardrail, human-approval).
+- **Kotlin Multiplatform** — JVM, JS, and macOS (Apple Silicon) from a single codebase.
+
+---
 
 ## 🚀 Quick Start
 
-### 1. Preparation
+### 1. Prerequisites
 
 * Kotlin 2.x / JDK 21 or higher
-* Maven or Gradle build tool
-* An available LLM API Key (e.g., OpenAI, DeepSeek)
+* Gradle or Maven
+* An LLM endpoint + API key (any OpenAI-compatible provider, e.g. Qwen / DeepSeek, or a local Ollama)
+
+> **Warning:** The project is in a rapid iteration phase — the API may change at any time.
 
 ### 2. Add Dependencies
 
-- Gradle (Kotlin DSL)  
-```kotlin
-// For Gradle projects, whether it's a JVM project or a Kotlin Multiplatform project, 
-// you only need to add the following. Gradle will automatically handle platform adaptation.
-implementation("io.github.mynna404:koaks-core:0.0.1-preview6")
-implementation("io.github.mynna404:koaks-qwen:0.0.1-preview6")
+The current published group is `org.koaks.framework`. Pick the `koaks-core` runtime plus
+the provider module(s) you need.
 
+**Gradle (Kotlin DSL)**
+```kotlin
+// For Gradle projects — JVM or Kotlin Multiplatform — just add the artifact below.
+// Gradle resolves the right platform variant automatically.
+implementation("org.koaks.framework:koaks-core:0.0.1-snapshot1")
+implementation("org.koaks.framework:koaks-model-qwen:0.0.1-snapshot1")
+
+// Optional add-ons:
+// implementation("org.koaks.framework:koaks-model-ollama:0.0.1-snapshot1")
+// implementation("org.koaks.framework:koaks-memory-summarizing:0.0.1-snapshot1")
+// implementation("org.koaks.framework:koaks-memory-vector:0.0.1-snapshot1")
 ```
 
-- Maven  
+**Maven**
 ```xml
-<!-- For Maven projects, you need to distinguish between different platforms yourself. 
-     Of course, if you’re not sure what that means, you can simply add the following to your pom.xml. -->
-<dependency>
-  <groupId>io.github.mynna404</groupId>
-  <artifactId>koaks-core-jvm</artifactId>
-  <version>0.0.1-preview6</version>
-</dependency>
-
+<!-- For Maven you must pick the platform variant yourself.
+     If you're unsure what that means, the JVM variant below is the one you want. -->
 <dependency>
   <groupId>org.koaks.framework</groupId>
-  <artifactId>koaks-qwen-jvm</artifactId>
-  <version>0.0.1-preview6</version>
+  <artifactId>koaks-core-jvm</artifactId>
+  <version>0.0.1-snapshot1</version>
+</dependency>
+<dependency>
+  <groupId>org.koaks.framework</groupId>
+  <artifactId>koaks-model-qwen-jvm</artifactId>
+  <version>0.0.1-snapshot1</version>
 </dependency>
 ```
 
-### 3. Simple
-
-> **Warning: The current project is in a rapid iteration phase, and the API may change at any time.**
-
-#### Connect to ChatGPT and Send a Message
+### 3. Your First Agent
 
 ```kotlin
-suspend fun main() {
-    val client = createChatClient {
-        model {
-            qwen(
-                baseUrl = "base-url",
-                apiKey = "api-key",
-                modelName = "qwen3-235b-a22b-instruct-2507",
-            )
-        }
-    }
-
-    val result = client.generate("What's the meaning of life?")
-    println(result)
-}
-```
-
-#### Chat with Memory
-```kotlin
-suspend fun main() {
-    val client = createChatClient {
-        model {
-            qwen(
-                baseUrl = "base-url",
-                apiKey = "api-key",
-                modelName = "qwen3-235b-a22b-instruct-2507",
-            )
-        }
-        memory {
-            // manually manage message history
-            // none()
-            default()
-        }
-    }
-
-    val result = client.chatWithMemory("What's the meaning of life?", "1001")
-    println(resp0.value().choices?.getOrNull(0)?.message?.content)
-}
-```
-
-#### Streaming Response
-```kotlin
-suspend fun main() {
-    val client = createChatClient {
-        model {
-            qwen(
-                baseUrl = "base-url",
-                apiKey = "api-key",
-                modelName = "qwen3-235b-a22b-instruct-2507",
-            ) {
-                params {
-                    stream = true
-                }
-            }
-        }
-    }
-
-    val chatRequest = ChatRequest(
-        message = Message.userText("What's the meaning of life?")
-    )
-
-    val result = client.chat(chatRequest)
-
-    result.stream().map { data ->
-        print(data.choices?.get(0)?.delta?.content)
-    }.collect()
-
-}
-```
-
-#### Tool Call (JVM and all platform)
-```kotlin
-// only JVM
-class WeatherToolsForJvm {
-
-    @Tool(
-        params = [
-            Param(param = "city", description = "city name, like Shanghai", required = true),
-            Param(param = "date", description = "date, like 2025-08-17", required = true)
-        ],
-        group = "weather",
-        description = "Get the weather for a specific city today."
-    )
-    fun getWeather(city: String, date: String): String {
-        return "For $city on $date, the weather is cloudy with a high wind warning."
-    }
-
-    @Tool(
-        group = "location",
-        description = "Get the city where the user is located"
-    )
-    fun getCity(): String {
-        return "Shanghai"
-    }
-
-}
-
-
-fun main() {
-    Koaks.init(arrayOf("your package"))
-    runBlocking {
-        val client = createChatClient {
-            model {
-                qwen(
-                    baseUrl = "base-url",
-                    apiKey = "api-key",
-                    modelName = "qwen3-235b-a22b-instruct-2507",
-                ) {
-                    params {
-                        stream = true
-                        parallelToolCalls = true
-                    }
-                }
-            }
-            memory {
-                default()
-            }
-            tools {
-                groups("weather", "location")
-            }
-        }
-
-        val chatRequest = ChatRequest(
-            message = Message.userText("What's the weather like?")
-        )
-
-        val result = client.chat(chatRequest)
-
-        println(result.value.choices?.getOrNull(0)?.message?.content)
-    }
-
-}
-```
-
-```kotlin
-// for all platform
-
-// use Tool interface
-class WeatherImplTools : Tool<WeatherInput> {
-
-    override val name: String = "getWeather"
-    override val description: String = "get the weather for a specific city today."
-    override val group: String = "weather"
-    override val serializer: KSerializer<WeatherInput> = WeatherInput.serializer()
-    override val returnDirectly: Boolean = false
-
-    override suspend fun execute(input: WeatherInput): String {
-        return "For ${input.city} on ${input.date}, the weather is cloudy with a high wind warning."
-    }
-
-}
-
-@Serializable
-class WeatherInput(
-    @Description("city name, like Shanghai")
-    val city: String,
-    @Description("date, like 2025-08-17")
-    val date: String
-)
-
-class UserImplTools() : Tool<NoneInput> {
-
-    override val name: String = "userLocation"
-    override val description: String = "get the city where the user is located"
-    override val group: String = "location"
-    override val serializer: KSerializer<NoneInput> = NoneInput.serializer()
-    override val returnDirectly: Boolean = false
-
-    override suspend fun execute(input: NoneInput): String {
-        return "Shanghai"
-    }
-
-}
-
-// ---------------------------------------------
-// use dsl
-val weatherTool = createTool<WeatherInput>(
-    name = "getWeather",
-    description = "get the weather for a specific city today.",
-    group = "weather"
-) { input ->
-    "The weather in ${input.city} at ${input.date} is windy."
-}
-
-val locationTool = createTool<NoneInput>(
-    name = "userLocation",
-    description = "get the city where the user is located",
-    group = "location"
-) { _ ->
-    "Shanghai"
-}
+import kotlinx.coroutines.runBlocking
+import org.koaks.framework.loop.agent
+import org.koaks.framework.loop.use
+import org.koaks.provider.qwen.qwen
 
 fun main() = runBlocking {
-    val client = createChatClient {
+    val agent = agent {
+        name = "assistant"
+        instructions = "You are a concise, helpful assistant."
         model {
             qwen(
-                baseUrl = EnvTools.loadValue("BASE_URL"),
-                apiKey = EnvTools.loadValue("API_KEY"),
+                baseUrl = "base-url",
+                apiKey = "api-key",
                 modelName = "qwen3-235b-a22b-instruct-2507",
-            ){
-                params {
-                    parallelToolCalls = true
-                }
-            }
-        }
-        tools {
-            addTools(
-                UserImplTools(),
-                WeatherImplTools()
             )
-            // dsl
-//            addTools(
-//                weatherTool, locationTool
-//            )
-            groups("weather", "location")
         }
     }
 
-    val chatRequest = ChatRequest(
-        message = Message.userText("What's the 'shanghai'、'beijing'、'xi an'、'tai an' weather like?")
-    )
-
-    val result = client.chat(chatRequest)
-
-    println(result.value().choices?.getOrNull(0)?.message?.content)
+    agent.use {
+        val result = it.run("What's the meaning of life?")
+        println(result.text)
+    }
 }
 ```
 
-#### Use Multimodal Model
+`run` drives the agent to a terminal state and returns an `AgentResult`
+(`.text`, `.usage`, `.isSuccess`). `agent.use { }` closes the transport the agent owns
+when you're done.
+
+### 4. Streaming Events
+
+`stream` emits the loop's events as they happen — assistant text, the model's reasoning
+trace, tool calls, and lifecycle markers.
+
 ```kotlin
-val multimodalClient = createChatClient {
-    model {
-        qwen(
-            baseUrl = EnvTools.loadValue("BASE_URL"),
-            apiKey = EnvTools.loadValue("API_KEY"),
-            modelName = "qwen-omni-turbo-2025-03-26",
-        ) {
-            params {
-                stream = true
-                modalities = listOf(ModalitiesType.TEXT, ModalitiesType.AUDIO)
-                streamOptions = StreamOptions(true)
-            }
+import org.koaks.framework.loop.AgentEvent
+
+agent.use {
+    it.stream("Explain Kotlin coroutines in two sentences.").collect { event ->
+        when (event) {
+            is AgentEvent.ReasoningDelta    -> print(event.text)          // model thinking
+            is AgentEvent.TextDelta         -> print(event.text)          // final answer
+            is AgentEvent.ToolCallRequested -> println("\n[tool] ${event.call.name}")
+            is AgentEvent.ToolResult        -> println("[result] ${event.output}")
+            is AgentEvent.Finished          -> println("\n[done]")
+            is AgentEvent.Failed            -> println("\n[error] ${event.error.message}")
+            is AgentEvent.StepCompleted     -> Unit
         }
     }
+}
+```
+
+### 5. Tools
+
+Define a tool inline with a typed input — its JSON Schema is generated from the
+`@Serializable` class, so the model knows exactly what arguments to send.
+
+```kotlin
+import kotlinx.serialization.Serializable
+import org.koaks.framework.loop.agent
+import org.koaks.framework.loop.tool
+import org.koaks.framework.loop.use
+import org.koaks.provider.qwen.qwen
+
+@Serializable
+data object NoInput
+
+@Serializable
+data class WeatherInput(val city: String)
+
+fun main() = kotlinx.coroutines.runBlocking {
+    val agent = agent {
+        name = "weather-agent"
+        instructions = "Answer the user's questions, using tools when needed."
+        model {
+            qwen(baseUrl = "base-url", apiKey = "api-key", modelName = "qwen3-235b-a22b-instruct-2507") {
+                params { parallelToolCalls = true }   // provider-level default
+            }
+        }
+        params { temperature = 0.3 }                  // agent-level params override provider defaults
+
+        tools {
+            tool<NoInput>(
+                name = "get_city",
+                description = "Get the city where the user is located",
+            ) { "Shanghai" }
+
+            tool<WeatherInput>(
+                name = "get_weather",
+                description = "Get the weather for a specific city",
+            ) { input -> "${input.city}: cloudy, with a high-wind warning." }
+        }
+
+        terminateAfter(maxSteps = 20)
+    }
+
+    agent.use {
+        println(it.run("What's the weather where I am?").text)
+    }
+}
+```
+
+You can also register **class-based tools** (`Tool<In>`), JVM **`@Tool` annotated**
+functions, or connect an **MCP** server whose tools are discovered lazily:
+
+```kotlin
+tools {
+    tool(MyClassBasedTool())   // implements Tool<In>
+    mcp(myMcpGateway)          // tools discovered on first run via tools/list
+}
+```
+
+### 6. Memory (Multi-Turn Conversations)
+
+Attach memory to the agent, then talk through a `thread(id)`. History is loaded on each
+turn and committed atomically only when the turn finishes — a failure or cancellation
+leaves persisted history untouched.
+
+```kotlin
+val agent = agent {
+    model { qwen(baseUrl = "base-url", apiKey = "api-key", modelName = "qwen3-235b-a22b-instruct-2507") }
     memory {
-        default()
+        window(40)   // sliding-window; or none() / custom(summarizingOrVectorMemory)
     }
 }
 
-@Test
-fun testImageInput() = runBlocking {
-    val resp0 = multimodalClient.chat(
-        ChatRequest(
-            message = Message.multimodal(
-                Message.userImageUrl("https://dashscope.oss-cn-beijing.aliyuncs.com/images/dog_and_girl.jpeg"),
-                Message.userText("What is in the picture?")
-            )
-        )
-    )
-
-    resp0.stream().onEach {
-        print(it.choices?.get(0)?.delta?.content)
-    }.collect()
-}
-
-@Test
-fun testAudioInput() = runBlocking {
-    val resp0 = multimodalClient.chatWithMemory(
-        ChatRequest(
-            message = Message.multimodal(
-                Message.userAudio(
-                    "https://dashscope.oss-cn-beijing.aliyuncs.com/audios/welcome.mp3",
-                    "mp3"
-                ),
-                Message.userText("What is in the audio?")
-            )
-        ), "testAudioInput"
-    )
-
-    println("===== first =====")
-    resp0.stream().onEach {
-        print(it.choices?.get(0)?.delta?.content)
-    }.collect()
-
-    val resp1 = multimodalClient.chatWithMemory(
-        ChatRequest(
-            message = Message.userText("introduce the company")
-        ), "testAudioInput"
-    )
-
-    println("===== second =====")
-    resp1.stream().onEach {
-        print(it.choices?.get(0)?.delta?.content)
-    }.collect()
-
-}
-
-@Test
-fun testVideoFrameInput() = runBlocking {
-    val resp0 = multimodalClient.chat(
-        ChatRequest(
-            message = Message.multimodal(
-                Message.userVideoFrame(
-                    "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241108/xzsgiz/football1.jpg",
-                    "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241108/tdescd/football2.jpg",
-                    "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241108/zefdja/football3.jpg",
-                    "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241108/aedbqh/football4.jpg",
-                ),
-                Message.userText("What is in the video?")
-            )
-        )
-    )
-
-    resp0.stream().onEach {
-        print(it.choices?.get(0)?.delta?.content)
-    }.collect()
-}
-
-@Test
-fun testVideoUrlInput() = runBlocking {
-    val resp0 = multimodalClient.chat(
-        ChatRequest(
-            message = Message.multimodal(
-                Message.userVideoUrl(
-                    "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20241115/cqqkru/1.mp4"
-                ),
-                Message.userText("What is in the video?")
-            )
-        )
-    )
-
-    resp0.stream().onEach {
-        print(it.choices?.get(0)?.delta?.content)
-    }.collect()
+agent.use {
+    val chat = it.thread("user-1001")
+    println(chat.run("My name is Ada.").text)
+    println(chat.run("What's my name?").text)   // remembers across turns
 }
 ```
+
+### 7. Structured Output
+
+Ask for a typed result and Koaks constrains the final step to valid JSON (native JSON
+mode when the model supports it, otherwise a schema-in-prompt fallback) and decodes it.
+
+```kotlin
+import org.koaks.framework.loop.run
+
+@Serializable
+data class CityWeather(val city: String, val tempC: Int)
+
+agent.use {
+    val w: CityWeather = it.run<CityWeather>("What's the weather in Shanghai right now?")
+    println("${w.city}: ${w.tempC}°C")
+}
+```
+
+### 8. Model Fallback & Resilience
+
+```kotlin
+agent {
+    model {
+        // try Qwen first; fall back to Ollama only if the primary fails before any output
+        qwen(baseUrl = "...", apiKey = "...", modelName = "qwen3-235b-a22b-instruct-2507")
+            .fallback(ollama(baseUrl = "http://localhost:11434", modelName = "llama3.1"))
+    }
+    onError(org.koaks.framework.policy.ErrorPolicy.retryRetriable(maxRetries = 2))
+    runBudget(maxTotalSteps = 30, maxTotalTokens = 100_000)   // whole-run global guard
+}
+```
+
+Around-style **middleware** (`Cache`, `Guardrail`, `HumanApproval`) and push-style
+**listeners** (`Tracing`) install the same way:
+
+```kotlin
+agent {
+    install(org.koaks.framework.middleware.Tracing)
+    // install(Cache(...)); install(Guardrail(...)); install(HumanApproval(...))
+}
+```
+
+---
+
+## 🧱 Modules
+
+| Module | Artifact | Purpose |
+|--------|----------|---------|
+| core | `koaks-core` | The agent runtime: DSL, loop, tools, memory, middleware, transport |
+| qwen | `koaks-model-qwen` | Qwen / OpenAI-compatible provider |
+| ollama | `koaks-model-ollama` | Local Ollama provider (NDJSON) |
+| memory: summarizing | `koaks-memory-summarizing` | Summarizing long-conversation memory |
+| memory: vector | `koaks-memory-vector` | Vector-store-backed memory |
+| graph | `koaks-graph` | Graph orchestration (in progress) |
+
+---
 
 ## 🤝 Contributing Guide
 
-Thank you for your interest in contributing! You are welcome to contribute code, improve documentation, or submit issues.
+Thank you for your interest in contributing! Code, documentation improvements, and issues
+are all welcome.
 
-	1.	Fork the repository
-	2.	Create a new branch (git checkout -b feature-xxx)
-	3.	Commit your changes (git commit -m 'Add new feature')
-	4.	Push your branch (git push origin feature-xxx)
-	5.	Create a Pull Request
+1. Fork the repository
+2. Create a new branch (`git checkout -b feature-xxx`)
+3. Commit your changes (`git commit -m 'Add new feature'`)
+4. Push your branch (`git push origin feature-xxx`)
+5. Open a Pull Request
+
+> Building from source requires **JDK 21**. Quick check: `./gradlew :tests:jvmTest`.
 
 ## 💖 Acknowledgements
 This project makes use of, but is not limited to, the following open-source projects:
@@ -411,4 +290,3 @@ This project makes use of, but is not limited to, the following open-source proj
 |---------|-------------|
 | [Kotlin](https://github.com/JetBrains/kotlin) | The Kotlin Programming Language. |
 | [kotlin-logging](https://github.com/oshai/kotlin-logging) | Lightweight multiplatform logging framework for Kotlin. A convenient and performant logging facade. |
-
