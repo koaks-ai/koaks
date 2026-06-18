@@ -1,6 +1,7 @@
 package org.koaks.framework.transport
 
 import kotlinx.coroutines.flow.Flow
+import org.koaks.framework.provider.ModelConfig
 import org.koaks.framework.provider.WireAdapter
 
 /**

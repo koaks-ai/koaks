@@ -7,7 +7,7 @@ import org.koaks.framework.model.GenerationParams
 import org.koaks.framework.model.GenerationParamsScope
 import org.koaks.framework.model.ModelCapabilities
 import org.koaks.framework.model.generationParams
-import org.koaks.framework.transport.ModelConfig
+import org.koaks.framework.provider.ModelConfig
 
 /**
  * Configuration scope for the Qwen provider DSL: `model { qwen(...) { ... } }`.

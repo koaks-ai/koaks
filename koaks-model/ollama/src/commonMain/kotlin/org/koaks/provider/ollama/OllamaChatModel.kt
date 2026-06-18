@@ -10,7 +10,7 @@ import org.koaks.framework.model.ModelCapabilities
 import org.koaks.framework.model.Role
 import org.koaks.framework.provider.ChatModel
 import org.koaks.framework.provider.WireDecoder
-import org.koaks.framework.transport.ModelConfig
+import org.koaks.framework.provider.ModelConfig
 import org.koaks.framework.transport.Transport
 import org.koaks.framework.provider.WireAdapter
 

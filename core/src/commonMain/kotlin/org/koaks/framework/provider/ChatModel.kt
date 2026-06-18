@@ -5,7 +5,6 @@ import kotlinx.coroutines.flow.flow
 import org.koaks.framework.model.ChatRequest
 import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.model.ModelEvent
-import org.koaks.framework.transport.ModelConfig
 import org.koaks.framework.transport.Transport
 
 /**

@@ -12,6 +12,8 @@ import io.ktor.utils.io.ByteReadChannel
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.Serializable
+import org.koaks.framework.provider.ModelConfig
+import org.koaks.framework.provider.RetryBudget
 import org.koaks.framework.provider.WireAdapter
 import org.koaks.framework.utils.json.JsonUtil
 import kotlin.test.Test
