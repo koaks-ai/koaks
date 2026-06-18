@@ -3,16 +3,14 @@ package org.koaks.provider.ollama
 import org.koaks.framework.loop.AgentDSL
 import org.koaks.framework.loop.ModelScope
 import org.koaks.framework.loop.ModelSelection
-import org.koaks.framework.model.GenerationParams
-import org.koaks.framework.model.GenerationParamsScope
 import org.koaks.framework.model.ModelCapabilities
-import org.koaks.framework.model.generationParams
 import org.koaks.framework.provider.ModelConfig
 import org.koaks.framework.provider.StreamFormat
 
 /**
  * Configuration scope for the Ollama provider DSL: `model { ollama(...) { ... } }`.
- * Only fields differing from the [ModelCapabilities] defaults need to be set.
+ * Generation params are Ollama-native and set flat on this block; only fields that
+ * differ from defaults need to be set.
  */
 @AgentDSL
 class OllamaConfig(
@@ -20,15 +18,16 @@ class OllamaConfig(
     var apiKey: String = "ollama",
     var modelName: String,
 ) {
-    private var params = GenerationParams()
+    // Ollama-native generation params, bound to this model.
+    var temperature: Double? = null
+    var topP: Double? = null
 
-    /**
-     * The model's default generation params: `params { temperature = 0.7 }`. These
-     * are overridden per request by the agent's own params (see [GenerationParams.over]).
-     */
-    fun params(block: GenerationParamsScope.() -> Unit) {
-        params = generationParams(block)
-    }
+    /** Maps to Ollama's `num_predict`. */
+    var maxTokens: Int? = null
+    var stop: List<String>? = null
+
+    /** Maps to Ollama's `think`; surfaced as `ReasoningDelta` events. */
+    var think: Boolean? = null
 
     private var caps = ModelCapabilities(parallelToolCalls = false)
     fun capabilities(block: OllamaCapabilitiesScope.() -> Unit) {
@@ -39,8 +38,15 @@ class OllamaConfig(
         baseUrl = baseUrl,
         apiKey = apiKey,
         modelName = modelName,
-        defaultParams = params,
         streamFormat = StreamFormat.NDJSON,
+    )
+
+    internal fun params(): OllamaParams = OllamaParams(
+        temperature = temperature,
+        topP = topP,
+        maxTokens = maxTokens,
+        stop = stop,
+        think = think,
     )
 
     internal fun capabilities(): ModelCapabilities = caps
@@ -67,5 +73,5 @@ fun ModelScope.ollama(
     block: OllamaConfig.() -> Unit = {},
 ): ModelSelection {
     val cfg = OllamaConfig(baseUrl, apiKey, modelName).apply(block)
-    return custom(OllamaChatModel(cfg.toConfig(), transport, cfg.capabilities()))
+    return custom(OllamaChatModel(cfg.toConfig(), transport, cfg.params(), cfg.capabilities()))
 }

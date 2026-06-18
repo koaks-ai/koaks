@@ -5,8 +5,6 @@ import org.koaks.framework.middleware.AgentMiddleware
 import org.koaks.framework.memory.Memory
 import org.koaks.framework.memory.NoMemory
 import org.koaks.framework.memory.WindowMemory
-import org.koaks.framework.model.GenerationParams
-import org.koaks.framework.model.GenerationParamsScope
 import org.koaks.framework.policy.ErrorPolicy
 import org.koaks.framework.policy.RunBudget
 import org.koaks.framework.policy.TerminationPolicy
@@ -20,14 +18,6 @@ import org.koaks.framework.tool.ToolRegistry
 class AgentBuilder {
     var name: String = "agent"
     var instructions: String? = null
-
-    /**
-     * Agent-level (request-level) generation params. These override the model's
-     * default params declared in the provider DSL, field by field — see
-     * [GenerationParams.over]. Assign directly (`params = ...`) or configure inline
-     * with the [params] block.
-     */
-    var params: GenerationParams = GenerationParams()
 
     private var modelScope: ModelScope? = null
     private var selection: ModelSelection? = null
@@ -43,15 +33,6 @@ class AgentBuilder {
         val scope = ModelScope()
         selection = scope.block()
         modelScope = scope
-    }
-
-    /**
-     * Configures agent-level (request-level) generation params inline:
-     * `params { temperature = 0.7; reasoning = true }`. Equivalent to assigning
-     * [params] directly. These override the provider's default params.
-     */
-    fun params(block: GenerationParamsScope.() -> Unit) {
-        params = GenerationParamsScope().apply(block).build()
     }
 
     fun tools(block: ToolScope.() -> Unit) {
@@ -106,7 +87,6 @@ class AgentBuilder {
             termination = termination,
             errorPolicy = errorPolicy,
             runBudget = runBudget,
-            params = params,
             memory = memory,
             transport = transportInfo.transport,
             ownsTransport = transportInfo.ownsTransport,

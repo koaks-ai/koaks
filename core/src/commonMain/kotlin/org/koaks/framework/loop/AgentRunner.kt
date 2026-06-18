@@ -180,7 +180,6 @@ class AgentRunner(private val agent: Agent) {
         val request = org.koaks.framework.model.ChatRequest(
             messages = convo,
             tools = emptyList(),          // no tools on the finalization step
-            params = agent.params,
             stream = false,
             jsonMode = useJsonMode,
         )

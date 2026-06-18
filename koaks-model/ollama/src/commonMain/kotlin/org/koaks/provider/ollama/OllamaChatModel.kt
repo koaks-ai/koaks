@@ -20,10 +20,14 @@ import org.koaks.framework.provider.WireAdapter
  *
  * Ollama's default models do not support native JSON mode the OpenAI way and tool
  * support varies by model, so [capabilities] leaves those to the developer to set.
+ *
+ * Generation params are Ollama-native and bound to the model (set in the `ollama { }`
+ * DSL), carried in [params].
  */
 class OllamaChatModel(
     config: ModelConfig,
     transport: Transport,
+    private val params: OllamaParams = OllamaParams(),
     override val capabilities: ModelCapabilities = ModelCapabilities(parallelToolCalls = false),
 ) : ChatModel<OllamaChatRequest, OllamaChatResponse>(config, transport) {
 
@@ -35,13 +39,11 @@ class OllamaChatModel(
     override fun newDecoder(): WireDecoder<OllamaChatResponse> = OllamaWireDecoder()
 
     override fun toWire(req: ChatRequest): OllamaChatRequest {
-        // Agent (request-level) params override the model's defaults, field by field.
-        val p = req.params.over(config.defaultParams)
         val options = OllamaOptions(
-            temperature = p.temperature,
-            topP = p.topP,
-            numPredict = p.maxTokens,
-            stop = p.stop,
+            temperature = params.temperature,
+            topP = params.topP,
+            numPredict = params.maxTokens,
+            stop = params.stop,
         )
         return OllamaChatRequest(
             model = config.modelName,
@@ -51,11 +53,24 @@ class OllamaChatModel(
             },
             stream = req.stream,
             format = if (req.jsonMode) "json" else null,
-            think = p.reasoning,
+            think = params.think,
             options = options.takeIf { it != OllamaOptions() },
         )
     }
 }
+
+/**
+ * Ollama-native generation params. Set via the `ollama { }` DSL and consumed directly
+ * in [OllamaChatModel.toWire]. `maxTokens` maps to Ollama's `num_predict`; `think`
+ * maps to Ollama's `think` and is surfaced as `ReasoningDelta` events.
+ */
+data class OllamaParams(
+    val temperature: Double? = null,
+    val topP: Double? = null,
+    val maxTokens: Int? = null,
+    val stop: List<String>? = null,
+    val think: Boolean? = null,
+)
 
 private val argsJson = Json { ignoreUnknownKeys = true; isLenient = true }
 

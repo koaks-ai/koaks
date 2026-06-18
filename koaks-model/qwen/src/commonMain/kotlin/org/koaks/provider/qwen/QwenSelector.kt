@@ -3,15 +3,13 @@ package org.koaks.provider.qwen
 import org.koaks.framework.loop.AgentDSL
 import org.koaks.framework.loop.ModelScope
 import org.koaks.framework.loop.ModelSelection
-import org.koaks.framework.model.GenerationParams
-import org.koaks.framework.model.GenerationParamsScope
 import org.koaks.framework.model.ModelCapabilities
-import org.koaks.framework.model.generationParams
 import org.koaks.framework.provider.ModelConfig
 
 /**
  * Configuration scope for the Qwen provider DSL: `model { qwen(...) { ... } }`.
- * Only fields that differ from the [ModelCapabilities] defaults need to be set.
+ * Generation params are Qwen-native and set flat on this block; only fields that
+ * differ from defaults need to be set.
  */
 @AgentDSL
 class QwenConfig(
@@ -19,15 +17,16 @@ class QwenConfig(
     var apiKey: String,
     var modelName: String,
 ) {
-    private var params = GenerationParams()
+    // Qwen-native generation params, bound to this model.
+    var temperature: Double? = null
+    var maxTokens: Int? = null
+    var topP: Double? = null
+    var stop: List<String>? = null
+    var presencePenalty: Double? = null
+    var frequencyPenalty: Double? = null
 
-    /**
-     * The model's default generation params: `params { temperature = 0.7 }`. These
-     * are overridden per request by the agent's own params (see [GenerationParams.over]).
-     */
-    fun params(block: GenerationParamsScope.() -> Unit) {
-        params = generationParams(block)
-    }
+    /** Maps to Qwen's `enable_thinking`; surfaced as `ReasoningDelta` events. */
+    var enableThinking: Boolean? = null
 
     private var caps = ModelCapabilities()
     fun capabilities(block: CapabilitiesScope.() -> Unit) {
@@ -38,7 +37,16 @@ class QwenConfig(
         baseUrl = baseUrl,
         apiKey = apiKey,
         modelName = modelName,
-        defaultParams = params,
+    )
+
+    internal fun params(): QwenParams = QwenParams(
+        temperature = temperature,
+        maxTokens = maxTokens,
+        topP = topP,
+        stop = stop,
+        presencePenalty = presencePenalty,
+        frequencyPenalty = frequencyPenalty,
+        enableThinking = enableThinking,
     )
 
     internal fun capabilities(): ModelCapabilities = caps
@@ -65,5 +73,5 @@ fun ModelScope.qwen(
     block: QwenConfig.() -> Unit = {},
 ): ModelSelection {
     val cfg = QwenConfig(baseUrl, apiKey, modelName).apply(block)
-    return custom(QwenChatModel(cfg.toConfig(), transport, cfg.capabilities()))
+    return custom(QwenChatModel(cfg.toConfig(), transport, cfg.params(), cfg.capabilities()))
 }

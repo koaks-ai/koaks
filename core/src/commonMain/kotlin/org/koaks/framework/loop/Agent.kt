@@ -5,7 +5,6 @@ import org.koaks.framework.memory.Memory
 import org.koaks.framework.middleware.AgentListener
 import org.koaks.framework.middleware.AgentMiddleware
 import org.koaks.framework.model.ChatRequest
-import org.koaks.framework.model.GenerationParams
 import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.model.Message
 import org.koaks.framework.policy.ErrorPolicy
@@ -32,7 +31,6 @@ class Agent internal constructor(
     val termination: TerminationPolicy,
     val errorPolicy: ErrorPolicy,
     val runBudget: RunBudget,
-    val params: GenerationParams,
     private val memory: Memory,
     private val transport: Transport?,
     private val ownsTransport: Boolean,
@@ -79,7 +77,6 @@ class Agent internal constructor(
     internal fun toRequest(state: AgentState): ChatRequest = ChatRequest(
         messages = state.messages,
         tools = tools.toSchemas(),
-        params = params,
         stream = true,
     )
 

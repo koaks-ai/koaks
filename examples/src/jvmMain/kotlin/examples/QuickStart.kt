@@ -24,16 +24,10 @@ fun main() = runBlocking {
                 apiKey = EnvTools.loadValue("API_KEY"),
                 modelName = "qwen3.7-plus",
             ) {
-                // Provider-level defaults for this model.
-                params {
-                    reasoning = true
-                    temperature = 0.7
-                }
+                // Qwen-native generation params, bound to this model.
+                enableThinking = true
+                temperature = 0.7
             }
-        }
-        // Agent-level params override the provider defaults, field by field.
-        params {
-            temperature = 0.3
         }
         tools {
             tool<NoInput>(
@@ -58,7 +52,6 @@ fun main() = runBlocking {
 
     agent.use {
         val printer = ConsoleEventPrinter()
-        it.run<WeatherInput>()
         it.stream("介绍一下自己，并且告诉我现在几点了？北京的天气怎么样？").collect { result ->
             printer.print(result)
         }
