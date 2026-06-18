@@ -134,7 +134,8 @@ agent.use {
             is AgentEvent.TextDelta         -> print(event.text)         // 最终答案
             is AgentEvent.ToolCallRequested -> println("\n[工具] ${event.call.name}")
             is AgentEvent.ToolResult        -> println("[结果] ${event.output}")
-            is AgentEvent.Finished          -> println("\n[完成]")
+            is AgentEvent.Completed         -> println("\n[完成]")
+            is AgentEvent.Terminated        -> println("\n[已终止] ${event.reason}")
             is AgentEvent.Failed            -> println("\n[错误] ${event.error.message}")
             is AgentEvent.StepCompleted     -> Unit
         }

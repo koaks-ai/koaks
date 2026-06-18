@@ -16,10 +16,14 @@ data class RunBudget(
     val maxTotalSteps: Int? = null,
     val maxTotalTokens: Int? = null,
 ) {
-    fun exceeded(state: AgentState): Boolean {
-        if (maxTotalSteps != null && state.globalStep >= maxTotalSteps) return true
-        if (maxTotalTokens != null && state.usage.totalTokens >= maxTotalTokens) return true
-        return false
+    fun evaluate(state: AgentState): TerminationDecision {
+        if (maxTotalSteps != null && state.globalStep >= maxTotalSteps) {
+            return TerminationDecision.Stop(TerminationReason.RunBudgetSteps(maxTotalSteps))
+        }
+        if (maxTotalTokens != null && state.usage.totalTokens >= maxTotalTokens) {
+            return TerminationDecision.Stop(TerminationReason.RunBudgetTokens(maxTotalTokens))
+        }
+        return TerminationDecision.Continue
     }
 
     companion object {

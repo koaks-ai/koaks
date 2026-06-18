@@ -21,7 +21,8 @@ object Tracing : AgentListener {
             is AgentEvent.ToolCallRequested -> logger.info { "tool call requested: ${event.call.name} args=${event.call.arguments}" }
             is AgentEvent.ToolResult -> logger.info { "tool result (isError=${event.isError}): ${event.callId}" }
             is AgentEvent.StepCompleted -> logger.info { "step completed: ${event.step}" }
-            is AgentEvent.Finished -> logger.info { "finished, usage=${event.usage}" }
+            is AgentEvent.Completed -> logger.info { "completed, usage=${event.usage}" }
+            is AgentEvent.Terminated -> logger.info { "terminated, reason=${event.reason}, usage=${event.usage}" }
             is AgentEvent.Failed -> logger.warn { "failed: ${event.error.message}" }
             is AgentEvent.TextDelta -> {}
             is AgentEvent.ReasoningDelta -> {}

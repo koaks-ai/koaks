@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
  * [Flow] of [ModelEvent]. Non-streaming is just a flow with few events.
  *
  * Implementations (see `ChatModel`) only decode wire chunks into model events;
- * they never produce tool results, step, or finished events — those belong to
+ * they never produce tool results, step, or terminal events — those belong to
  * the agent loop.
  */
 interface LanguageModel {

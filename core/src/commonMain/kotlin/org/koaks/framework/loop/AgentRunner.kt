@@ -14,6 +14,7 @@ import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.Message
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.policy.Recovery
+import org.koaks.framework.policy.TerminationDecision
 import org.koaks.framework.tool.ToolOutcome
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -41,7 +42,15 @@ class AgentRunner(private val agent: Agent) {
         var state = AgentState(messages = initial, activeAgentName = agent.name)
         var retries = 0
 
-        while (!agent.runBudget.exceeded(state) && !agent.termination.shouldStop(state)) {
+        while (true) {
+            when (val decision = agent.terminationDecision(state)) {
+                TerminationDecision.Continue -> {}
+                is TerminationDecision.Stop -> {
+                    emitEvent(AgentEvent.Terminated(state.lastAssistantOrEmpty(), state.usage, decision.reason))
+                    return@flow
+                }
+            }
+
             val acc = TurnAccumulator()
             agent.listeners.forEach { it.onStep(state) }
 
@@ -89,7 +98,7 @@ class AgentRunner(private val agent: Agent) {
                             delay(r.delayMs.milliseconds)
                             continue
                         }
-                        emitEvent(AgentEvent.Failed(error)); return@flow
+                        emitEvent(AgentEvent.Failed(error, state.usage + acc.usage())); return@flow
                     }
 
                     is Recovery.Substitute -> {
@@ -97,7 +106,7 @@ class AgentRunner(private val agent: Agent) {
                     }
 
                     is Recovery.Propagate -> {
-                        emitEvent(AgentEvent.Failed(error)); return@flow
+                        emitEvent(AgentEvent.Failed(error, state.usage + acc.usage())); return@flow
                     }
                 }
             }
@@ -109,7 +118,7 @@ class AgentRunner(private val agent: Agent) {
 
             val calls = acc.toolCalls()
             if (calls.isEmpty()) {
-                emitEvent(AgentEvent.Finished(assistant, state.usage)); return@flow
+                emitEvent(AgentEvent.Completed(assistant, state.usage)); return@flow
             }
 
             // tool step — parallel; failures travel the explicit channel (isError tool message).
@@ -127,30 +136,30 @@ class AgentRunner(private val agent: Agent) {
             outcomes.forEachIndexed { i, o ->
                 val ev = o.toEvent(calls[i].id)
                 emitEvent(ev)
-                if (o is ToolOutcome.Failure) emitEvent(AgentEvent.Failed(o.error))
+                if (o is ToolOutcome.Failure) emitEvent(AgentEvent.Failed(o.error, state.usage))
             }
             state = state.appendToolResults(calls, outcomes)
 
             // returnDirectly is loop control: finish immediately, skip next model step.
             outcomes.firstOrNull { it is ToolOutcome.Success && it.returnDirectly }?.let { direct ->
                 val out = (direct as ToolOutcome.Success).output
-                emitEvent(AgentEvent.Finished(Message.assistant(out), state.usage))
+                emitEvent(AgentEvent.Completed(Message.assistant(out), state.usage))
                 return@flow
             }
         }
-        // termination policy hit (maxSteps/maxTokens): still give downstream a terminal event.
-        emitEvent(AgentEvent.Finished(state.lastAssistantOrEmpty(), state.usage))
     }
 
     suspend fun run(initial: List<Message>): AgentResult {
         val events = stream(initial).toList()
-        val finished = events.filterIsInstance<AgentEvent.Finished>().lastOrNull()
-        if (finished != null) return AgentResult(finished.message, finished.usage)
+        when (val terminal = events.filterIsInstance<AgentEvent.Terminal>().lastOrNull()) {
+            is AgentEvent.Completed -> return AgentResult.Completed(terminal.message, terminal.usage)
+            is AgentEvent.Terminated -> return AgentResult.Terminated(terminal.message, terminal.usage, terminal.reason)
+            null -> {}
+        }
         val failed = events.filterIsInstance<AgentEvent.Failed>().lastOrNull()
-        return AgentResult(
-            message = Message.assistant(""),
-            usage = org.koaks.framework.model.Usage.ZERO,
-            error = failed?.error,
+        return AgentResult.Failed(
+            error = failed?.error ?: AgentError.ModelError("agent run ended without a terminal event", retriable = false),
+            usage = failed?.usage ?: org.koaks.framework.model.Usage.ZERO,
         )
     }
 
@@ -166,7 +175,7 @@ class AgentRunner(private val agent: Agent) {
         spec: OutputSpec,
     ): AgentResult {
         val base = run(initial)
-        if (!base.isSuccess) return base
+        if (base !is AgentResult.Completed) return base
 
         val useJsonMode = agent.model.capabilities.jsonMode
         val formatInstruction = org.koaks.framework.model.Message.user(
@@ -187,10 +196,9 @@ class AgentRunner(private val agent: Agent) {
         val acc = TurnAccumulator()
         agent.model.generate(request).collect { acc.observe(it) }
         val text = acc.assistantMessage().text
-        return AgentResult(
-            Message.assistant(text),
-            base.usage + acc.usage(),
-            base.error,
+        return AgentResult.Completed(
+            message = Message.assistant(text),
+            usage = base.usage + acc.usage(),
         )
     }
 
@@ -200,6 +208,12 @@ class AgentRunner(private val agent: Agent) {
         emit(event)
     }
 }
+
+private fun Agent.terminationDecision(state: AgentState): TerminationDecision =
+    when (val budgetDecision = runBudget.evaluate(state)) {
+        TerminationDecision.Continue -> termination.evaluate(state)
+        is TerminationDecision.Stop -> budgetDecision
+    }
 
 private fun Throwable.toAgentError(): AgentError = AgentError.ModelError(
     message = message ?: "model call failed",

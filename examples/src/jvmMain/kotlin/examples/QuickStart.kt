@@ -31,6 +31,14 @@ fun main() = runBlocking {
         }
         tools {
             tool<NoInput>(
+                name = "get_local_city",
+                description = "获取当前系统所在的城市",
+            ) {
+                // In a real agent, this might do an IP geolocation lookup or read from user profile.
+                "当前系统所在的城市：西安"
+            }
+
+            tool<NoInput>(
                 name = "get_local_time",
                 description = "获取当前系统所在时区的本地时间",
             ) {
@@ -47,12 +55,12 @@ fun main() = runBlocking {
             }
         }
 
-        terminateAfter(maxSteps = 60)
+        terminateAfter(maxSteps = 2)
     }
 
     agent.use {
         val printer = ConsoleEventPrinter()
-        it.stream("介绍一下自己，并且告诉我现在几点了？北京的天气怎么样？").collect { result ->
+        it.stream("介绍一下自己，并且告诉我现在几点了？今天天气怎么样？").collect { result ->
             printer.print(result)
         }
     }
@@ -93,9 +101,14 @@ private class ConsoleEventPrinter {
                 println("$label ${event.output}")
             }
 
-            is AgentEvent.Finished -> {
+            is AgentEvent.Completed -> {
                 endInlineSection()
                 println(green("[done]"))
+            }
+
+            is AgentEvent.Terminated -> {
+                endInlineSection()
+                println(red("[terminated] ${event.reason}"))
             }
 
             is AgentEvent.Failed -> {
