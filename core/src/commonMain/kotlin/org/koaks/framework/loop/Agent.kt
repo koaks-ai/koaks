@@ -1,6 +1,8 @@
 package org.koaks.framework.loop
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import org.koaks.framework.memory.Memory
 import org.koaks.framework.middleware.AgentListener
 import org.koaks.framework.middleware.AgentMiddleware
@@ -23,7 +25,7 @@ import org.koaks.framework.transport.Transport
  */
 class Agent internal constructor(
     val name: String,
-    val instructions: String?,
+    val instructions: Instructions,
     val model: LanguageModel,
     val tools: ToolRegistry,
     val middlewares: List<AgentMiddleware>,
@@ -39,7 +41,11 @@ class Agent internal constructor(
     private val runner = AgentRunner(this)
 
     /** Streams the agent's events for a single user input. */
-    fun stream(input: String): Flow<AgentEvent> = runner.stream(initialMessages(input))
+    fun stream(input: String): Flow<AgentEvent> = flow {
+        // Build inside the flow so any `dynamic { }` instruction segment resolves in
+        // this coroutine context, once, before the first model step.
+        emitAll(runner.stream(initialMessages(input)))
+    }
 
     /** Runs to terminal state and returns the result. */
     suspend fun run(input: String): AgentResult = runner.run(initialMessages(input))
@@ -52,8 +58,8 @@ class Agent internal constructor(
     internal fun streamMessages(initial: List<Message>): Flow<AgentEvent> = runner.stream(initial)
 
     /** Prepends the system instructions (if any) to a pre-built message list. */
-    internal fun withInstructions(messages: List<Message>): List<Message> = buildList {
-        instructions?.let { add(Message.system(it)) }
+    internal suspend fun withInstructions(messages: List<Message>): List<Message> = buildList {
+        instructions.resolve()?.let { add(Message.system(it)) }
         addAll(messages)
     }
 
@@ -68,8 +74,8 @@ class Agent internal constructor(
     internal val hasSideEffectingTools: Boolean get() = tools.hasSideEffectingTools()
 
     /** Builds the initial messages: system instructions (if any) + user input. */
-    private fun initialMessages(input: String): List<Message> = buildList {
-        instructions?.let { add(Message.system(it)) }
+    private suspend fun initialMessages(input: String): List<Message> = buildList {
+        instructions.resolve()?.let { add(Message.system(it)) }
         add(Message.user(input))
     }
 
