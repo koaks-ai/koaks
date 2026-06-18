@@ -11,7 +11,6 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.ByteReadChannel
@@ -103,9 +102,7 @@ class KtorTransport(
             } else {
                 accept(ContentType.Application.Json)
             }
-            if (!config.apiKey.isNullOrBlank()) {
-                header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
-            }
+            for ((k, v) in config.auth.headers(config.apiKey)) header(k, v)
             for ((k, v) in config.customHeaders) header(k, v)
             setBody(body)
             timeout {
