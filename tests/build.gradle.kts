@@ -1,5 +1,5 @@
 plugins {
-    id("koaks.kmp.library")
+    id("koaks.kmp.test")
 }
 
 kotlin {
