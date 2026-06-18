@@ -97,6 +97,29 @@ fun main() = runBlocking {
 `run` 会驱动 Agent 运行至终止状态，并返回 `AgentResult`（`.text`、`.usage`、
 `.isSuccess`）。`agent.use { }` 会在结束时关闭由 Agent 持有的传输层。
 
+**多段 & 动态系统指令。** 固定提示词用 `instructions = "..."` 即可。当指令需要分成多段、
+或某些片段依赖运行时上下文时，改用 `instructions { }` 块。其中每个 `dynamic { }` 都是一个
+`suspend` 提供器，**每次运行解析一次**（返回 `null`/空白则跳过该段）；所有非空片段会以空行
+拼接成唯一的系统提示词。
+
+```kotlin
+agent {
+    instructions {
+        +"你是一个简洁、乐于助人的助手。"               // 静态
+        text("始终用中文回答。")                       // 静态（显式写法）
+        dynamic { "今天的日期是 ${LocalDate.now()}。" }   // 每次运行解析
+        dynamic { lookupUserProfile(userId)?.let { "用户偏好：$it" } }  // 返回 null 则跳过
+    }
+    model { qwen(baseUrl = "...", apiKey = "...", modelName = "qwen3-235b-a22b-instruct-2507") }
+}
+```
+
+> 两种写法可以共存；若在同一个 Agent 上同时设置 `instructions = "..."` 和 `instructions { }` 块，
+> 以块为准。参见 [`DynamicInstructions.kt`](/examples/src/jvmMain/kotlin/examples/DynamicInstructions.kt)。
+>
+> **KV Cache 提示：** 为了 KV Cache 的友好性，建议在整个对话过程中保持 instructions 稳定。
+> 系统提示词位于每次请求的最前面，对话中途改变它会使 provider 的 prompt cache 失效。
+
 ### 4. 流式事件
 
 `stream` 会即时发出循环中的各类事件——助手文本、模型的思考过程、工具调用以及生命周期标记。
