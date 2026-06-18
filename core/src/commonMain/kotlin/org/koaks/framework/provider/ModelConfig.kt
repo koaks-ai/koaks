@@ -1,10 +1,11 @@
 package org.koaks.framework.provider
 
-import org.koaks.framework.model.GenerationParams
-
 /**
  * Connection-level configuration for a provider endpoint. Owned by a `ChatModel`
  * and passed to the [org.koaks.framework.transport.Transport] on each request.
+ *
+ * Generation/sampling parameters are intentionally absent: those bind to the model
+ * and are held by each provider's own native config (see `ChatModel.toWire`).
  *
  * @property streamFormat how the response stream is framed on the wire.
  * @property retry connection-level retry budget (see [RetryBudget]).
@@ -13,7 +14,6 @@ data class ModelConfig(
     val baseUrl: String,
     val apiKey: String? = null,
     val modelName: String,
-    val defaultParams: GenerationParams = GenerationParams(),
     val customHeaders: Map<String, String> = emptyMap(),
     val streamFormat: StreamFormat = StreamFormat.SSE,
     val streamEndMarker: String = "[DONE]",

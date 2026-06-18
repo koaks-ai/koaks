@@ -23,6 +23,7 @@ rootProject.name = "koaks"
 include("core")
 include("koaks-model:qwen")
 include("koaks-model:ollama")
+include("koaks-model:openai")
 include("koaks-memory:summarizing")
 include("koaks-memory:vector")
 include("tests")
