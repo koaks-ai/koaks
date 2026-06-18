@@ -21,8 +21,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.KSerializer
 import org.koaks.framework.net.provideEngine
+import org.koaks.framework.provider.WireAdapter
 import org.koaks.framework.utils.json.JsonUtil
 import kotlin.time.Duration.Companion.milliseconds
 

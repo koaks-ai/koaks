@@ -7,7 +7,6 @@ import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.transport.ModelConfig
 import org.koaks.framework.transport.Transport
-import org.koaks.framework.transport.WireAdapter
 
 /**
  * Base class for provider implementations. A provider only implements [toWire],

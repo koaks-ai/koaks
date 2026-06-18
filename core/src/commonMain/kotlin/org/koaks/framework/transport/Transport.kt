@@ -1,6 +1,7 @@
 package org.koaks.framework.transport
 
 import kotlinx.coroutines.flow.Flow
+import org.koaks.framework.provider.WireAdapter
 
 /**
  * The L0 transport: streams a serialized request to a provider endpoint and emits

@@ -58,6 +58,7 @@ fun main() = runBlocking {
 
     agent.use {
         val printer = ConsoleEventPrinter()
+        it.run<WeatherInput>()
         it.stream("介绍一下自己，并且告诉我现在几点了？北京的天气怎么样？").collect { result ->
             printer.print(result)
         }
