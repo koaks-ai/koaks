@@ -9,7 +9,7 @@ import org.koaks.framework.provider.ChatModel
 import org.koaks.framework.provider.WireDecoder
 import org.koaks.framework.transport.ModelConfig
 import org.koaks.framework.transport.Transport
-import org.koaks.framework.transport.WireAdapter
+import org.koaks.framework.provider.WireAdapter
 
 /**
  * Qwen provider. Implements only [toWire] / [adapter] / [newDecoder] / [capabilities];
