@@ -5,8 +5,10 @@ import kotlinx.coroutines.test.runTest
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
+import org.koaks.framework.policy.TerminationReason
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AgentRunnerTest {
@@ -37,8 +39,8 @@ class AgentRunnerTest {
         assertEquals("let me think", reasoning)
 
         // But never folded into the assistant message text.
-        val finished = events.filterIsInstance<AgentEvent.Finished>().single()
-        assertEquals("answer", finished.message.text)
+        val completed = events.filterIsInstance<AgentEvent.Completed>().single()
+        assertEquals("answer", completed.message.text)
     }
 
     @Test
@@ -65,7 +67,7 @@ class AgentRunnerTest {
         assertTrue(firstTextIdx >= 0, "expected a TextDelta")
         assertTrue(toolReqIdx >= 0, "expected a ToolCallRequested")
         assertTrue(firstTextIdx < toolReqIdx, "text must be emitted before the tool call (tee)")
-        assertTrue(events.any { it is AgentEvent.Finished })
+        assertTrue(events.any { it is AgentEvent.Completed })
     }
 
     @Test
@@ -115,7 +117,7 @@ class AgentRunnerTest {
         assertTrue(!toolResults.single().isError)
         // No fabricated tool-not-found failure.
         assertTrue(events.none { it is AgentEvent.Failed }, "phantom must not surface a Failed event")
-        assertTrue(events.any { it is AgentEvent.Finished })
+        assertTrue(events.any { it is AgentEvent.Completed })
     }
 
     @Test
@@ -128,6 +130,7 @@ class AgentRunnerTest {
         assertEquals("hello", result.text)
         assertEquals(5, result.usage.totalTokens)
         assertTrue(result.isSuccess)
+        assertTrue(result is AgentResult.Completed)
     }
 
     @Test
@@ -143,7 +146,76 @@ class AgentRunnerTest {
         }
         val result = a.run("hi")
         assertEquals("the answer", result.text)
+        assertTrue(result is AgentResult.Completed)
         // Only one model call should have happened (returnDirectly skips the next step).
         assertEquals(1, model.calls)
+    }
+
+    @Test
+    fun terminate_after_emits_terminated_with_max_steps_reason() = runTest {
+        val model = FakeLanguageModel(
+            listOf(
+                ModelEvent.ToolCallCompleted(ToolCall("c1", "noop", "{}")),
+                ModelEvent.Completed(Usage.ZERO),
+            ),
+            listOf(ModelEvent.TextDelta("should not run"), ModelEvent.Completed(Usage.ZERO)),
+        )
+        val a = agent {
+            name = "test"
+            model { custom(model) }
+            tools { tool<NoArgs>(name = "noop", description = "no-op") { "ok" } }
+            terminateAfter(maxSteps = 1)
+        }
+
+        val events = a.stream("hi").toList()
+
+        val terminated = events.filterIsInstance<AgentEvent.Terminated>().single()
+        assertEquals(TerminationReason.MaxSteps(1), terminated.reason)
+        assertEquals(1, model.calls)
+    }
+
+    @Test
+    fun run_returns_terminated_result_with_reason() = runTest {
+        val model = FakeLanguageModel(
+            listOf(
+                ModelEvent.ToolCallCompleted(ToolCall("c1", "noop", "{}")),
+                ModelEvent.Completed(Usage.ZERO),
+            ),
+        )
+        val a = agent {
+            name = "test"
+            model { custom(model) }
+            tools { tool<NoArgs>(name = "noop", description = "no-op") { "ok" } }
+            terminateAfter(maxSteps = 1)
+        }
+
+        val result = a.run("hi")
+
+        assertTrue(result is AgentResult.Terminated)
+        assertEquals(TerminationReason.MaxSteps(1), result.reason)
+        assertFalse(result.isSuccess, "a policy-driven termination is not a success")
+    }
+
+    @Test
+    fun failed_result_preserves_accumulated_usage() = runTest {
+        // Step 1 completes a tool call (7 tokens), step 2's model call fails terminally.
+        val model = FakeLanguageModel(
+            listOf(
+                ModelEvent.ToolCallCompleted(ToolCall("c1", "noop", "{}")),
+                ModelEvent.Completed(Usage(totalTokens = 7)),
+            ),
+            listOf(ModelEvent.Failed(org.koaks.framework.model.AgentError.ModelError("boom", retriable = false))),
+        )
+        val a = agent {
+            name = "test"
+            model { custom(model) }
+            tools { tool<NoArgs>(name = "noop", description = "no-op") { "ok" } }
+            terminateAfter(maxSteps = 10)
+        }
+
+        val result = a.run("hi")
+
+        assertTrue(result is AgentResult.Failed)
+        assertEquals(7, result.usage.totalTokens, "failure must not drop accumulated usage")
     }
 }

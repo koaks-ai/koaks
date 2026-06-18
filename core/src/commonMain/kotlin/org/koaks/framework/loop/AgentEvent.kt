@@ -4,6 +4,7 @@ import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.Message
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
+import org.koaks.framework.policy.TerminationReason
 import org.koaks.framework.tool.ToolOutcome
 
 /**
@@ -30,15 +31,32 @@ sealed interface AgentEvent {
     /** A model step completed. */
     data class StepCompleted(val step: Int) : AgentEvent
 
-    /** The agent reached a terminal answer. */
-    data class Finished(val message: Message, val usage: Usage) : AgentEvent
+    /** The agent reached a terminal, non-error outcome. */
+    sealed interface Terminal : AgentEvent {
+        val message: Message
+        val usage: Usage
+    }
+
+    /** The agent reached a natural final answer. */
+    data class Completed(
+        override val message: Message,
+        override val usage: Usage,
+    ) : Terminal
+
+    /** The agent was stopped by a framework policy before natural completion. */
+    data class Terminated(
+        override val message: Message,
+        override val usage: Usage,
+        val reason: TerminationReason,
+    ) : Terminal
 
     /**
      * An error was surfaced. May be non-terminal (e.g. a tool error fed back to the
-     * model) or terminal (loop is propagating). Consumers should look for [Finished]
-     * to know the run succeeded.
+     * model) or terminal (loop is propagating). Consumers should look for [Terminal]
+     * to know the run reached a non-error terminal outcome. [usage] carries the tokens
+     * accumulated so far, so a terminal failure does not lose the run's usage.
      */
-    data class Failed(val error: AgentError) : AgentEvent
+    data class Failed(val error: AgentError, val usage: Usage = Usage.ZERO) : AgentEvent
 }
 
 internal fun ToolOutcome.toEvent(callId: String): AgentEvent = when (this) {

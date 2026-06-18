@@ -10,6 +10,7 @@ import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.ErrorPolicy
 import org.koaks.framework.policy.Recovery
+import org.koaks.framework.policy.TerminationReason
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -66,7 +67,8 @@ class L4Test {
             runBudget(maxTotalSteps = 3)
         }
         val events = a.stream("go").toList()
-        assertTrue(events.any { it is AgentEvent.Finished })
+        val terminated = events.filterIsInstance<AgentEvent.Terminated>().single()
+        assertEquals(TerminationReason.RunBudgetSteps(3), terminated.reason)
         // globalStep increments per assistant message; budget of 3 stops the runaway.
         assertTrue(model.calls <= 4, "RunBudget must stop the runaway loop, got ${model.calls} calls")
     }

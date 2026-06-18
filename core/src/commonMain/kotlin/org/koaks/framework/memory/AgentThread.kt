@@ -18,7 +18,7 @@ private val logger = KotlinLogging.logger {}
  *  1. `history = memory.load(id)`  (already trimmed/summarized on the load side)
  *  2. `initial = system? + history + user`
  *  3. run the loop, buffering new messages locally (never touching memory mid-run)
- *  4. on [AgentEvent.Finished]: commit the whole turn atomically
+ *  4. on [AgentEvent.Terminal]: commit the whole turn atomically
  *     on failure/cancel: discard the buffer, leaving persistent history untouched
  *
  * The loop itself stays Memory-agnostic; All persistence lives here at the run
@@ -65,10 +65,20 @@ class AgentThread(private val agent: Agent, val id: ThreadId) {
             warnOnDiscardedSideEffects(buffer)
         }
 
-        val finished = events.filterIsInstance<AgentEvent.Finished>().lastOrNull()
-        if (finished != null) return AgentResult(finished.message, finished.usage)
+        when (val terminal = events.filterIsInstance<AgentEvent.Terminal>().lastOrNull()) {
+            is AgentEvent.Completed -> return AgentResult.Completed(terminal.message, terminal.usage)
+            is AgentEvent.Terminated -> return AgentResult.Terminated(terminal.message, terminal.usage, terminal.reason)
+            null -> {}
+        }
         val failed = events.filterIsInstance<AgentEvent.Failed>().lastOrNull()
-        return AgentResult(Message.assistant(""), org.koaks.framework.model.Usage.ZERO, failed?.error)
+        return AgentResult.Failed(
+            error = failed?.error
+                ?: org.koaks.framework.model.AgentError.ModelError(
+                    "agent thread run ended without a terminal event",
+                    retriable = false,
+                ),
+            usage = failed?.usage ?: org.koaks.framework.model.Usage.ZERO,
+        )
     }
 
     /**

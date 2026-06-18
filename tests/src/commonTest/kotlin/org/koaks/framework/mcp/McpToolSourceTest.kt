@@ -64,7 +64,7 @@ class McpToolSourceTest {
         assertEquals("{\"a\":1,\"b\":2}", gateway.lastArgs)
         val toolResult = events.filterIsInstance<AgentEvent.ToolResult>().single()
         assertEquals("42", toolResult.output)
-        assertTrue(events.any { it is AgentEvent.Finished })
+        assertTrue(events.any { it is AgentEvent.Completed })
     }
 
     @Test

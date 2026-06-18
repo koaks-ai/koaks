@@ -139,7 +139,8 @@ agent.use {
             is AgentEvent.TextDelta         -> print(event.text)          // final answer
             is AgentEvent.ToolCallRequested -> println("\n[tool] ${event.call.name}")
             is AgentEvent.ToolResult        -> println("[result] ${event.output}")
-            is AgentEvent.Finished          -> println("\n[done]")
+            is AgentEvent.Completed         -> println("\n[done]")
+            is AgentEvent.Terminated        -> println("\n[terminated] ${event.reason}")
             is AgentEvent.Failed            -> println("\n[error] ${event.error.message}")
             is AgentEvent.StepCompleted     -> Unit
         }

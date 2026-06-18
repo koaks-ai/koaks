@@ -45,7 +45,7 @@ class AgentThreadTest {
 
     @Test
     fun discards_buffer_when_run_fails() = runTest {
-        // The model fails before any text; ErrorPolicy propagates → no Finished.
+        // The model fails before any text; ErrorPolicy propagates → no terminal event.
         val model = FakeLanguageModel(
             listOf(ModelEvent.Failed(AgentError.ModelError("boom", retriable = false))),
         )
@@ -60,7 +60,7 @@ class AgentThreadTest {
 
         val events = thread.stream("q1").toList()
         assertTrue(events.any { it is AgentEvent.Failed })
-        assertTrue(events.none { it is AgentEvent.Finished })
+        assertTrue(events.none { it is AgentEvent.Terminal })
 
         // Nothing committed — persistent history is untouched.
         assertEquals(0, mem.load(ThreadId("user-1")).size)

@@ -45,7 +45,7 @@ class AnnotatedToolTest {
 
         val toolResult = events.filterIsInstance<AgentEvent.ToolResult>().single()
         assertEquals("sunny in NYC", toolResult.output)
-        assertTrue(events.any { it is AgentEvent.Finished })
+        assertTrue(events.any { it is AgentEvent.Completed })
     }
 
     @Test

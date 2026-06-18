@@ -11,7 +11,7 @@ import org.koaks.framework.model.ToolCall
  * The buffer reconstructs, in order: the user message (seeded), then for each model
  * step an assistant message (text + any requested tool calls) followed by its tool
  * result messages. The whole buffer is committed atomically — and ONLY if the run
- * reached [AgentEvent.Finished]. A failed/cancelled run discards it untouched, so a
+ * reached [AgentEvent.Terminal]. A failed/cancelled run discards it untouched, so a
  * half-finished turn never pollutes persistent history.
  */
 class TurnCommitBuffer(userMessage: Message) {
@@ -22,7 +22,7 @@ class TurnCommitBuffer(userMessage: Message) {
     private val pendingText = StringBuilder()
     private val pendingCalls = mutableListOf<ToolCall>()
     private val pendingToolResults = mutableListOf<Message>()
-    private var sawFinished = false
+    private var sawTerminal = false
     private var anyToolResult = false
 
     fun observe(event: AgentEvent) {
@@ -37,8 +37,8 @@ class TurnCommitBuffer(userMessage: Message) {
             }
 
             is AgentEvent.StepCompleted -> flushStep()
-            is AgentEvent.Finished -> sawFinished = true
-            is AgentEvent.Failed -> {} // non-terminal failures may still be followed by Finished
+            is AgentEvent.Terminal -> sawTerminal = true
+            is AgentEvent.Failed -> {} // non-terminal failures may still be followed by a terminal event
         }
     }
 
@@ -54,8 +54,8 @@ class TurnCommitBuffer(userMessage: Message) {
         pendingToolResults.clear()
     }
 
-    /** True only if the run finished normally — the gate for committing. */
-    fun shouldCommit(): Boolean = sawFinished
+    /** True only if the run reached a non-error terminal event — the gate for committing. */
+    fun shouldCommit(): Boolean = sawTerminal
 
     /** The full ordered set of new messages for this run (user + assistant + tool). */
     fun messagesInOrder(): List<Message> = committed.toList()
