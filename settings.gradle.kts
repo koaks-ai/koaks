@@ -21,7 +21,6 @@ dependencyResolutionManagement {
 rootProject.name = "koaks"
 
 include("core")
-include("graph")
 include("koaks-model:qwen")
 include("koaks-model:ollama")
 include("koaks-memory:summarizing")
