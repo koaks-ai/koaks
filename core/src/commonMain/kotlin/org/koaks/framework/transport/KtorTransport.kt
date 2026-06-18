@@ -22,6 +22,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.withLock
 import org.koaks.framework.net.provideEngine
+import org.koaks.framework.provider.ModelConfig
+import org.koaks.framework.provider.RateLimit
+import org.koaks.framework.provider.StreamFormat
 import org.koaks.framework.provider.WireAdapter
 import org.koaks.framework.utils.json.JsonUtil
 import kotlin.time.Duration.Companion.milliseconds
@@ -29,8 +32,8 @@ import kotlin.time.Duration.Companion.milliseconds
 /**
  * Default [Transport] backed by a single shared Ktor [HttpClient] (connection pool).
  *
- * Streaming line-reader supports both [StreamFormat.SSE] (`data:` lines) and
- * [StreamFormat.NDJSON] (raw JSON per line). Connection-level retry is transparent
+ * Streaming line-reader supports both [org.koaks.framework.provider.StreamFormat.SSE] (`data:` lines) and
+ * [org.koaks.framework.provider.StreamFormat.NDJSON] (raw JSON per line). Connection-level retry is transparent
  * and ONLY applies before the first chunk has been emitted downstream: once any
  * byte has been forwarded, no retry happens here — that becomes the loop's call.
  */

@@ -3,6 +3,7 @@ package org.koaks.framework.transport
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.koaks.framework.provider.RateLimit
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
@@ -11,7 +12,7 @@ import kotlin.time.TimeSource
  * through one [KtorTransport]. [acquire] suspends until a permit is available.
  *
  * Uses a monotonic [TimeSource] (commonMain-safe; no wall clock) and refills
- * [RateLimit.permitsPerInterval] permits each [RateLimit.intervalMs].
+ * [org.koaks.framework.provider.RateLimit.permitsPerInterval] permits each [org.koaks.framework.provider.RateLimit.intervalMs].
  */
 internal class RateLimiter(private val limit: RateLimit) {
 

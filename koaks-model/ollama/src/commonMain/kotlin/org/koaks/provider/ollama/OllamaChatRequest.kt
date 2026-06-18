@@ -9,7 +9,7 @@ import kotlinx.serialization.json.JsonObject
  * public model/transport abstractions.
  *
  * Ollama streams NDJSON (one JSON object per line), not SSE. The transport handles
- * that via [org.koaks.framework.transport.StreamFormat.NDJSON].
+ * that via [org.koaks.framework.provider.StreamFormat.NDJSON].
  */
 @Serializable
 data class OllamaChatRequest(

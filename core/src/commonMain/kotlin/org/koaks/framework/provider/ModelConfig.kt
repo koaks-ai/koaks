@@ -1,10 +1,10 @@
-package org.koaks.framework.transport
+package org.koaks.framework.provider
 
 import org.koaks.framework.model.GenerationParams
 
 /**
  * Connection-level configuration for a provider endpoint. Owned by a `ChatModel`
- * and passed to the [Transport] on each request.
+ * and passed to the [org.koaks.framework.transport.Transport] on each request.
  *
  * @property streamFormat how the response stream is framed on the wire.
  * @property retry connection-level retry budget (see [RetryBudget]).
@@ -45,7 +45,7 @@ data class RetryBudget(
  * Client-side rate limit applied before each request leaves the transport. A simple
  * token-bucket: up to [permitsPerInterval] requests are allowed per [intervalMs],
  * with excess requests suspending until a permit frees up. Shared across all calls
- * made through one [KtorTransport] instance.
+ * made through one [org.koaks.framework.transport.KtorTransport] instance.
  */
 data class RateLimit(
     val permitsPerInterval: Int,

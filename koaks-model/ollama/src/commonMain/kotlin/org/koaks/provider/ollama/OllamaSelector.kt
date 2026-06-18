@@ -7,8 +7,8 @@ import org.koaks.framework.model.GenerationParams
 import org.koaks.framework.model.GenerationParamsScope
 import org.koaks.framework.model.ModelCapabilities
 import org.koaks.framework.model.generationParams
-import org.koaks.framework.transport.ModelConfig
-import org.koaks.framework.transport.StreamFormat
+import org.koaks.framework.provider.ModelConfig
+import org.koaks.framework.provider.StreamFormat
 
 /**
  * Configuration scope for the Ollama provider DSL: `model { ollama(...) { ... } }`.
