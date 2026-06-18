@@ -17,7 +17,19 @@ import org.koaks.framework.tool.ToolRegistry
 @AgentDSL
 class AgentBuilder {
     var name: String = "agent"
+
+    /** Single-segment shorthand: `instructions = "..."`. Overridden by an `instructions { }` block. */
     var instructions: String? = null
+
+    private var instructionsSpec: Instructions? = null
+
+    /**
+     * Multi-segment / dynamic system instructions. Takes precedence over the
+     * [instructions] string shorthand if both are set.
+     */
+    fun instructions(block: InstructionsScope.() -> Unit) {
+        instructionsSpec = InstructionsScope().apply(block).build()
+    }
 
     private var modelScope: ModelScope? = null
     private var selection: ModelSelection? = null
@@ -77,9 +89,12 @@ class AgentBuilder {
             "a model is required (e.g. model { qwen(...) })"
         }.toModel()
         val transportInfo = scope.transportInfo()
+        val resolvedInstructions = instructionsSpec
+            ?: instructions?.let { Instructions.of(it) }
+            ?: Instructions.EMPTY
         return Agent(
             name = name,
-            instructions = instructions,
+            instructions = resolvedInstructions,
             model = model,
             tools = tools,
             middlewares = middlewares.toList(),
