@@ -14,6 +14,7 @@ data class ModelConfig(
     val baseUrl: String,
     val apiKey: String? = null,
     val modelName: String,
+    val auth: AuthScheme = AuthScheme.Bearer,
     val customHeaders: Map<String, String> = emptyMap(),
     val streamFormat: StreamFormat = StreamFormat.SSE,
     val streamEndMarker: String = "[DONE]",
