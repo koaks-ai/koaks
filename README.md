@@ -99,6 +99,31 @@ fun main() = runBlocking {
 (`.text`, `.usage`, `.isSuccess`). `agent.use { }` closes the transport the agent owns
 when you're done.
 
+**Multi-segment & dynamic instructions.** The `instructions = "..."` shorthand is fine for
+a fixed prompt. When you need several pieces — or parts that depend on run-time context —
+use the `instructions { }` block instead. Each `dynamic { }` segment is a `suspend`
+provider resolved **once per run** (returning `null`/blank omits it); all non-blank
+segments are joined with a blank line into the single system prompt.
+
+```kotlin
+agent {
+    instructions {
+        +"You are a concise, helpful assistant."     // static
+        text("Always answer in English.")            // static (explicit form)
+        dynamic { "Today is ${LocalDate.now()}." }    // resolved per run
+        dynamic { lookupUserProfile(userId)?.let { "User prefs: $it" } }  // null → skipped
+    }
+    model { qwen(baseUrl = "...", apiKey = "...", modelName = "qwen3-235b-a22b-instruct-2507") }
+}
+```
+
+> Both forms coexist; if you set `instructions = "..."` and an `instructions { }` block on the
+> same agent, the block wins. See [`DynamicInstructions.kt`](/examples/src/jvmMain/kotlin/examples/DynamicInstructions.kt).
+>
+> **KV-cache tip:** keep the resolved instructions stable across the turns of a conversation.
+> Changing them mid-conversation invalidates the provider's prompt cache, since the system
+> prompt sits at the front of every request.
+
 ### 4. Streaming Events
 
 `stream` emits the loop's events as they happen — assistant text, the model's reasoning

@@ -26,6 +26,12 @@ class AgentBuilder {
     /**
      * Multi-segment / dynamic system instructions. Takes precedence over the
      * [instructions] string shorthand if both are set.
+     *
+     * For KV-cache friendliness, prefer keeping the resolved instructions stable across
+     * the turns of a conversation — changing them invalidates the provider's prompt cache
+     * (the system prompt sits at the front of every request). Use `dynamic { }` for context
+     * that is naturally fixed for a run (e.g. the current date), not for values that churn
+     * turn to turn.
      */
     fun instructions(block: InstructionsScope.() -> Unit) {
         instructionsSpec = InstructionsScope().apply(block).build()
