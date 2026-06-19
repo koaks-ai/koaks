@@ -23,6 +23,11 @@ kotlin {
     }
 
     macosArm64("macosArm")
+
+    // iOS shares all Apple actuals (Darwin engine, posix env, platform type) with
+    // macOS via the default hierarchy template's auto-generated `appleMain` source set.
+    iosArm64()
+    iosSimulatorArm64()
 }
 
 tasks.withType<KotlinJsCompile>().configureEach {
