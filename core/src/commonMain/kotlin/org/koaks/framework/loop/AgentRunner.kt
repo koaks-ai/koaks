@@ -1,5 +1,6 @@
 package org.koaks.framework.loop
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -32,6 +33,8 @@ import kotlin.time.Duration.Companion.milliseconds
  *    carrying the original [AgentError]; real exceptions are mapped once.
  */
 class AgentRunner(private val agent: Agent) {
+
+    private val logger = KotlinLogging.logger {}
 
     fun stream(initial: List<Message>): Flow<AgentEvent> = flow {
         runLoop(initial) { emitEvent(it) }
@@ -99,7 +102,13 @@ class AgentRunner(private val agent: Agent) {
                         is ModelEvent.Failed ->
                             throw ModelFailure(event.error)
 
-                        else -> {}
+                        else -> {
+                            logger.warn { "unhandled model event type: ${event::class}; ignoring" }
+                            logger.warn {
+                                "[warn] you shouldn't see this: if you do, " +
+                                        "please report it to the Koaks team with the model and tools you're using."
+                            }
+                        }
                     }
                 }
             } catch (t: Throwable) {
@@ -183,7 +192,10 @@ class AgentRunner(private val agent: Agent) {
         }
         val failed = events.filterIsInstance<AgentEvent.Failed>().lastOrNull()
         return AgentResult.Failed(
-            error = failed?.error ?: AgentError.ModelError("agent run ended without a terminal event", retriable = false),
+            error = failed?.error ?: AgentError.ModelError(
+                "agent run ended without a terminal event",
+                retriable = false
+            ),
             usage = failed?.usage ?: org.koaks.framework.model.Usage.ZERO,
         )
     }
