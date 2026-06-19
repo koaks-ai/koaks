@@ -16,8 +16,7 @@ configure<MavenPublishBaseExtension> {
 
     pom {
         description.set(
-            "A LLM development framework for Kotlin Multiplatform. " +
-                "Lightweight alternative to langchain4j and spring-ai on JVM."
+            "An Agentic AI framework for Kotlin Multiplatform."
         )
         inceptionYear.set("2025")
         url.set("https://github.com/koaks-ai/koaks")
