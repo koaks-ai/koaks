@@ -23,7 +23,7 @@
 | `tool.schema` | SerialDescriptorToJsonSchema | ✅ 最小子集：flat/基本类型/枚举/可空/List<基本>/@SerialName |
 | `loop` | AgentState/AgentEvent/ToolCallBuilder/TurnAccumulator/AgentRunner/ModelFailure/Agent/AgentResult/AgentDsl/ModelScope/ToolScope/AgentBuilder | ✅ tee 流式、returnDirectly、错误归一、cancel 传播 |
 | `policy` | TerminationPolicy/Recovery/ErrorPolicy | ✅ maxSteps/maxTokens/and |
-| `middleware` | AgentMiddleware/AgentListener/Tracing | ✅ 双扩展点防双消费 |
+| `middleware` | Hook/ToolDecision/AgentListener/Tracing | ✅ Hook 变换 + Listener 观察 |
 
 ### Provider（koaks-model:qwen）
 - [x] QwenChatRequest/Response 自包含 wire 类型（OpenAI 兼容）
@@ -71,7 +71,7 @@
 
 ### Phase 5 — L4 完善
 - [x] 内置 `ErrorPolicy.retryRetriable`/`substituteOnError`（loop catch 块消费 Retry/Substitute/Propagate）
-- [x] middleware：`Cache`（短路型 `aroundModelCall`+listener 录制）、`Guardrail`、`HumanApproval`（`aroundToolCall`）
+- [x] hooks/listeners：`Hook`（模型/工具变换）、`Guardrail`、`HumanApproval`、`AgentListener`/`Tracing`（观察）
 - [x] 结构化输出 `run<T>` + `OutputSpec`（capabilities 驱动 jsonMode-vs-prompt、`JsonExtractor` 围栏剥离/首对象提取、"最后一步才约束格式"）
 - [x] `RunBudget`（globalStep/usage 永不重置）接入 loop 最外层条件 + DSL `runBudget(...)`
 

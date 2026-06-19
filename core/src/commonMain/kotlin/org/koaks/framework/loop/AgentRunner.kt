@@ -8,9 +8,12 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import org.koaks.framework.middleware.ModelCallPhase
 import org.koaks.framework.middleware.StepContext
 import org.koaks.framework.middleware.ToolContext
+import org.koaks.framework.middleware.ToolDecision
 import org.koaks.framework.model.AgentError
+import org.koaks.framework.model.ChatRequest
 import org.koaks.framework.model.Message
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.policy.Recovery
@@ -36,21 +39,24 @@ class AgentRunner(private val agent: Agent) {
 
     private val logger = KotlinLogging.logger {}
 
+    private data class LoopRun(val state: AgentState)
+
     fun stream(initial: List<Message>): Flow<AgentEvent> = flow {
         runLoop(initial) { emitEvent(it) }
     }
 
     /**
      * The core loop. Emits each [AgentEvent] through [emit] (which also notifies
-     * listeners) and returns the FULL final transcript — every assistant and tool
-     * message accumulated, ending with the terminal assistant answer. The transcript
-     * is what [runStructured] needs: the terminal answer alone is usually a summary
-     * that has dropped the tool-result detail a structured schema must be filled from.
+     * listeners) and returns the final loop state, including the FULL transcript —
+     * every assistant and tool message accumulated, ending with the terminal assistant
+     * answer. The transcript is what [runStructured] needs: the terminal answer alone
+     * is usually a summary that has dropped the tool-result detail a structured schema
+     * must be filled from.
      */
     private suspend fun runLoop(
         initial: List<Message>,
         emit: suspend (AgentEvent) -> Unit,
-    ): List<Message> {
+    ): LoopRun {
         suspend fun out(event: AgentEvent) {
             agent.listeners.forEach { it.onAgentEvent(event) }
             emit(event)
@@ -68,22 +74,19 @@ class AgentRunner(private val agent: Agent) {
                 TerminationDecision.Continue -> {}
                 is TerminationDecision.Stop -> {
                     out(AgentEvent.Terminated(state.lastAssistantOrEmpty(), state.usage, decision.reason))
-                    return state.messages
+                    return LoopRun(state)
                 }
             }
 
             val acc = TurnAccumulator()
             agent.listeners.forEach { it.onStep(state) }
 
-            // model step — middleware only wraps (selects the flow), it never collects it.
-            val source: Flow<ModelEvent> = agent.middlewares.foldRight(
-                { agent.model.generate(agent.toRequest(state)) }
-            ) { mw, next: suspend () -> Flow<ModelEvent> ->
-                { mw.aroundModelCall(StepContext(state), next) }
-            }()
-
+            // model step — hooks may transform the request and lazily wrap the flow.
             var emittedText = false
             try {
+                // Build inside try so a throwing onModelRequest/onModelStream hook is mapped
+                // to an AgentError and run through the same error policy as a model failure.
+                val source = modelSource(state, agent.toRequest(state), ModelCallPhase.Normal)
                 source.collect { event ->
                     acc.observe(event)
                     agent.listeners.forEach { it.onModelEvent(event) }
@@ -119,7 +122,7 @@ class AgentRunner(private val agent: Agent) {
                             delay(r.delayMs.milliseconds)
                             continue
                         }
-                        out(AgentEvent.Failed(error, state.usage + acc.usage())); return state.messages
+                        out(AgentEvent.Failed(error, state.usage + acc.usage())); return LoopRun(state)
                     }
 
                     is Recovery.Substitute -> {
@@ -127,7 +130,7 @@ class AgentRunner(private val agent: Agent) {
                     }
 
                     is Recovery.Propagate -> {
-                        out(AgentEvent.Failed(error, state.usage + acc.usage())); return state.messages
+                        out(AgentEvent.Failed(error, state.usage + acc.usage())); return LoopRun(state)
                     }
                 }
             }
@@ -139,18 +142,60 @@ class AgentRunner(private val agent: Agent) {
 
             val calls = acc.toolCalls()
             if (calls.isEmpty()) {
-                out(AgentEvent.Completed(assistant, state.usage)); return state.messages
+                out(AgentEvent.Completed(assistant, state.usage)); return LoopRun(state)
             }
 
             // tool step — parallel; failures travel the explicit channel (isError tool message).
             val outcomes: List<ToolOutcome> = coroutineScope {
                 calls.map { call ->
                     async {
-                        val next: suspend () -> ToolOutcome = { agent.tools.call(call.name, call.arguments) }
-                        val wrapped = agent.middlewares.foldRight(next) { mw, acc2 ->
-                            { mw.aroundToolCall(ToolContext(call, state), acc2) }
+                        var current = call
+                        var denied: ToolOutcome? = null
+                        // Count of hooks whose onToolCall ran. Only these unwind via
+                        // onToolResult, in reverse (onion): a hook skipped past a Deny
+                        // never entered, so its result side must not run either.
+                        var entered = 0
+
+                        try {
+                            hookLoop@ for (hook in agent.hooks) {
+                                entered++
+                                when (val decision = hook.onToolCall(ToolContext(current, state))) {
+                                    ToolDecision.Proceed -> {}
+                                    is ToolDecision.ProceedWith -> {
+                                        current = decision.call.copy(id = call.id)
+                                    }
+                                    is ToolDecision.Deny -> {
+                                        denied = ToolOutcome.Failure(
+                                            AgentError.ToolError(
+                                                toolName = current.name,
+                                                message = decision.reason,
+                                                retriable = false,
+                                            )
+                                        )
+                                        break@hookLoop
+                                    }
+                                }
+                            }
+
+                            var outcome = denied ?: agent.tools.call(current.name, current.arguments)
+                            for (hook in agent.hooks.take(entered).asReversed()) {
+                                outcome = hook.onToolResult(ToolContext(current, state), outcome)
+                            }
+                            outcome
+                        } catch (c: CancellationException) {
+                            throw c
+                        } catch (t: Throwable) {
+                            // A hook (onToolCall/onToolResult) threw — route it through the
+                            // explicit tool failure channel instead of crashing the run.
+                            ToolOutcome.Failure(
+                                AgentError.ToolError(
+                                    toolName = current.name,
+                                    message = t.message ?: "tool hook failed",
+                                    retriable = false,
+                                    cause = t,
+                                )
+                            )
                         }
-                        wrapped()
                     }
                 }.awaitAll()
             }
@@ -167,7 +212,7 @@ class AgentRunner(private val agent: Agent) {
                 val message = Message.assistant(output)
                 state = state.append(message)
                 out(AgentEvent.Completed(message, state.usage))
-                return state.messages
+                return LoopRun(state)
             }
         }
     }
@@ -211,7 +256,7 @@ class AgentRunner(private val agent: Agent) {
         spec: OutputSpec,
     ): AgentResult {
         val events = mutableListOf<AgentEvent>()
-        val transcript = runLoop(initial) { events += it }
+        val loop = runLoop(initial) { events += it }
         val base = resultFrom(events)
         if (base !is AgentResult.Completed) return base
 
@@ -223,7 +268,8 @@ class AgentRunner(private val agent: Agent) {
             }
         )
         // Full conversation (history + tool results + the loop's final answer) + the format ask.
-        val convo = transcript + formatInstruction
+        val convo = loop.state.messages + formatInstruction
+        val finalizationState = loop.state.copy(messages = convo)
         val request = org.koaks.framework.model.ChatRequest(
             messages = convo,
             tools = emptyList(),          // no tools on the finalization step
@@ -235,7 +281,17 @@ class AgentRunner(private val agent: Agent) {
         )
 
         val acc = TurnAccumulator()
-        agent.model.generate(request).collect { acc.observe(it) }
+        try {
+            modelSource(finalizationState, request, ModelCallPhase.StructuredFinalization)
+                .collect { acc.observe(it) }
+        } catch (c: CancellationException) {
+            throw c
+        } catch (t: Throwable) {
+            // A finalization hook (or the model) failed — surface it on the unified
+            // result channel instead of throwing raw out of run<T>.
+            val error = if (t is ModelFailure) t.error else t.toAgentError()
+            return AgentResult.Failed(error, base.usage + acc.usage())
+        }
         val text = acc.assistantMessage().text
         return AgentResult.Completed(
             message = Message.assistant(text),
@@ -247,6 +303,24 @@ class AgentRunner(private val agent: Agent) {
     private suspend fun kotlinx.coroutines.flow.FlowCollector<AgentEvent>.emitEvent(event: AgentEvent) {
         agent.listeners.forEach { it.onAgentEvent(event) }
         emit(event)
+    }
+
+    private suspend fun modelSource(
+        state: AgentState,
+        request: ChatRequest,
+        phase: ModelCallPhase,
+    ): Flow<ModelEvent> {
+        var currentRequest = request
+        for (hook in agent.hooks) {
+            currentRequest = hook.onModelRequest(StepContext(state, currentRequest, phase))
+        }
+
+        val ctx = StepContext(state, currentRequest, phase)
+        var source = agent.model.generate(currentRequest)
+        for (hook in agent.hooks.asReversed()) {
+            source = hook.onModelStream(ctx, source)
+        }
+        return source
     }
 }
 

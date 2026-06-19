@@ -2,7 +2,6 @@ package org.koaks.framework.loop
 
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
-import org.koaks.framework.middleware.Cache
 import org.koaks.framework.middleware.Guardrail
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.ModelEvent
@@ -71,28 +70,6 @@ class L4Test {
         assertEquals(TerminationReason.RunBudgetSteps(3), terminated.reason)
         // globalStep increments per assistant message; budget of 3 stops the runaway.
         assertTrue(model.calls <= 4, "RunBudget must stop the runaway loop, got ${model.calls} calls")
-    }
-
-    @Test
-    fun cache_short_circuits_second_identical_run() = runTest {
-        val model = FakeLanguageModel(
-            listOf(ModelEvent.TextDelta("cached answer"), ModelEvent.Completed(Usage.ZERO)),
-        )
-        val cache = Cache()
-        val a = agent {
-            name = "t"
-            model { custom(model) }
-            install(cache as org.koaks.framework.middleware.AgentMiddleware)
-            install(cache as org.koaks.framework.middleware.AgentListener)
-        }
-        val first = a.run("same question")
-        assertEquals("cached answer", first.text)
-        assertEquals(1, model.calls)
-
-        // Second identical run hits the cache — model NOT called again.
-        val second = a.run("same question")
-        assertEquals("cached answer", second.text)
-        assertEquals(1, model.calls, "cache hit must not call the model again")
     }
 
     @Test

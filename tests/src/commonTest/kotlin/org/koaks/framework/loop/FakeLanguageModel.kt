@@ -23,8 +23,18 @@ class FakeLanguageModel(
     var calls: Int = 0
         private set
 
+    var lastRequest: ChatRequest? = null
+        private set
+
+    val requests: List<ChatRequest>
+        get() = recordedRequests
+
+    private val recordedRequests = mutableListOf<ChatRequest>()
+
     override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
         calls++
+        lastRequest = request
+        recordedRequests += request
         val events = if (scripts.isEmpty()) emptyList() else scripts.removeFirst()
         for (e in events) {
             beforeEmit(e)

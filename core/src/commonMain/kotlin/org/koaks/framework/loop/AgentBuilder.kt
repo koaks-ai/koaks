@@ -1,7 +1,7 @@
 package org.koaks.framework.loop
 
 import org.koaks.framework.middleware.AgentListener
-import org.koaks.framework.middleware.AgentMiddleware
+import org.koaks.framework.middleware.Hook
 import org.koaks.framework.memory.Memory
 import org.koaks.framework.memory.NoMemory
 import org.koaks.framework.memory.WindowMemory
@@ -40,7 +40,7 @@ class AgentBuilder {
     private var modelScope: ModelScope? = null
     private var selection: ModelSelection? = null
     private val tools = ToolRegistry()
-    private val middlewares = mutableListOf<AgentMiddleware>()
+    private val hooks = mutableListOf<Hook>()
     private val listeners = mutableListOf<AgentListener>()
     private var termination: TerminationPolicy = TerminationPolicy.maxSteps(10)
     private var errorPolicy: ErrorPolicy = ErrorPolicy.PROPAGATE
@@ -62,9 +62,14 @@ class AgentBuilder {
         memory = MemoryScope().apply(block).build()
     }
 
-    /** Installs around-style middleware. */
-    fun install(middleware: AgentMiddleware) {
-        middlewares += middleware
+    /** Installs a typed interception hook. */
+    fun install(hook: Hook) {
+        hooks += hook
+    }
+
+    /** Configures a typed hook inline. */
+    fun hook(block: HookScope.() -> Unit) {
+        hooks += HookScope().apply(block).build()
     }
 
     /** Installs a push-style listener (e.g. Tracing). */
@@ -103,7 +108,7 @@ class AgentBuilder {
             instructions = resolvedInstructions,
             model = model,
             tools = tools,
-            middlewares = middlewares.toList(),
+            hooks = hooks.toList(),
             listeners = listeners.toList(),
             termination = termination,
             errorPolicy = errorPolicy,

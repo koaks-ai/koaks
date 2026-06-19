@@ -254,13 +254,21 @@ agent {
 }
 ```
 
-环绕式**中间件**（`Cache`、`Guardrail`、`HumanApproval`）与推送式**监听器**（`Tracing`）
-以同样的方式安装：
+带类型的 **Hook** 可以改写模型请求/流、工具调用/结果。推送式**监听器**（`Tracing`）
+仍保持只观察：
 
 ```kotlin
 agent {
+    hook {
+        onModelCall {
+            before { ctx -> ctx.request }
+        }
+        onToolCall {
+            before { ctx -> if (ctx.call.name == "danger") Deny("blocked") else Proceed }
+        }
+    }
     install(org.koaks.framework.middleware.Tracing)
-    // install(Cache(...)); install(Guardrail(...)); install(HumanApproval(...))
+    // install(Guardrail(...)); install(HumanApproval(...))
 }
 ```
 
@@ -270,7 +278,7 @@ agent {
 
 | 模块 | Artifact | 用途 |
 |------|----------|------|
-| core | `koaks-core` | Agent 运行时：DSL、循环、工具、记忆、中间件、传输层 |
+| core | `koaks-core` | Agent 运行时：DSL、循环、工具、记忆、Hook/监听器、传输层 |
 | qwen | `koaks-model-qwen` | Qwen / OpenAI 兼容提供商 |
 | ollama | `koaks-model-ollama` | 本地 Ollama 提供商（NDJSON） |
 | memory: summarizing | `koaks-memory-summarizing` | 长对话摘要式记忆 |
