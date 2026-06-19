@@ -7,7 +7,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.toList
 import org.koaks.framework.middleware.StepContext
 import org.koaks.framework.middleware.ToolContext
 import org.koaks.framework.model.AgentError
@@ -35,6 +34,25 @@ import kotlin.time.Duration.Companion.milliseconds
 class AgentRunner(private val agent: Agent) {
 
     fun stream(initial: List<Message>): Flow<AgentEvent> = flow {
+        runLoop(initial) { emitEvent(it) }
+    }
+
+    /**
+     * The core loop. Emits each [AgentEvent] through [emit] (which also notifies
+     * listeners) and returns the FULL final transcript — every assistant and tool
+     * message accumulated, ending with the terminal assistant answer. The transcript
+     * is what [runStructured] needs: the terminal answer alone is usually a summary
+     * that has dropped the tool-result detail a structured schema must be filled from.
+     */
+    private suspend fun runLoop(
+        initial: List<Message>,
+        emit: suspend (AgentEvent) -> Unit,
+    ): List<Message> {
+        suspend fun out(event: AgentEvent) {
+            agent.listeners.forEach { it.onAgentEvent(event) }
+            emit(event)
+        }
+
         // Resolve any deferred tool sources (e.g. MCP tools/list) once, in this
         // suspend context, before the first model step.
         agent.tools.resolveLazySources()
@@ -46,8 +64,8 @@ class AgentRunner(private val agent: Agent) {
             when (val decision = agent.terminationDecision(state)) {
                 TerminationDecision.Continue -> {}
                 is TerminationDecision.Stop -> {
-                    emitEvent(AgentEvent.Terminated(state.lastAssistantOrEmpty(), state.usage, decision.reason))
-                    return@flow
+                    out(AgentEvent.Terminated(state.lastAssistantOrEmpty(), state.usage, decision.reason))
+                    return state.messages
                 }
             }
 
@@ -69,14 +87,14 @@ class AgentRunner(private val agent: Agent) {
                     when (event) {
                         is ModelEvent.TextDelta -> {
                             emittedText = true
-                            emitEvent(AgentEvent.TextDelta(event.text))
+                            out(AgentEvent.TextDelta(event.text))
                         }
 
                         is ModelEvent.ReasoningDelta ->
-                            emitEvent(AgentEvent.ReasoningDelta(event.text))
+                            out(AgentEvent.ReasoningDelta(event.text))
 
                         is ModelEvent.ToolCallCompleted ->
-                            emitEvent(AgentEvent.ToolCallRequested(event.call))
+                            out(AgentEvent.ToolCallRequested(event.call))
 
                         is ModelEvent.Failed ->
                             throw ModelFailure(event.error)
@@ -98,7 +116,7 @@ class AgentRunner(private val agent: Agent) {
                             delay(r.delayMs.milliseconds)
                             continue
                         }
-                        emitEvent(AgentEvent.Failed(error, state.usage + acc.usage())); return@flow
+                        out(AgentEvent.Failed(error, state.usage + acc.usage())); return state.messages
                     }
 
                     is Recovery.Substitute -> {
@@ -106,7 +124,7 @@ class AgentRunner(private val agent: Agent) {
                     }
 
                     is Recovery.Propagate -> {
-                        emitEvent(AgentEvent.Failed(error, state.usage + acc.usage())); return@flow
+                        out(AgentEvent.Failed(error, state.usage + acc.usage())); return state.messages
                     }
                 }
             }
@@ -114,11 +132,11 @@ class AgentRunner(private val agent: Agent) {
 
             val assistant = acc.assistantMessage()
             state = state.append(assistant).addUsage(acc.usage())
-            emitEvent(AgentEvent.StepCompleted(state.step))
+            out(AgentEvent.StepCompleted(state.step))
 
             val calls = acc.toolCalls()
             if (calls.isEmpty()) {
-                emitEvent(AgentEvent.Completed(assistant, state.usage)); return@flow
+                out(AgentEvent.Completed(assistant, state.usage)); return state.messages
             }
 
             // tool step — parallel; failures travel the explicit channel (isError tool message).
@@ -135,22 +153,29 @@ class AgentRunner(private val agent: Agent) {
             }
             outcomes.forEachIndexed { i, o ->
                 val ev = o.toEvent(calls[i].id)
-                emitEvent(ev)
-                if (o is ToolOutcome.Failure) emitEvent(AgentEvent.Failed(o.error, state.usage))
+                out(ev)
+                if (o is ToolOutcome.Failure) out(AgentEvent.Failed(o.error, state.usage))
             }
             state = state.appendToolResults(calls, outcomes)
 
             // returnDirectly is loop control: finish immediately, skip next model step.
             outcomes.firstOrNull { it is ToolOutcome.Success && it.returnDirectly }?.let { direct ->
-                val out = (direct as ToolOutcome.Success).output
-                emitEvent(AgentEvent.Completed(Message.assistant(out), state.usage))
-                return@flow
+                val output = (direct as ToolOutcome.Success).output
+                val message = Message.assistant(output)
+                state = state.append(message)
+                out(AgentEvent.Completed(message, state.usage))
+                return state.messages
             }
         }
     }
 
     suspend fun run(initial: List<Message>): AgentResult {
-        val events = stream(initial).toList()
+        val events = mutableListOf<AgentEvent>()
+        runLoop(initial) { events += it }
+        return resultFrom(events)
+    }
+
+    private fun resultFrom(events: List<AgentEvent>): AgentResult {
         when (val terminal = events.filterIsInstance<AgentEvent.Terminal>().lastOrNull()) {
             is AgentEvent.Completed -> return AgentResult.Completed(terminal.message, terminal.usage)
             is AgentEvent.Terminated -> return AgentResult.Terminated(terminal.message, terminal.usage, terminal.reason)
@@ -169,12 +194,19 @@ class AgentRunner(private val agent: Agent) {
      * tool loop above runs WITHOUT a json constraint so the model can call tools
      * freely; only this finalization step constrains the format, choosing native
      * jsonMode vs prompt injection from [org.koaks.framework.model.LanguageModel.capabilities].
+     *
+     * The finalization request is built on the FULL transcript (every assistant and
+     * tool-result message), not just the terminal answer — the final answer is usually
+     * a natural-language summary that has already dropped detail the schema needs, so
+     * formatting from it alone would yield incomplete structured output.
      */
     suspend fun runStructured(
         initial: List<Message>,
         spec: OutputSpec,
     ): AgentResult {
-        val base = run(initial)
+        val events = mutableListOf<AgentEvent>()
+        val transcript = runLoop(initial) { events += it }
+        val base = resultFrom(events)
         if (base !is AgentResult.Completed) return base
 
         val useJsonMode = agent.model.capabilities.jsonMode
@@ -184,8 +216,8 @@ class AgentRunner(private val agent: Agent) {
                 append(spec.schema.toString())
             }
         )
-        // Conversation so far (the loop's final answer) + the format ask.
-        val convo = initial + base.message + formatInstruction
+        // Full conversation (history + tool results + the loop's final answer) + the format ask.
+        val convo = transcript + formatInstruction
         val request = org.koaks.framework.model.ChatRequest(
             messages = convo,
             tools = emptyList(),          // no tools on the finalization step
