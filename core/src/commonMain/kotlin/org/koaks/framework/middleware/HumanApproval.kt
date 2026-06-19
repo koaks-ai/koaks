@@ -1,8 +1,5 @@
 package org.koaks.framework.middleware
 
-import org.koaks.framework.model.AgentError
-import org.koaks.framework.tool.ToolOutcome
-
 /**
  * Human-in-the-loop approval for tool calls. Before a guarded tool runs,
  * [approve] is consulted (a suspend hook — wire it to a UI prompt, a queue, etc.).
@@ -14,21 +11,12 @@ import org.koaks.framework.tool.ToolOutcome
 class HumanApproval(
     private val guard: (ToolContext) -> Boolean = { true },
     private val approve: suspend (ToolContext) -> Boolean,
-) : AgentMiddleware {
+) : Hook {
 
-    override suspend fun aroundToolCall(
-        ctx: ToolContext,
-        next: suspend () -> ToolOutcome,
-    ): ToolOutcome {
+    override suspend fun onToolCall(ctx: ToolContext): ToolDecision {
         if (guard(ctx) && !approve(ctx)) {
-            return ToolOutcome.Failure(
-                AgentError.ToolError(
-                    toolName = ctx.call.name,
-                    message = "tool '${ctx.call.name}' was not approved by a human reviewer",
-                    retriable = false,
-                )
-            )
+            return ToolDecision.Deny("tool '${ctx.call.name}' was not approved by a human reviewer")
         }
-        return next()
+        return ToolDecision.Proceed
     }
 }

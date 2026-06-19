@@ -18,7 +18,7 @@
 - **First-class tools**: define a tool inline with a typed input; its JSON Schema is derived from your `@Serializable` class. Class-based tools, JVM `@Tool` annotations, and lazy **MCP** discovery are all supported.
 - **Pluggable memory**: sliding-window, summarizing, or vector memory, committed atomically per turn (a failed or cancelled run won't corrupt history).
 - **Structured output**: `agent.run<T>()` returns a typed, decoded result.
-- **Resilient by design**: model fallbacks, retry/substitute error policies, step & token budgets, and Around middleware (cache, guardrail, human-approval).
+- **Resilient by design**: model fallbacks, retry/substitute error policies, step & token budgets, typed hooks, guardrails, and human approval.
 - **Kotlin Multiplatform**: JVM, JS, and macOS (Apple Silicon) from a single codebase.
 
 ---
@@ -260,13 +260,21 @@ agent {
 }
 ```
 
-Around-style **middleware** (`Cache`, `Guardrail`, `HumanApproval`) and push-style
-**listeners** (`Tracing`) install the same way:
+Typed **hooks** can transform model requests/streams and tool calls/results. Push-style
+**listeners** (`Tracing`) remain observe-only:
 
 ```kotlin
 agent {
+    hook {
+        onModelCall {
+            before { ctx -> ctx.request }
+        }
+        onToolCall {
+            before { ctx -> if (ctx.call.name == "danger") Deny("blocked") else Proceed }
+        }
+    }
     install(org.koaks.framework.middleware.Tracing)
-    // install(Cache(...)); install(Guardrail(...)); install(HumanApproval(...))
+    // install(Guardrail(...)); install(HumanApproval(...))
 }
 ```
 
@@ -276,7 +284,7 @@ agent {
 
 | Module | Artifact | Purpose |
 |--------|----------|---------|
-| core | `koaks-core` | The agent runtime: DSL, loop, tools, memory, middleware, transport |
+| core | `koaks-core` | The agent runtime: DSL, loop, tools, memory, hooks/listeners, transport |
 | qwen | `koaks-model-qwen` | Qwen / OpenAI-compatible provider |
 | ollama | `koaks-model-ollama` | Local Ollama provider (NDJSON) |
 | memory: summarizing | `koaks-memory-summarizing` | Summarizing long-conversation memory |

@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import org.koaks.framework.memory.Memory
 import org.koaks.framework.middleware.AgentListener
-import org.koaks.framework.middleware.AgentMiddleware
+import org.koaks.framework.middleware.Hook
 import org.koaks.framework.model.ChatRequest
 import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.model.Message
@@ -16,7 +16,7 @@ import org.koaks.framework.tool.ToolRegistry
 import org.koaks.framework.transport.Transport
 
 /**
- * An immutable agent: instructions + model + tools + termination + middleware.
+ * An immutable agent: instructions + model + tools + hooks + listeners + termination.
  * Built via the `agent {}` DSL.
  *
  * Implements [AutoCloseable]: when the agent created its own [Transport] (via the
@@ -28,7 +28,7 @@ class Agent internal constructor(
     val instructions: Instructions,
     val model: LanguageModel,
     val tools: ToolRegistry,
-    val middlewares: List<AgentMiddleware>,
+    val hooks: List<Hook>,
     val listeners: List<AgentListener>,
     val termination: TerminationPolicy,
     val errorPolicy: ErrorPolicy,

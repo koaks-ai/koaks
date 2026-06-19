@@ -6,8 +6,8 @@ import org.koaks.framework.loop.AgentState
 import org.koaks.framework.model.ModelEvent
 
 /**
- * Tracing implemented as an observe-only [AgentListener] (not `aroundModelCall`),
- * so it can never double-subscribe the model flow. `install(Tracing)` wires it in.
+ * Tracing implemented as an observe-only [AgentListener], so it can never
+ * double-subscribe the model flow. `install(Tracing)` wires it in.
  */
 object Tracing : AgentListener {
     private val logger = KotlinLogging.logger {}

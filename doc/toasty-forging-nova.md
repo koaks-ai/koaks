@@ -34,7 +34,7 @@
 - `tool` — Tool<In> / ToolRegistry / ToolOutcome / ToolSchema；生成器在 `tool.schema`
 - `loop` — AgentRunner / AgentState / AgentEvent / TurnAccumulator / ToolCallBuilder / Agent / AgentBuilder + scopes / ModelFailure(internal)
 - `memory` — Memory / NoMemory / WindowMemory / ThreadId / Thread / TurnCommitBuffer
-- `middleware` — AgentMiddleware / AgentListener / Tracing
+- `middleware` — Hook / ToolDecision / AgentListener / Tracing
 - `policy` — TerminationPolicy / RunBudget / ErrorPolicy / Recovery
 
 provider 实现移到 `koaks-model:qwen` / `koaks-model:ollama`（包名保持 `org.koaks.provider.*`）。
@@ -97,16 +97,16 @@ provider 实现移到 `koaks-model:qwen` / `koaks-model:ollama`（包名保持 `
 - `TurnAccumulator.kt` — `observe(event)` 累积 text/toolCalls/usage；`assistantMessage()`/`toolCalls()`/`usage()`
 - `AgentRunner.kt` — `stream(initial):Flow<AgentEvent>` 实现 tee：`source.collect { acc.observe(it); when(it){ TextDelta->emit(...); ToolCallCompleted->emit(ToolCallRequested); Failed->throw ModelFailure(it.error) } }`。collect 后 append assistant + `StepCompleted`；无 calls → `Finished`；工具步 `coroutineScope{ calls.map{async{...}}.awaitAll() }`，逐个 emit outcome，再查 `returnDirectly` → `Finished`。catch 块按约束 #4/#5/#6 处理。`run()=stream().toResult()`
 - `ModelFailure.kt` — `internal class ModelFailure(val error)`，loop 内部载体
-- `Agent.kt` — 持有 name/instructions/model/tools/middlewares/listeners/termination/transport；`AutoCloseable`（关自有 Transport，跳过外部注入）
+- `Agent.kt` — 持有 name/instructions/model/tools/hooks/listeners/termination/transport；`AutoCloseable`（关自有 Transport，跳过外部注入）
 - `AgentBuilder.kt` + scopes — `@DslMarker annotation class AgentDsl`；`AgentBuilder`/`ModelScope`/`ToolScope`；顶层 `inline fun agent(block)`；`ToolScope.tool(Tool)` 与 `inline fun <reified In> ToolScope.tool(name,description,execute)` 用 `serializer<In>()`
 
 ### 1g. 终止（pkg `policy`）
 - `TerminationPolicy.kt` — `fun interface shouldStop(state)`；companion `maxSteps`/`maxTokens`/`and`。切片用 `maxSteps`
 
-### 1h. Middleware/Listener（pkg `middleware`）
-- `AgentMiddleware.kt` — `aroundModelCall(ctx,next)`（默认 `next()`）/`aroundToolCall`。契约：**绝不 collect `next()`**
+### 1h. Hook/Listener（pkg `middleware`）
+- `Hook.kt` / `ToolDecision.kt` — typed before/after/decision：模型请求/流变换、工具调用改写/拒绝、工具结果变换。模型流 hook 只返回惰性 Flow 包装，**绝不 collect**。
 - `AgentListener.kt` — 推送式 `onModelEvent`/`onAgentEvent`/`onStep`，由 loop 在 tee 单点触发（接口层根除 cold flow 双订阅）
-- `Tracing.kt` — 实现为 `AgentListener`（观察型），非 `aroundModelCall`
+- `Tracing.kt` — 实现为 `AgentListener`（观察型）
 
 ### 1i. Qwen provider（在 `koaks-model:qwen`）打通端到端
 - 新 `QwenChatModel : ChatModel<QwenChatRequest,QwenChatResponse>` 实现 `toWire`/`adapter`/`capabilities`/`newDecoder()`
@@ -134,7 +134,7 @@ provider 实现移到 `koaks-model:qwen` / `koaks-model:ollama`（包名保持 `
 `@Tool`/`@Param` 降级为编译/委托到 `Tool<In>` 的 JVM 语法糖（无独立反射执行路径）。MCP 延迟发现：`mcp(url)` 在 `ToolScope` 登记 `LazyToolSource`，`AgentRunner` 首次 run 在 suspend 上下文 `tools/list` 并追加进 `ToolRegistry`（缓存一次）。复用现有 `mcp/client/DefaultMcpClient`。
 
 ### Phase 5 — L4 完善（`policy`/`middleware`/`loop`）
-`TerminationPolicy.and`/`maxTokens`；`ErrorPolicy`+`Recovery`（`Propagate`/`Retry`/`Substitute`）在 loop catch 块消费（§4.2）；结构化输出 `run<T>` + `OutputSpec`，capabilities 驱动 jsonMode-vs-prompt fallback、容错解析（剥 ```` ```json ```` 围栏）、"工具跑完最后一步才约束格式"策略；middleware 生态（`RetryOnError`/`Cache` 短路型 `aroundModelCall`/`Guardrail`/`HumanApproval`）；`RunBudget`（globalStep/usage 永不重置）作为外层护栏。
+`TerminationPolicy.and`/`maxTokens`；`ErrorPolicy`+`Recovery`（`Propagate`/`Retry`/`Substitute`）在 loop catch 块消费（§4.2）；结构化输出 `run<T>` + `OutputSpec`，capabilities 驱动 jsonMode-vs-prompt fallback、容错解析（剥 ```` ```json ```` 围栏）、"工具跑完最后一步才约束格式"策略；Hook 生态（模型请求/流变换、`Guardrail`/`HumanApproval`、工具结果变换）；`RunBudget`（globalStep/usage 永不重置）作为外层护栏。
 
 > 本轮**不含 L5**：跳过 `asTool`/`handoffs`/planner 与 graph 依赖反转。`AgentState` 已预留 `globalStep`/`localStep`，L5 可后续非破坏性接入。
 
