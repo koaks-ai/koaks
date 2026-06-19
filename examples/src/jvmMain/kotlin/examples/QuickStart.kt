@@ -55,7 +55,7 @@ fun main() = runBlocking {
             }
         }
 
-        terminateAfter(maxSteps = 2)
+        terminateAfter(maxSteps = 50)
     }
 
     agent.use {
