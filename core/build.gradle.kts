@@ -26,7 +26,10 @@ kotlin {
                 api(libs.ktor.client.js)
             }
         }
-        val macosArmMain by getting {
+        // Shared by macosArm64 + iOS targets (default hierarchy template).
+        // Use the lazy accessor: the template materializes `appleMain` after this
+        // block is evaluated, so an eager `by getting` would not find it yet.
+        appleMain {
             dependencies {
                 api(libs.ktor.client.darwin)
             }
