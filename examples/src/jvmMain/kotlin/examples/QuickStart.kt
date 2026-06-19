@@ -69,10 +69,10 @@ fun main() = runBlocking {
 private fun getWeather(city: String): String = "$city 天气: 晴天，适合出门。"
 
 @Serializable
-private data object NoInput
+data object NoInput
 
 @Serializable
-private data class WeatherInput(
+data class WeatherInput(
     val city: String,
 )
 
