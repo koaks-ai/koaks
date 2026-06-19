@@ -15,6 +15,7 @@ import org.koaks.framework.tool.ToolOutcome
 import org.koaks.provider.qwen.qwen
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Showcases all four typed hook points wired through one agent:
@@ -45,7 +46,9 @@ fun main() = runBlocking {
                 baseUrl = EnvTools.loadValue("BASE_URL"),
                 apiKey = EnvTools.loadValue("API_KEY"),
                 modelName = "qwen3.7-plus",
-            )
+            ) {
+                enableThinking = false
+            }
         }
         tools {
             tool<NoInput>(
@@ -106,13 +109,13 @@ fun main() = runBlocking {
 
     // A reviewer approves the notification a moment later — the before hook resumes.
     launch {
-        delay(250.milliseconds)
+        delay(15.seconds)
         println("[reviewer] approving send_notification")
         approval.complete(true)
     }
 
     agent.use {
-        it.stream("读取资料并给我一个简短总结。如果需要，发送通知。").collect { event ->
+        it.stream("读取资料并给我一个简短总结。并且，发送通知。").collect { event ->
             when (event) {
                 is AgentEvent.TextDelta -> print(event.text)
                 is AgentEvent.ToolCallRequested -> println("\n[tool call] ${event.call.name}")
