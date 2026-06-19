@@ -102,13 +102,7 @@ class AgentRunner(private val agent: Agent) {
                         is ModelEvent.Failed ->
                             throw ModelFailure(event.error)
 
-                        else -> {
-                            logger.warn { "unhandled model event type: ${event::class}; ignoring" }
-                            logger.warn {
-                                "[warn] you shouldn't see this: if you do, " +
-                                        "please report it to the Koaks team with the model and tools you're using."
-                            }
-                        }
+                        else -> {}
                     }
                 }
             } catch (t: Throwable) {
@@ -233,7 +227,10 @@ class AgentRunner(private val agent: Agent) {
         val request = org.koaks.framework.model.ChatRequest(
             messages = convo,
             tools = emptyList(),          // no tools on the finalization step
-            stream = false,
+            // MUST stream: the transport is SSE-only, so a non-streaming response
+            // (a plain JSON body with no `data:` lines) is silently dropped, yielding
+            // empty text. jsonMode still applies — it constrains the format, not the framing.
+            stream = true,
             jsonMode = useJsonMode,
         )
 
