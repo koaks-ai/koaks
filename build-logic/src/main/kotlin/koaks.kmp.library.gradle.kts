@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.JavaExec
+import org.gradle.api.tasks.testing.Test
 import org.jetbrains.kotlin.gradle.dsl.KotlinJsCompile
 
 /**
@@ -32,4 +34,18 @@ kotlin {
 
 tasks.withType<KotlinJsCompile>().configureEach {
     compilerOptions.target.set("es2015")
+}
+
+val utf8JvmEncodingArgs = listOf(
+    "-Dfile.encoding=UTF-8",
+    "-Dsun.stdout.encoding=UTF-8",
+    "-Dsun.stderr.encoding=UTF-8",
+)
+
+tasks.withType<JavaExec>().configureEach {
+    jvmArgs(utf8JvmEncodingArgs)
+}
+
+tasks.withType<Test>().configureEach {
+    jvmArgs(utf8JvmEncodingArgs)
 }
