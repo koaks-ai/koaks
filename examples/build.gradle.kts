@@ -8,7 +8,7 @@ kotlin {
             dependencies {
                 implementation(project(":core"))
                 implementation(project(":koaks-model:anthropic"))
-                implementation(project(":koaks-model:qwen"))
+                implementation(project(":koaks-model:openai"))
                 implementation(libs.dotenv)
             }
         }

@@ -3,7 +3,7 @@ package examples
 import kotlinx.coroutines.runBlocking
 import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.use
-import org.koaks.provider.qwen.qwen
+import org.koaks.provider.openai.openai
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -43,7 +43,7 @@ fun main() = runBlocking {
             dynamic { lookupUserProfile(userId)?.let { "用户偏好：$it" } }
         }
         model {
-            qwen(
+            openai(
                 baseUrl = EnvTools.loadValue("BASE_URL"),
                 apiKey = EnvTools.loadValue("API_KEY"),
                 modelName = "qwen3.7-plus",

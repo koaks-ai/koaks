@@ -12,9 +12,8 @@ import org.koaks.framework.middleware.ModelCallPhase
 import org.koaks.framework.model.Message
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.tool.ToolOutcome
-import org.koaks.provider.qwen.qwen
+import org.koaks.provider.openai.openai
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -42,12 +41,12 @@ fun main() = runBlocking {
     val agent = agent {
         name = "hook-demo-agent"
         model {
-            qwen(
+            openai(
                 baseUrl = EnvTools.loadValue("BASE_URL"),
                 apiKey = EnvTools.loadValue("API_KEY"),
                 modelName = "qwen3.7-plus",
             ) {
-                enableThinking = false
+                reasoningEffort = "medium"
             }
         }
         tools {

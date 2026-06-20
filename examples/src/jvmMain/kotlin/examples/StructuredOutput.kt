@@ -6,7 +6,7 @@ import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.run
 import org.koaks.framework.loop.tool
 import org.koaks.framework.loop.use
-import org.koaks.provider.qwen.qwen
+import org.koaks.provider.openai.openai
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -19,7 +19,7 @@ fun main() = runBlocking {
             +"始终用中文回答。"
         }
         model {
-            qwen(
+            openai(
                 baseUrl = EnvTools.loadValue("BASE_URL"),
                 apiKey = EnvTools.loadValue("API_KEY"),
                 modelName = "qwen3.7-plus",
