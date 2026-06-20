@@ -6,8 +6,8 @@ import org.koaks.framework.loop.ModelSelection
 import org.koaks.framework.model.ModelCapabilities
 import org.koaks.framework.provider.ModelConfig
 
-/** OpenAI's default Chat Completions endpoint. */
-const val OPENAI_DEFAULT_BASE_URL: String = "https://api.openai.com/v1/chat/completions"
+/** OpenAI's default API base URL. */
+const val OPENAI_DEFAULT_BASE_URL: String = "https://api.openai.com"
 
 /**
  * Configuration scope for the OpenAI provider DSL: `model { openai(...) { ... } }`.
@@ -39,7 +39,7 @@ class OpenAIConfig(
     }
 
     internal fun toConfig(): ModelConfig = ModelConfig(
-        baseUrl = baseUrl,
+        baseUrl = normalizeChatCompletionsUrl(baseUrl),
         apiKey = apiKey,
         modelName = modelName,
     )
@@ -71,9 +71,9 @@ class OpenAICapabilitiesScope(initial: ModelCapabilities) {
  * using the transport from [ModelScope] (agent-owned unless externally injected),
  * returning it as a [ModelSelection] so callers can chain `.fallback(...)`.
  *
- * [baseUrl] defaults to OpenAI's public endpoint; override it (positionally or by
- * name) to point at an OpenAI-compatible gateway. Param order matches the other
- * providers (`baseUrl, apiKey, modelName`).
+ * [baseUrl] accepts a provider base URL (`https://api.openai.com`), an SDK-style
+ * base URL (`.../v1`), or the full Chat Completions endpoint (`.../v1/chat/completions`).
+ * Param order matches the other providers (`baseUrl, apiKey, modelName`).
  */
 fun ModelScope.openai(
     baseUrl: String = OPENAI_DEFAULT_BASE_URL,
@@ -83,4 +83,13 @@ fun ModelScope.openai(
 ): ModelSelection {
     val cfg = OpenAIConfig(baseUrl, apiKey, modelName).apply(block)
     return custom(OpenAIChatModel(cfg.toConfig(), transport, cfg.params(), cfg.capabilities()))
+}
+
+private fun normalizeChatCompletionsUrl(baseUrl: String): String {
+    val trimmed = baseUrl.trim().trimEnd('/')
+    return when {
+        trimmed.endsWith("/chat/completions") -> trimmed
+        trimmed.endsWith("/v1") -> "$trimmed/chat/completions"
+        else -> "$trimmed/v1/chat/completions"
+    }
 }

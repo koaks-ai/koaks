@@ -81,6 +81,26 @@ class KtorTransportTest {
     }
 
     @Test
+    fun does_not_retry_client_errors() = runTest {
+        var calls = 0
+        val engine = MockEngine { _ ->
+            calls++
+            respondError(HttpStatusCode.NotFound)
+        }
+        val transport = KtorTransport(HttpClient(engine) { install(HttpTimeout) })
+        val config = ModelConfig(
+            baseUrl = "http://test/missing", modelName = "m",
+            retry = RetryBudget(maxRetries = 2, initialBackoffMs = 1),
+        )
+
+        assertFailsWith<TransportException> {
+            transport.stream(config, Req("hi"), adapter).toList()
+        }
+        assertEquals(1, calls, "client errors should fail without transparent retry")
+        transport.close()
+    }
+
+    @Test
     fun does_not_retry_after_first_chunk_emitted() = runTest {
         var calls = 0
         val engine = MockEngine { _ ->
