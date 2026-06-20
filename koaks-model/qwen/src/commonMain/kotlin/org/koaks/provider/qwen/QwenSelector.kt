@@ -6,6 +6,9 @@ import org.koaks.framework.loop.ModelSelection
 import org.koaks.framework.model.ModelCapabilities
 import org.koaks.framework.provider.ModelConfig
 
+/** Qwen's OpenAI-compatible API base URL. */
+const val QWEN_DEFAULT_BASE_URL: String = "https://dashscope.aliyuncs.com/compatible-mode"
+
 /**
  * Configuration scope for the Qwen provider DSL: `model { qwen(...) { ... } }`.
  * Generation params are Qwen-native and set flat on this block; only fields that
@@ -34,7 +37,7 @@ class QwenConfig(
     }
 
     internal fun toConfig(): ModelConfig = ModelConfig(
-        baseUrl = baseUrl,
+        baseUrl = normalizeChatCompletionsUrl(baseUrl),
         apiKey = apiKey,
         modelName = modelName,
     )
@@ -65,13 +68,26 @@ class CapabilitiesScope(initial: ModelCapabilities) {
  * Selects Qwen as the agent's model. The provider builds a [QwenChatModel] using the
  * transport from [ModelScope] (agent-owned unless externally injected), returning it
  * as a [ModelSelection] so callers can chain `.fallback(...)`.
+ *
+ * [baseUrl] accepts a provider base URL (`https://dashscope.aliyuncs.com/compatible-mode`),
+ * an SDK-style base URL (`.../v1`), or the full Chat Completions endpoint
+ * (`.../v1/chat/completions`).
  */
 fun ModelScope.qwen(
-    baseUrl: String,
+    baseUrl: String = QWEN_DEFAULT_BASE_URL,
     apiKey: String,
     modelName: String,
     block: QwenConfig.() -> Unit = {},
 ): ModelSelection {
     val cfg = QwenConfig(baseUrl, apiKey, modelName).apply(block)
     return custom(QwenChatModel(cfg.toConfig(), transport, cfg.params(), cfg.capabilities()))
+}
+
+private fun normalizeChatCompletionsUrl(baseUrl: String): String {
+    val trimmed = baseUrl.trim().trimEnd('/')
+    return when {
+        trimmed.endsWith("/chat/completions") -> trimmed
+        trimmed.endsWith("/v1") -> "$trimmed/chat/completions"
+        else -> "$trimmed/v1/chat/completions"
+    }
 }

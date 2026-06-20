@@ -46,7 +46,7 @@ class AnthropicConfig(
     }
 
     internal fun toConfig(): ModelConfig = ModelConfig(
-        baseUrl = baseUrl,
+        baseUrl = normalizeAnthropicMessagesUrl(baseUrl),
         apiKey = apiKey,
         modelName = modelName,
         auth = AuthScheme.Header("x-api-key"),
@@ -80,8 +80,9 @@ class AnthropicCapabilitiesScope(initial: ModelCapabilities) {
  * using the transport from [ModelScope] (agent-owned unless externally injected),
  * returning it as a [ModelSelection] so callers can chain `.fallback(...)`.
  *
- * [baseUrl] defaults to Anthropic's public endpoint. Param order matches the other
- * providers (`baseUrl, apiKey, modelName`).
+ * [baseUrl] accepts either the full Messages endpoint (`.../v1/messages`) or an
+ * SDK-style provider base URL, such as DeepSeek's `https://api.deepseek.com/anthropic`.
+ * Param order matches the other providers (`baseUrl, apiKey, modelName`).
  */
 fun ModelScope.anthropic(
     baseUrl: String = ANTHROPIC_DEFAULT_BASE_URL,
@@ -91,4 +92,9 @@ fun ModelScope.anthropic(
 ): ModelSelection {
     val cfg = AnthropicConfig(baseUrl, apiKey, modelName).apply(block)
     return custom(AnthropicChatModel(cfg.toConfig(), transport, cfg.params(), cfg.capabilities()))
+}
+
+private fun normalizeAnthropicMessagesUrl(baseUrl: String): String {
+    val trimmed = baseUrl.trim().trimEnd('/')
+    return if (trimmed.endsWith("/messages")) trimmed else "$trimmed/v1/messages"
 }

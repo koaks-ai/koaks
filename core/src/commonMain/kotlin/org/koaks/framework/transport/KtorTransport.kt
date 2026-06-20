@@ -73,7 +73,7 @@ class KtorTransport(
                 throw e
             } catch (e: Throwable) {
                 // Only connection-level (pre-first-byte) failures are retriable here.
-                if (!emittedAny && attempt < config.retry.maxRetries) {
+                if (!emittedAny && attempt < config.retry.maxRetries && e.isRetriableTransportFailure()) {
                     val backoff = config.retry.initialBackoffMs * (1L shl attempt)
                     logger.warn { "transport retry ${attempt + 1}/${config.retry.maxRetries} after ${backoff}ms: ${e.message}" }
                     attempt++
@@ -115,7 +115,7 @@ class KtorTransport(
         stmt.execute { response ->
             if (!response.status.isSuccess()) {
                 val err = response.bodyAsText()
-                throw TransportException("HTTP ${response.status.value}: $err")
+                throw TransportException("HTTP ${response.status.value}: $err", response.status.value)
             }
             val channel: ByteReadChannel = response.bodyAsChannel()
             while (!channel.isClosedForRead) {
@@ -148,10 +148,17 @@ class KtorTransport(
         return trimmed.removePrefix("data:").trim() == config.streamEndMarker
     }
 
+    private fun Throwable.isRetriableTransportFailure(): Boolean =
+        this !is TransportException || statusCode == null || statusCode == 408 || statusCode == 429 || statusCode >= 500
+
     override fun close() {
         engineClient.close()
     }
 }
 
 /** Transport-level failure (non-2xx, connection). */
-class TransportException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+class TransportException(
+    message: String,
+    val statusCode: Int? = null,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
