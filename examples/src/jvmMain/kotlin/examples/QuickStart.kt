@@ -5,7 +5,8 @@ import kotlinx.serialization.Serializable
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.tool
-import org.koaks.provider.qwen.qwen
+import org.koaks.provider.anthropic.anthropic
+import org.koaks.provider.openai.openai
 
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -19,15 +20,20 @@ fun main() = runBlocking {
             你是一个简洁的本地助手。当用户询问当地时间或天气时，除非用户给出不同的城市，否则优先使用配置的本地城市/时区。
         """.trimIndent()
         model {
-            qwen(
-                baseUrl = EnvTools.loadValue("BASE_URL"),
-                apiKey = EnvTools.loadValue("API_KEY"),
-                modelName = "qwen3.7-plus",
+            openai(
+                baseUrl = EnvTools.loadValue("OPENAI_BASE_URL"),
+                apiKey = EnvTools.loadValue("OPENAI_API_KEY"),
+                modelName = "gpt-5.4",
             ) {
-                // Qwen-native generation params, bound to this model.
-                enableThinking = true
-                temperature = 0.7
-            }
+                reasoningEffort = "medium"
+                temperature = 0.9
+            }.fallback(
+                anthropic(
+                    baseUrl = EnvTools.loadValue("ANTHROPIC_BASE_URL"),
+                    apiKey = EnvTools.loadValue("ANTHROPIC_API_KEY"),
+                    modelName = "claude-sonnet-4-6",
+                )
+            )
         }
         tools {
             tool<NoInput>(
