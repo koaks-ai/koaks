@@ -3,7 +3,9 @@ package org.koaks.framework.loop
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
+import org.koaks.framework.memory.AgentThread
 import org.koaks.framework.memory.Memory
+import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.middleware.AgentListener
 import org.koaks.framework.middleware.Hook
 import org.koaks.framework.model.ChatRequest
@@ -64,8 +66,8 @@ class Agent internal constructor(
     }
 
     /** Opens a conversation [org.koaks.framework.memory.AgentThread] backed by this agent's memory. */
-    fun thread(id: String): org.koaks.framework.memory.AgentThread =
-        org.koaks.framework.memory.AgentThread(this, org.koaks.framework.memory.ThreadId(id))
+    fun thread(id: String): AgentThread =
+        AgentThread(this, ThreadId(id))
 
     /** The agent's configured memory (used by [org.koaks.framework.memory.AgentThread]). */
     internal val memoryStore: Memory get() = memory
