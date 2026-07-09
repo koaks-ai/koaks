@@ -34,6 +34,11 @@ kotlin {
                 api(libs.ktor.client.darwin)
             }
         }
+        val windowsX64Main by getting {
+            dependencies {
+                api(libs.ktor.client.winhttp)
+            }
+        }
     }
 }
 

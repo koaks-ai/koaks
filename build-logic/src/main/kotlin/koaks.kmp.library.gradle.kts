@@ -25,6 +25,7 @@ kotlin {
     }
 
     macosArm64("macosArm")
+    mingwX64("windowsX64")
 
     // iOS shares all Apple actuals (Darwin engine, posix env, platform type) with
     // macOS via the default hierarchy template's auto-generated `appleMain` source set.

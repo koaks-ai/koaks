@@ -50,6 +50,7 @@ ktor-client-js = { module = "io.ktor:ktor-client-js", version.ref = "ktor" }
 
 # native
 ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
+ktor-client-winhttp = { module = "io.ktor:ktor-client-winhttp", version.ref = "ktor" }
 
 # build-logic — Gradle plugins consumed as artifacts by the convention plugins
 kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
