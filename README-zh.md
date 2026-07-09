@@ -35,19 +35,19 @@
 
 ### 2. 引入依赖
 
-当前发布的 group 为 `org.koaks.framework`。引入 `koaks-core` 运行时，再按需选择提供商模块。
+当前发布的 group 为 `org.koaks`。引入 `koaks-core` 运行时，再按需选择提供商模块。
 
 **Gradle (Kotlin DSL)**
 ```kotlin
 // 对于 Gradle 项目（无论 JVM 还是 Kotlin Multiplatform），只需添加如下依赖，
 // Gradle 会自动解析对应平台的变体。
-implementation("org.koaks.framework:koaks-core:0.0.1-snapshot1")
-implementation("org.koaks.framework:koaks-model-qwen:0.0.1-snapshot1")
+implementation("org.koaks:koaks-core:0.0.1-snapshot1")
+implementation("org.koaks:koaks-model-qwen:0.0.1-snapshot1")
 
 // 可选模块：
-// implementation("org.koaks.framework:koaks-model-ollama:0.0.1-snapshot1")
-// implementation("org.koaks.framework:koaks-memory-summarizing:0.0.1-snapshot1")
-// implementation("org.koaks.framework:koaks-memory-vector:0.0.1-snapshot1")
+// implementation("org.koaks:koaks-model-ollama:0.0.1-snapshot1")
+// implementation("org.koaks:koaks-memory-summarizing:0.0.1-snapshot1")
+// implementation("org.koaks:koaks-memory-vector:0.0.1-snapshot1")
 ```
 
 **Maven**
@@ -55,12 +55,12 @@ implementation("org.koaks.framework:koaks-model-qwen:0.0.1-snapshot1")
 <!-- 对于 Maven，你需要自己选择平台变体。
      如果你不清楚这是什么意思，那么下面的 JVM 变体就是你需要的。 -->
 <dependency>
-  <groupId>org.koaks.framework</groupId>
+  <groupId>org.koaks</groupId>
   <artifactId>koaks-core-jvm</artifactId>
   <version>0.0.1-snapshot1</version>
 </dependency>
 <dependency>
-  <groupId>org.koaks.framework</groupId>
+  <groupId>org.koaks</groupId>
   <artifactId>koaks-model-qwen-jvm</artifactId>
   <version>0.0.1-snapshot1</version>
 </dependency>

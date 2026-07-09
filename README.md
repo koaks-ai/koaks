@@ -35,20 +35,20 @@
 
 ### 2. Add Dependencies
 
-The current published group is `org.koaks.framework`. Pick the `koaks-core` runtime plus
+The current published group is `org.koaks`. Pick the `koaks-core` runtime plus
 the provider module(s) you need.
 
 **Gradle (Kotlin DSL)**
 ```kotlin
 // For Gradle projects — JVM or Kotlin Multiplatform — just add the artifact below.
 // Gradle resolves the right platform variant automatically.
-implementation("org.koaks.framework:koaks-core:0.0.1-snapshot1")
-implementation("org.koaks.framework:koaks-model-qwen:0.0.1-snapshot1")
+implementation("org.koaks:koaks-core:0.0.1-snapshot1")
+implementation("org.koaks:koaks-model-qwen:0.0.1-snapshot1")
 
 // Optional add-ons:
-// implementation("org.koaks.framework:koaks-model-ollama:0.0.1-snapshot1")
-// implementation("org.koaks.framework:koaks-memory-summarizing:0.0.1-snapshot1")
-// implementation("org.koaks.framework:koaks-memory-vector:0.0.1-snapshot1")
+// implementation("org.koaks:koaks-model-ollama:0.0.1-snapshot1")
+// implementation("org.koaks:koaks-memory-summarizing:0.0.1-snapshot1")
+// implementation("org.koaks:koaks-memory-vector:0.0.1-snapshot1")
 ```
 
 **Maven**
@@ -56,12 +56,12 @@ implementation("org.koaks.framework:koaks-model-qwen:0.0.1-snapshot1")
 <!-- For Maven you must pick the platform variant yourself.
      If you're unsure what that means, the JVM variant below is the one you want. -->
 <dependency>
-  <groupId>org.koaks.framework</groupId>
+  <groupId>org.koaks</groupId>
   <artifactId>koaks-core-jvm</artifactId>
   <version>0.0.1-snapshot1</version>
 </dependency>
 <dependency>
-  <groupId>org.koaks.framework</groupId>
+  <groupId>org.koaks</groupId>
   <artifactId>koaks-model-qwen-jvm</artifactId>
   <version>0.0.1-snapshot1</version>
 </dependency>
