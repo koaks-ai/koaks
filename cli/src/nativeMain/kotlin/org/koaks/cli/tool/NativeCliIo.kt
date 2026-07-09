@@ -44,7 +44,7 @@ internal object NativeCliIo {
         return CommandResult(
             status = status,
             output = output.text.ifEmpty {
-                if (status == 0) "" else "Unable to read command output. Make sure `bash` is installed and available on PATH."
+                if (status == 0) "" else "Unable to read command output. Make sure ${BashCommandLine.shellName} is installed and available on PATH."
             },
             totalOutputChars = output.totalChars,
             truncated = output.truncated,

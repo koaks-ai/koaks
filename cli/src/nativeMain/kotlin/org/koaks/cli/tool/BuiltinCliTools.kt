@@ -17,7 +17,7 @@ internal data class BashInput(
 internal object BashTool : Tool<BashInput> {
     override val name: String = "Bash"
     override val description: String =
-        "Run a Bash command in the terminal from the current working directory. " +
+        "Run a shell command with ${BashCommandLine.shellName} from the current working directory. " +
             "Use this for inspecting the project, running tests, and other shell tasks. " +
             "The command's stdout and stderr are returned, with long output truncated."
     override val inputSerializer = BashInput.serializer()
