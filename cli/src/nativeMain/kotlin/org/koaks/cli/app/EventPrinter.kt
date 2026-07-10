@@ -111,7 +111,7 @@ internal class EventPrinter(
 
         ensureLineStart()
         if (needsAssistantContinuationGap) output.writeLine()
-        output.write(theme.dim("[reasoning] "))
+//        output.write(theme.dim("[reasoning] "))
         contentStarted = true
         endedWithNewLine = false
         needsAssistantContinuationGap = false

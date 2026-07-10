@@ -65,7 +65,7 @@ class EventPrinterTest {
 
         assertEquals(
             """
-            [reasoning] 先分析一下问题。
+            先分析一下问题。
             [koaks] 答案来了。
             """.trimIndent(),
             output.content(),
