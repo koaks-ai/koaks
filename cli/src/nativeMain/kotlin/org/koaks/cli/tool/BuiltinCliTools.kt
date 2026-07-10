@@ -33,11 +33,11 @@ internal object BashTool : Tool<BashInput> {
         val result = NativeCliIo.runBash(command, MAX_BASH_OUTPUT_CHARS)
         return buildString {
             appendLine("Command: $command")
-            appendLine("Status: ${result.status}")
+            appendLine("Stats: Status=${result.status}")
             if (result.output.isBlank()) {
                 appendLine("Output: <empty>")
             } else {
-                appendLine("Output:")
+                appendLine("=== Output ===")
                 append(result.output.trimEnd())
                 appendLine()
             }
@@ -102,11 +102,10 @@ internal object ReadTool : Tool<ReadInput> {
     }
 
     private fun buildLargeFileSummary(path: String, scan: TextWindowScan): String = buildString {
-        appendLine("File is too large to return automatically.")
         appendLine("Path: $path")
-        appendLine("Total lines: ${scan.totalLines}")
-        appendLine("Total characters: ${scan.totalChars}")
-        appendLine("Use Read with offset=1 and limit=$DEFAULT_READ_WINDOW_LINES to read a window.")
+        appendLine("Stats: Total Lines=${scan.totalLines}  Total Chars=${scan.totalChars}")
+        append("File is too large to return automatically; ")
+        append("use offset=1 and limit=$DEFAULT_READ_WINDOW_LINES to read a window.")
     }.trimEnd()
 
     private fun buildReadOutput(
@@ -119,15 +118,15 @@ internal object ReadTool : Tool<ReadInput> {
         val firstLine = scan.lines.firstOrNull()?.number
         val lastLine = scan.lines.lastOrNull()?.number
         appendLine("Path: $path")
-        appendLine("Total lines: ${scan.totalLines}")
-        appendLine("Total characters: ${scan.totalChars}")
+        append("Stats: Total Lines=${scan.totalLines}")
+        append("  Total Chars=${scan.totalChars}")
         if (firstLine == null || lastLine == null) {
-            appendLine("Requested range: $offset-${offset + effectiveLimit - 1}")
+            appendLine("  Requested=$offset-${offset + effectiveLimit - 1}")
             appendLine("No lines in requested range.")
             return@buildString
         }
 
-        appendLine("Showing lines: $firstLine-$lastLine")
+        appendLine("  Showing=$firstLine-$lastLine")
         if (requestedLimit != effectiveLimit) {
             appendLine("[requested limit $requestedLimit was capped to $effectiveLimit lines]")
         }
