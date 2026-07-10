@@ -84,6 +84,29 @@ class InputBoxTest {
     }
 
     @Test
+    fun resizingFixedLayoutUpdatesScrollRegionAndClearsInputAreas() {
+        val output = RecordingOutput()
+        val oldLayout = TerminalLayout.of(
+            rows = 40,
+            columns = 80,
+            fixedInput = true,
+            commandMenuRows = 6,
+        )
+        val newLayout = TerminalLayout.of(
+            rows = 30,
+            columns = 100,
+            fixedInput = true,
+            commandMenuRows = 6,
+        )
+
+        InputBox.resizeFixedLayout(output, oldLayout, newLayout, previousMenuRows = 1)
+
+        assertContains(output.content, Ansi.scrollRegion(1, newLayout.outputBottomRow))
+        assertContains(output.content, "${Ansi.cursor(oldLayout.inputTopRow - 1, 1)}${Ansi.CLEAR_LINE}")
+        assertContains(output.content, "${Ansi.cursor(newLayout.inputTopRow - 1, 1)}${Ansi.CLEAR_LINE}")
+    }
+
+    @Test
     fun rendersFixedCommandMenuAboveInputBox() {
         val output = RecordingOutput()
         val suggestions = listOf(

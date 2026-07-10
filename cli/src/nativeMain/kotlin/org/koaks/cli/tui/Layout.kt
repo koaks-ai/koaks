@@ -27,6 +27,21 @@ internal class TerminalLayout private constructor(
     val compactInputRow: Int = (rows - 1).coerceAtLeast(1)
     val menuTopRow: Int = (inputTopRow - commandMenuRows).coerceAtLeast(1)
 
+    override fun equals(other: Any?): Boolean =
+        other is TerminalLayout &&
+            fixedInput == other.fixedInput &&
+            rows == other.rows &&
+            columns == other.columns &&
+            commandMenuRows == other.commandMenuRows
+
+    override fun hashCode(): Int {
+        var result = fixedInput.hashCode()
+        result = 31 * result + rows
+        result = 31 * result + columns
+        result = 31 * result + commandMenuRows
+        return result
+    }
+
     companion object {
         /** Builds a layout, clamping to the minimum usable rows/columns. */
         fun of(

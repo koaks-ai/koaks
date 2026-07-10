@@ -71,6 +71,17 @@ internal object InputBox {
         output.write("${Ansi.RESET_SCROLL_REGION}${Ansi.cursor(layout.rows, 1)}${Ansi.RESET}")
     }
 
+    fun resizeFixedLayout(
+        output: Output,
+        oldLayout: TerminalLayout,
+        newLayout: TerminalLayout,
+        previousMenuRows: Int = 0,
+    ) {
+        output.write(Ansi.scrollRegion(1, newLayout.outputBottomRow))
+        clearReservedInputArea(output, oldLayout, previousMenuRows)
+        clearReservedInputArea(output, newLayout, previousMenuRows)
+    }
+
     fun renderFixed(output: Output, layout: TerminalLayout, theme: Theme) {
         output.write(Ansi.SAVE_CURSOR)
         drawCompactFixedInputBox(output, layout, theme)

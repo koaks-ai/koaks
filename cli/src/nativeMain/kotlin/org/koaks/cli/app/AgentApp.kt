@@ -32,7 +32,7 @@ internal class AgentApp(
 
     suspend fun run() {
         val theme = Theme(ansiEnabled(environment))
-        val layout = createLayout(environment, theme)
+        var layout = createLayout(environment, theme)
         var closedNormally = false
 
         if (layout.fixedInput) InputBox.enterFixedLayout(output, layout)
@@ -44,6 +44,7 @@ internal class AgentApp(
                 var lastEditorSnapshot: LineEditorSnapshot? = null
                 var staticMenuRows = 0
                 var fixedMenuRows = 0
+                layout = refreshLayout(layout, theme)
                 if (layout.fixedInput) {
                     InputBox.renderFixed(output, layout, theme)
                 } else {
@@ -64,6 +65,7 @@ internal class AgentApp(
                             commandNames = commands.commandNames,
                         ) { snapshot ->
                             lastEditorSnapshot = snapshot
+                            layout = refreshLayout(layout, theme, fixedMenuRows)
                             if (layout.fixedInput) {
                                 fixedMenuRows = InputBox.renderFixedEditor(
                                     output = output,
@@ -86,6 +88,7 @@ internal class AgentApp(
                 } else {
                     lineReader.readLine()
                 }?.trimEnd() ?: break
+                layout = refreshLayout(layout, theme, fixedMenuRows)
                 if (layout.fixedInput) {
                     InputBox.restoreOutputCursor(output, layout, theme, fixedMenuRows)
                 } else {
@@ -136,6 +139,24 @@ internal class AgentApp(
             }
             output.flush()
         }
+    }
+
+    private fun refreshLayout(current: TerminalLayout, theme: Theme, fixedMenuRows: Int = 0): TerminalLayout {
+        val next = createLayout(environment, theme)
+        if (next == current) return current
+
+        when {
+            current.fixedInput && next.fixedInput -> {
+                InputBox.resizeFixedLayout(output, current, next, fixedMenuRows)
+            }
+            current.fixedInput -> {
+                InputBox.leaveFixedLayout(output, current)
+            }
+            next.fixedInput -> {
+                InputBox.enterFixedLayout(output, next)
+            }
+        }
+        return next
     }
 
     private fun createLayout(env: Environment, theme: Theme): TerminalLayout {
