@@ -1,9 +1,11 @@
 package org.koaks.cli.app
 
+import org.koaks.cli.tui.Ansi
 import org.koaks.cli.tui.Output
 import org.koaks.cli.tui.Theme
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.model.ToolCall
+import kotlin.test.assertContains
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -117,6 +119,17 @@ class EventPrinterTest {
             """.trimIndent(),
             output.content(),
         )
+    }
+
+    @Test
+    fun dimsToolResultNameWithHeading() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = true))
+
+        printer.print(AgentEvent.ToolCallRequested(ToolCall("call-1", "Bash", """{"command":"ls"}""")))
+        printer.print(AgentEvent.ToolResult("call-1", "file.txt", isError = false))
+
+        assertContains(output.content(), "${Ansi.DIM}[tool result] Bash${Ansi.RESET}")
     }
 
     @Test

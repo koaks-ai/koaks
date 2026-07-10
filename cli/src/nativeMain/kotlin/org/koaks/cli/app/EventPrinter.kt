@@ -72,8 +72,8 @@ internal class EventPrinter(
         ensureLineStart()
 
         val toolName = toolNames[event.callId] ?: event.callId
-        val label = if (event.isError) theme.error("[tool error]") else theme.dim("[tool result]")
-        output.writeLine("$label $toolName")
+        val heading = if (event.isError) "[tool error] $toolName" else "[tool result] $toolName"
+        output.writeLine(if (event.isError) theme.error(heading) else theme.dim(heading))
 
         val preview = event.output.previewLines()
         preview.lines.forEach { line ->
