@@ -80,7 +80,7 @@ class InputBoxTest {
     }
 
     @Test
-    fun fixedOutputScrollRegionStopsRightAboveInputBox() {
+    fun fixedOutputScrollRegionStopsAboveCommandMenuReserve() {
         val output = RecordingOutput()
         val layout = TerminalLayout.of(
             rows = 40,
@@ -91,8 +91,8 @@ class InputBoxTest {
 
         InputBox.enterFixedLayout(output, layout)
 
-        assertEquals(layout.inputTopRow - 1, layout.outputBottomRow)
-        assertContains(output.content, Ansi.scrollRegion(1, layout.inputTopRow - 1))
+        assertEquals(layout.menuTopRow - 1, layout.outputBottomRow)
+        assertContains(output.content, Ansi.scrollRegion(1, layout.menuTopRow - 1))
         assertTrue(output.content.startsWith(Ansi.BLINKING_BAR_CURSOR))
     }
 

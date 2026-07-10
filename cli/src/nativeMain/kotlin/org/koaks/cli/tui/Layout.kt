@@ -18,14 +18,14 @@ internal class TerminalLayout private constructor(
     val columns: Int,
     val commandMenuRows: Int,
 ) {
-    val outputBottomRow: Int = (rows - INPUT_BOX_HEIGHT).coerceAtLeast(1)
     val inputTopRow: Int = (rows - INPUT_BOX_HEIGHT + 1).coerceAtLeast(1)
+    val menuTopRow: Int = (inputTopRow - commandMenuRows).coerceAtLeast(1)
+    val outputBottomRow: Int = (menuTopRow - 1).coerceAtLeast(1)
     val inputRow: Int = (rows - 1).coerceAtLeast(1)
     val inputBottomRow: Int = rows.coerceAtLeast(1)
     val reservedInputTopRow: Int = inputTopRow
     val compactInputTopRow: Int = (rows - INPUT_BOX_HEIGHT + 1).coerceAtLeast(1)
     val compactInputRow: Int = (rows - 1).coerceAtLeast(1)
-    val menuTopRow: Int = (inputTopRow - commandMenuRows).coerceAtLeast(1)
 
     override fun equals(other: Any?): Boolean =
         other is TerminalLayout &&
