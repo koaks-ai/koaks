@@ -23,8 +23,35 @@ class LineEditorTest {
 
         editor.accept(TerminalKey.Text("ex"))
         val prefixSnapshot = editor.snapshot()
-        assertEquals(2, prefixSnapshot.selectedSuggestionIndex)
+        assertEquals(listOf(LineSuggestion("/exit", "Quit")), prefixSnapshot.suggestions)
+        assertEquals(0, prefixSnapshot.selectedSuggestionIndex)
         assertEquals("/exit", prefixSnapshot.suggestions[prefixSnapshot.selectedSuggestionIndex!!].value)
+    }
+
+    @Test
+    fun filtersUnrelatedCommandsOutOfMenu() {
+        val editor = editor()
+
+        editor.accept(TerminalKey.Text("/zz"))
+
+        assertEquals(emptyList(), editor.snapshot().suggestions)
+        assertNull(editor.snapshot().selectedSuggestionIndex)
+    }
+
+    @Test
+    fun ordersBetterCommandMatchesFirst() {
+        val editor = editor(
+            listOf(
+                LineSuggestion("/exit", "Quit"),
+                LineSuggestion("/itinerary", "Show itinerary"),
+            )
+        )
+
+        editor.accept(TerminalKey.Text("/it"))
+        val snapshot = editor.snapshot()
+
+        assertEquals("/itinerary", snapshot.suggestions.first().value)
+        assertEquals(0, snapshot.selectedSuggestionIndex)
     }
 
     @Test
@@ -57,10 +84,10 @@ class LineEditorTest {
         assertEquals(5, editor.snapshot().recognizedCommandEnd)
     }
 
-    private fun editor(): LineEditor = LineEditor(
+    private fun editor(availableSuggestions: List<LineSuggestion> = suggestions): LineEditor = LineEditor(
         LineReadRequest(
-            suggestions = suggestions,
-            commandNames = suggestions.mapTo(mutableSetOf()) { it.value },
+            suggestions = availableSuggestions,
+            commandNames = availableSuggestions.mapTo(mutableSetOf()) { it.value },
             onUpdate = {},
         )
     )

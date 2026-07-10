@@ -8,6 +8,7 @@ import org.koaks.cli.tui.TerminalLayout
 import org.koaks.cli.tui.Theme
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertTrue
 
 class InputBoxTest {
     @Test
@@ -44,6 +45,7 @@ class InputBoxTest {
         val rows = InputBox.renderStaticEditor(output, Theme(enabled = true), snapshot, previousMenuRows = 0)
 
         assertContains(output.content, "${Ansi.BOLD}${Ansi.BLUE}/exit")
+        assertContains(output.content, Ansi.cursorUp(suggestions.size + 1))
         kotlin.test.assertEquals(suggestions.size, rows)
     }
 
@@ -62,6 +64,64 @@ class InputBoxTest {
         InputBox.renderFixedEditor(output, layout, Theme(enabled = true), snapshot)
 
         assertContains(output.content, Ansi.cursor(layout.compactInputRow, 11))
+    }
+
+    @Test
+    fun rendersFixedCommandMenuAboveInputBox() {
+        val output = RecordingOutput()
+        val suggestions = listOf(
+            LineSuggestion("/help", "Show help"),
+            LineSuggestion("/exit", "Quit"),
+        )
+        val layout = TerminalLayout.of(
+            rows = 40,
+            columns = 80,
+            fixedInput = true,
+            commandMenuRows = suggestions.size,
+        )
+        val snapshot = LineEditorSnapshot(
+            text = "/",
+            cursor = 1,
+            suggestions = suggestions,
+            selectedSuggestionIndex = 0,
+            recognizedCommandEnd = null,
+        )
+
+        InputBox.renderFixedEditor(output, layout, Theme(enabled = true), snapshot)
+
+        assertTrue(layout.menuTopRow < layout.inputTopRow)
+        assertTrue(output.content.indexOf(Ansi.cursor(layout.menuTopRow, 1)) <
+            output.content.indexOf(Ansi.cursor(layout.inputTopRow, 1)))
+        assertContains(output.content, "${Ansi.BOLD}${Ansi.BLUE}/help")
+    }
+
+    @Test
+    fun rendersFilteredFixedCommandMenuAdjacentToInputBox() {
+        val output = RecordingOutput()
+        val suggestions = listOf(
+            LineSuggestion("/exit", "Quit"),
+        )
+        val layout = TerminalLayout.of(
+            rows = 40,
+            columns = 80,
+            fixedInput = true,
+            commandMenuRows = 6,
+        )
+        val snapshot = LineEditorSnapshot(
+            text = "/ex",
+            cursor = 3,
+            suggestions = suggestions,
+            selectedSuggestionIndex = 0,
+            recognizedCommandEnd = null,
+        )
+
+        InputBox.renderFixedEditor(output, layout, Theme(enabled = true), snapshot)
+
+        val adjacentMenuCursor = Ansi.cursor(layout.inputTopRow - suggestions.size, 1)
+        assertContains(output.content, adjacentMenuCursor)
+        assertTrue(output.content.lastIndexOf(adjacentMenuCursor) <
+            output.content.indexOf("${Ansi.BOLD}${Ansi.BLUE}/exit"))
+        assertContains(output.content, "${Ansi.BOLD}${Ansi.BLUE}/exit")
     }
 }
 

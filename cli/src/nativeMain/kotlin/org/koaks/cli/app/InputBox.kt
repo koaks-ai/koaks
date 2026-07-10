@@ -8,8 +8,9 @@ import org.koaks.cli.tui.TextUtil
 import org.koaks.cli.tui.Theme
 
 internal object InputBox {
-    fun renderStaticStart(output: Output, theme: Theme) {
+    fun renderStaticStart(output: Output, theme: Theme, commandMenuRows: Int = 0) {
         output.writeLine()
+        repeat(commandMenuRows.coerceAtLeast(0)) { output.writeLine() }
         output.writeLine(theme.inputBorder(inputLine()))
         output.write("${theme.inputSide()} ${theme.inputPrompt()} ")
     }
@@ -28,11 +29,16 @@ internal object InputBox {
         val menuLines = commandMenuLines(snapshot, theme, PANEL_WIDTH - 2, snapshot.suggestions.size)
         val rowsToClear = maxOf(previousMenuRows, menuLines.size)
         output.write("\r${Ansi.CLEAR_LINE}${inputContent(snapshot, theme)}")
-        repeat(rowsToClear) { index ->
-            output.write("\n${Ansi.CLEAR_LINE}")
-            if (index < menuLines.size) output.write(menuLines[index])
+        if (rowsToClear > 0) {
+            output.write(Ansi.cursorUp(rowsToClear + 1))
+            val firstMenuLineIndex = rowsToClear - menuLines.size
+            repeat(rowsToClear) { index ->
+                output.write("\r${Ansi.CLEAR_LINE}")
+                if (index >= firstMenuLineIndex) output.write(menuLines[index - firstMenuLineIndex])
+                if (index < rowsToClear - 1) output.write(Ansi.cursorDown(1))
+            }
+            output.write(Ansi.cursorDown(2))
         }
-        output.write(Ansi.cursorUp(rowsToClear))
         output.write(Ansi.cursorColumn(inputCursorColumn(snapshot)))
         return menuLines.size
     }
@@ -44,8 +50,14 @@ internal object InputBox {
         menuRows: Int,
     ) {
         output.write("\r${Ansi.CLEAR_LINE}${inputContent(snapshot, theme)}")
-        repeat(menuRows) { output.write("\n${Ansi.CLEAR_LINE}") }
-        output.write(Ansi.cursorUp(menuRows))
+        if (menuRows > 0) {
+            output.write(Ansi.cursorUp(menuRows + 1))
+            repeat(menuRows) { index ->
+                output.write("\r${Ansi.CLEAR_LINE}")
+                if (index < menuRows - 1) output.write(Ansi.cursorDown(1))
+            }
+            output.write(Ansi.cursorDown(2))
+        }
         output.write("\r${Ansi.CLEAR_LINE}")
         output.writeLine(inputContent(snapshot, theme))
         output.writeLine(theme.inputBorder(inputLine()))
@@ -91,7 +103,7 @@ internal object InputBox {
     }
 
     private fun clearReservedInputArea(output: Output, layout: TerminalLayout) {
-        for (row in layout.inputTopRow..layout.inputBottomRow) {
+        for (row in layout.reservedInputTopRow..layout.inputBottomRow) {
             output.write("${Ansi.cursor(row, 1)}${Ansi.CLEAR_LINE}")
         }
     }
@@ -120,13 +132,14 @@ internal object InputBox {
         snapshot: LineEditorSnapshot,
     ) {
         val line = fixedInputLine(layout)
+        val menuLines = commandMenuLines(snapshot, theme, layout.columns - 2, layout.commandMenuRows)
+        val menuTopRow = layout.inputTopRow - menuLines.size
+        menuLines.forEachIndexed { index, menuLine ->
+            output.write(Ansi.cursor(menuTopRow + index, 1))
+            output.write("${theme.inputSide()} $menuLine")
+        }
         output.write("${Ansi.cursor(layout.inputTopRow, 1)}${theme.inputBorder(line)}")
         output.write("${Ansi.cursor(layout.inputRow, 1)}${inputContent(snapshot, theme)}")
-        val menuLines = commandMenuLines(snapshot, theme, layout.columns - 2, layout.commandMenuRows)
-        repeat(layout.commandMenuRows) { index ->
-            output.write(Ansi.cursor(layout.menuTopRow + index, 1))
-            if (index < menuLines.size) output.write("${theme.inputSide()} ${menuLines[index]}")
-        }
         output.write("${Ansi.cursor(layout.inputBottomRow, 1)}${theme.inputBorder(line)}")
     }
 

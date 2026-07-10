@@ -46,7 +46,11 @@ internal class AgentApp(
                 if (layout.fixedInput) {
                     InputBox.renderFixed(output, layout, theme)
                 } else {
-                    InputBox.renderStaticStart(output, theme)
+                    InputBox.renderStaticStart(
+                        output = output,
+                        theme = theme,
+                        commandMenuRows = if (theme.enabled) commands.suggestions.size else 0,
+                    )
                 }
                 output.flush()
 

@@ -33,6 +33,9 @@ internal object Ansi {
     /** Moves the cursor up by [rows] without changing its column. */
     fun cursorUp(rows: Int): String = if (rows > 0) "$CSI${rows}A" else ""
 
+    /** Moves the cursor down by [rows] without changing its column. */
+    fun cursorDown(rows: Int): String = if (rows > 0) "$CSI${rows}B" else ""
+
     /** Moves the cursor to a 1-based column without changing its row. */
     fun cursorColumn(column: Int): String = "$CSI${column.coerceAtLeast(1)}G"
 

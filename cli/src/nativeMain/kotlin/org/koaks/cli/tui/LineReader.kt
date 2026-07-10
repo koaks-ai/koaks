@@ -66,10 +66,10 @@ internal class LineEditor(private val request: LineReadRequest) {
     private var manuallySelectedIndex: Int? = null
 
     fun snapshot(): LineEditorSnapshot {
+        val suggestions = currentSuggestions()
         val selectedIndex = if (menuVisible()) {
-            manuallySelectedIndex ?: request.suggestions.indexOfFirst { suggestion ->
-                suggestion.value.startsWith(text, ignoreCase = true)
-            }.takeIf { it >= 0 }
+            manuallySelectedIndex?.coerceAtMost(suggestions.lastIndex)
+                ?: suggestions.indices.firstOrNull()
         } else {
             null
         }
@@ -78,7 +78,7 @@ internal class LineEditor(private val request: LineReadRequest) {
         return LineEditorSnapshot(
             text = text,
             cursor = cursor,
-            suggestions = request.suggestions,
+            suggestions = suggestions,
             selectedSuggestionIndex = selectedIndex,
             recognizedCommandEnd = commandEnd.takeIf { command in request.commandNames },
         )
@@ -87,9 +87,9 @@ internal class LineEditor(private val request: LineReadRequest) {
     fun accept(key: TerminalKey): LineEditResult {
         when (key) {
             TerminalKey.Enter -> {
-                val selected = selectedIndex()
-                if (menuVisible() && selected != null) {
-                    text = request.suggestions[selected].value
+                val suggestion = selectedSuggestion()
+                if (menuVisible() && suggestion != null) {
+                    text = suggestion.value
                     cursor = text.length
                 }
                 return LineEditResult.Submit(text)
@@ -99,8 +99,9 @@ internal class LineEditor(private val request: LineReadRequest) {
             TerminalKey.Delete -> deleteAtCursor()
             TerminalKey.Left -> cursor = previousCharacterIndex(text, cursor)
             TerminalKey.Right -> {
-                if (cursor == text.length && menuVisible() && selectedIndex() != null &&
-                    request.suggestions[selectedIndex()!!].value.length > text.length
+                val suggestion = selectedSuggestion()
+                if (cursor == text.length && menuVisible() && suggestion != null &&
+                    suggestion.value.length > text.length
                 ) {
                     acceptSuggestion()
                 } else {
@@ -139,24 +140,64 @@ internal class LineEditor(private val request: LineReadRequest) {
     }
 
     private fun moveSelection(delta: Int) {
-        if (!menuVisible() || request.suggestions.isEmpty()) return
+        val suggestions = currentSuggestions()
+        if (!menuVisible() || suggestions.isEmpty()) return
         val current = selectedIndex() ?: if (delta > 0) -1 else 0
-        manuallySelectedIndex = (current + delta).mod(request.suggestions.size)
+        manuallySelectedIndex = (current + delta).mod(suggestions.size)
     }
 
     private fun acceptSuggestion() {
         if (!menuVisible()) return
-        val index = selectedIndex() ?: return
-        text = request.suggestions[index].value
+        val suggestion = selectedSuggestion() ?: return
+        text = suggestion.value
         cursor = text.length
-        manuallySelectedIndex = index
+        manuallySelectedIndex = selectedIndex()
     }
 
     private fun selectedIndex(): Int? = snapshot().selectedSuggestionIndex
 
+    private fun selectedSuggestion(): LineSuggestion? {
+        val suggestions = currentSuggestions()
+        val index = selectedIndex() ?: return null
+        return suggestions.getOrNull(index)
+    }
+
+    private fun currentSuggestions(): List<LineSuggestion> {
+        if (!menuVisible()) return emptyList()
+        if (text == "/") return request.suggestions
+
+        val query = text.lowercase()
+        val bareQuery = query.removePrefix("/")
+        return request.suggestions.mapIndexedNotNull { index, suggestion ->
+            val value = suggestion.value.lowercase()
+            val bareValue = value.removePrefix("/")
+            val score = when {
+                value == query -> 0
+                value.startsWith(query) -> 1
+                bareValue == bareQuery -> 2
+                bareValue.startsWith(bareQuery) -> 3
+                value.contains(query) -> 4
+                bareValue.contains(bareQuery) -> 5
+                else -> return@mapIndexedNotNull null
+            }
+            ScoredSuggestion(score, suggestion.value.length, index, suggestion)
+        }.sortedWith(
+            compareBy<ScoredSuggestion> { it.score }
+                .thenBy { it.length }
+                .thenBy { it.index }
+        ).map { it.suggestion }
+    }
+
     private fun menuVisible(): Boolean =
         text.startsWith("/") && text.none(Char::isWhitespace)
 }
+
+private data class ScoredSuggestion(
+    val score: Int,
+    val length: Int,
+    val index: Int,
+    val suggestion: LineSuggestion,
+)
 
 internal sealed interface TerminalKey {
     data class Text(val value: String) : TerminalKey

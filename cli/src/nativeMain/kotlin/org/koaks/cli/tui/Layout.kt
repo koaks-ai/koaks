@@ -21,12 +21,13 @@ internal class TerminalLayout private constructor(
     private val reservedInputHeight: Int = INPUT_BOX_HEIGHT + commandMenuRows
 
     val outputBottomRow: Int = (rows - reservedInputHeight).coerceAtLeast(1)
-    val inputTopRow: Int = (rows - reservedInputHeight + 1).coerceAtLeast(1)
-    val inputRow: Int = (inputTopRow + 1).coerceAtMost(rows)
+    val reservedInputTopRow: Int = (outputBottomRow + 1).coerceAtMost(rows)
+    val inputTopRow: Int = (rows - INPUT_BOX_HEIGHT + 1).coerceAtLeast(1)
+    val inputRow: Int = (rows - 1).coerceAtLeast(1)
     val inputBottomRow: Int = rows.coerceAtLeast(1)
     val compactInputTopRow: Int = (rows - INPUT_BOX_HEIGHT + 1).coerceAtLeast(1)
     val compactInputRow: Int = (rows - 1).coerceAtLeast(1)
-    val menuTopRow: Int = inputRow + 1
+    val menuTopRow: Int = (inputTopRow - commandMenuRows).coerceAtLeast(1)
 
     companion object {
         /** Builds a layout, clamping to the minimum usable rows/columns. */
