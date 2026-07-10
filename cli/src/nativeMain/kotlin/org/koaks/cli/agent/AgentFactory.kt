@@ -1,5 +1,7 @@
 package org.koaks.cli.agent
 
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.koaks.cli.config.AgentConfig
 import org.koaks.cli.config.CliException
 import org.koaks.cli.config.Provider
@@ -49,6 +51,9 @@ internal object AgentFactory {
                         modelName = config.modelName,
                     ) {
                         temperature = config.temperature
+                        if (config.showReasoning) {
+                            thinking = anthropicThinking()
+                        }
                     }
 
                     Provider.OLLAMA -> ollama(
@@ -67,4 +72,11 @@ internal object AgentFactory {
     private fun missingApiKey(provider: Provider): Nothing {
         throw CliException("Missing API key for ${provider.id}. Add api_key under [providers.${provider.id}] in ~/.koaks/config.toml.")
     }
+
+    private fun anthropicThinking() = buildJsonObject {
+        put("type", "enabled")
+        put("budget_tokens", ANTHROPIC_THINKING_BUDGET_TOKENS)
+    }
+
+    private const val ANTHROPIC_THINKING_BUDGET_TOKENS = 1024
 }

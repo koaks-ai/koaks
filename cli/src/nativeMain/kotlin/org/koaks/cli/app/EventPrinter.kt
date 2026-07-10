@@ -12,6 +12,7 @@ internal class EventPrinter(
     private val toolNames = mutableMapOf<String, String>()
     private var assistantPromptActive = false
     private var assistantPromptPrinted = false
+    private var reasoningPromptActive = false
     private var needsAssistantContinuationGap = false
     private var contentStarted = false
     private var endedWithNewLine = false
@@ -27,9 +28,9 @@ internal class EventPrinter(
 
             is AgentEvent.ReasoningDelta -> {
                 if (showReasoning) {
-                    ensureAssistantPrompt()
+                    ensureReasoningPrompt()
                     markContent(event.text)
-                    output.write(event.text)
+                    output.write(theme.dim(event.text))
                     output.flush()
                 }
             }
@@ -63,6 +64,7 @@ internal class EventPrinter(
         output.writeLine(theme.dim("[tool call] ${event.call.name}$suffix"))
         markLineWritten()
         assistantPromptActive = false
+        reasoningPromptActive = false
         needsAssistantContinuationGap = true
     }
 
@@ -84,6 +86,7 @@ internal class EventPrinter(
         }
         markLineWritten()
         assistantPromptActive = false
+        reasoningPromptActive = false
         needsAssistantContinuationGap = true
     }
 
@@ -100,6 +103,20 @@ internal class EventPrinter(
         }
         needsAssistantContinuationGap = false
         assistantPromptActive = true
+        reasoningPromptActive = false
+    }
+
+    private fun ensureReasoningPrompt() {
+        if (reasoningPromptActive) return
+
+        ensureLineStart()
+        if (needsAssistantContinuationGap) output.writeLine()
+        output.write(theme.dim("[reasoning] "))
+        contentStarted = true
+        endedWithNewLine = false
+        needsAssistantContinuationGap = false
+        assistantPromptActive = false
+        reasoningPromptActive = true
     }
 
     private fun ensureLineStart() {

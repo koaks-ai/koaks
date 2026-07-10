@@ -1,5 +1,6 @@
 package org.koaks.provider.anthropic
 
+import kotlinx.serialization.json.JsonObject
 import org.koaks.framework.loop.AgentDSL
 import org.koaks.framework.loop.ModelScope
 import org.koaks.framework.loop.ModelSelection
@@ -36,6 +37,7 @@ class AnthropicConfig(
     var topP: Double? = null
     var topK: Int? = null
     var stopSequences: List<String>? = null
+    var thinking: JsonObject? = null
 
     /** The `anthropic-version` header sent with every request. */
     var anthropicVersion: String = ANTHROPIC_DEFAULT_VERSION
@@ -59,6 +61,7 @@ class AnthropicConfig(
         topP = topP,
         topK = topK,
         stopSequences = stopSequences,
+        thinking = thinking,
     )
 
     internal fun capabilities(): ModelCapabilities = caps
