@@ -32,15 +32,15 @@ internal object WelcomeView {
             output.write("${Ansi.CLEAR_SCREEN}${Ansi.HOME}")
         }
 
-        output.writeLine(theme.dim(panelLine()))
-        PIXEL_LOGO.forEach { line ->
+        output.writeLine(theme.dim(panelLine('┌', '┐')))
+        PIXEL_LOGO_SHADOW.forEach { line ->
             output.writeLine(panelRow(styleLogoShadow(line, theme)))
         }
-        output.writeLine(theme.dim(panelLine()))
+        output.writeLine(theme.dim(panelLine('├', '┤')))
         output.writeLine(panelRow("${theme.label("Provider")} ${config.provider.id}  ${theme.label("Model")} ${config.modelName}"))
         output.writeLine(panelRow("${theme.label("Thread")} ${config.threadId}  ${theme.label("History")} ${config.historyMessages} messages"))
         output.writeLine(panelRow(theme.dim("Type /help for commands. Type /exit, /quit, or :q to leave.")))
-        output.writeLine(theme.dim(panelLine()))
+        output.writeLine(theme.dim(panelLine('└', '┘')))
     }
 
     private fun styleLogoShadow(line: String, theme: Theme): String {
@@ -61,12 +61,12 @@ internal object WelcomeView {
         }
     }
 
-    private fun panelLine(): String =
-        "+" + TextUtil.rule('-', PANEL_WIDTH - 2) + "+"
+    private fun panelLine(left: Char, right: Char): String =
+        left + TextUtil.rule('─', PANEL_WIDTH - 2) + right
 
     private fun panelRow(content: String): String {
         val visibleWidth = PANEL_WIDTH - 4
         val display = TextUtil.truncateVisible(content, visibleWidth)
-        return "| ${TextUtil.padVisible(display, visibleWidth)} |"
+        return "│ ${TextUtil.padVisible(display, visibleWidth)} │"
     }
 }
