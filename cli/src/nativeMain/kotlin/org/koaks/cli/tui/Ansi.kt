@@ -19,6 +19,12 @@ internal object Ansi {
     val GREEN = "${CSI}32m"
     val YELLOW = "${CSI}33m"
     val RED = "${CSI}31m"
+    val CODE_TEXT = "${CSI}38;5;250m"
+    val CODE_KEYWORD = "${CSI}38;5;81m"
+    val CODE_STRING = "${CSI}38;5;114m"
+    val CODE_COMMENT = "${CSI}38;5;244m"
+    val CODE_NUMBER = "${CSI}38;5;215m"
+    val CODE_LANGUAGE = "${CSI}38;5;117m"
 
     val CLEAR_SCREEN = "${CSI}2J"
     val CLEAR_LINE = "${CSI}2K"

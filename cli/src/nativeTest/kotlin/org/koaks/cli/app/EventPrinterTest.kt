@@ -85,6 +85,131 @@ class EventPrinterTest {
     }
 
     @Test
+    fun rendersAssistantMarkdownSubsetWithoutAnsiWhenThemeDisabled() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+
+        printer.print(AgentEvent.TextDelta("用 **加粗** 和 `关键词`。\n"))
+        printer.print(AgentEvent.TextDelta("```kotlin\nval answer = 42\n```\n"))
+
+        assertEquals(
+            "◆ 用 加粗 和 关键词。\n" + plainCodeBlock("kotlin", "val answer = 42"),
+            output.content(),
+        )
+    }
+
+    @Test
+    fun rendersAssistantMarkdownSubsetAcrossStreamingDeltas() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+
+        printer.print(AgentEvent.TextDelta("这是 **加"))
+        printer.print(AgentEvent.TextDelta("粗** 和 `关键"))
+        printer.print(AgentEvent.TextDelta("词`。"))
+
+        assertEquals("◆ 这是 加粗 和 关键词。", output.content())
+    }
+
+    @Test
+    fun rendersCodeBlockAtStartOnItsOwnLine() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+
+        printer.print(AgentEvent.TextDelta("```kotlin\ncode block\n```\n"))
+
+        assertEquals(
+            "◆ \n" + plainCodeBlock("kotlin", "code block"),
+            output.content(),
+        )
+    }
+
+    @Test
+    fun streamsCodeBlockContentBeforeClosingFenceArrives() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+
+        printer.print(AgentEvent.TextDelta("```kotlin\n"))
+        printer.print(AgentEvent.TextDelta("code block\n"))
+
+        assertEquals(
+            "◆ \n" + plainCodeBlockStart("kotlin") + plainCodeLine("code block"),
+            output.content(),
+        )
+
+        printer.print(AgentEvent.TextDelta("```\n"))
+
+        assertEquals(
+            "◆ \n" + plainCodeBlock("kotlin", "code block"),
+            output.content(),
+        )
+    }
+
+    @Test
+    fun rendersAssistantMarkdownSubsetWithAnsiWhenThemeEnabled() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = true))
+
+        printer.print(AgentEvent.TextDelta("**加粗** `关键词`\n```kotlin\nval answer = 42\n```\n"))
+
+        val content = output.content()
+        assertContains(content, "${Ansi.BOLD}加粗${Ansi.RESET}")
+        assertContains(content, "${Ansi.BLUE}关键词${Ansi.RESET}")
+        assertContains(content, "${Ansi.BOLD}${Ansi.CODE_LANGUAGE}kotlin${Ansi.RESET}")
+        assertContains(content, "${Ansi.BOLD}${Ansi.CODE_KEYWORD}val${Ansi.RESET}")
+        assertContains(content, "${Ansi.CODE_NUMBER}42${Ansi.RESET}")
+    }
+
+    @Test
+    fun rendersAdditionalCodeLanguagesWithAnsiWhenThemeEnabled() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = true))
+
+        listOf(
+            "c" to "int main() { return 0; }\n",
+            "cpp" to "class Box { public: int x; }\n",
+            "java" to "public class Main {}\n",
+            "python3" to "def greet(): # hello\n",
+            "rust" to "fn main() { let x = 1; }\n",
+            "js" to "const x = 1 // hello\n",
+            "nodejs" to "function run() { return 1 }\n",
+            "html" to "<div class=\"x\">hi</div>\n",
+            "xml" to "<node id=\"1\" />\n",
+        ).forEach { (language, code) ->
+            printer.print(AgentEvent.TextDelta("```$language\n$code```\n"))
+        }
+
+        val content = output.content()
+        listOf("c", "cpp", "java", "python3", "rust", "js", "nodejs", "html", "xml").forEach { language ->
+            assertContains(content, "${Ansi.BOLD}${Ansi.CODE_LANGUAGE}$language${Ansi.RESET}")
+        }
+        listOf("int", "class", "public", "def", "fn", "const", "function", "div", "node").forEach { keyword ->
+            assertContains(content, "${Ansi.BOLD}${Ansi.CODE_KEYWORD}$keyword${Ansi.RESET}")
+        }
+        assertContains(content, "${Ansi.CODE_COMMENT}# hello${Ansi.RESET}")
+        assertContains(content, "${Ansi.CODE_COMMENT}// hello${Ansi.RESET}")
+        assertContains(content, "${Ansi.CODE_STRING}\"x\"${Ansi.RESET}")
+        assertContains(content, "${Ansi.CODE_STRING}\"1\"${Ansi.RESET}")
+    }
+
+    @Test
+    fun wrapsLongCodeLinesInsteadOfTruncating() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+        val longLine = "const message = \"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-tail\";"
+
+        printer.print(AgentEvent.TextDelta("```js\n$longLine\n```\n"))
+
+        assertEquals(
+            "◆ \n" + plainCodeBlock(
+                "js",
+                "const message = \"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234",
+                "56789-tail\";",
+            ),
+            output.content(),
+        )
+    }
+
+    @Test
     fun separatesReasoningFromToolCallWhenEnabled() {
         val output = BufferOutput()
         val printer = EventPrinter(showReasoning = true, output = output, theme = Theme(enabled = false))
@@ -191,3 +316,21 @@ private class BufferOutput : Output {
 
     fun content(): String = builder.toString()
 }
+
+private fun plainCodeBlock(language: String, vararg lines: String): String =
+    buildString {
+        append(plainCodeBlockStart(language))
+        lines.forEach { append(plainCodeLine(it)) }
+        append(plainCodeBlockEnd())
+    }
+
+private fun plainCodeBlockStart(language: String): String {
+    val remaining = PANEL_WIDTH - "┌─ ".length - language.length - "┐".length
+    return "┌─ $language${"─".repeat(remaining)}┐\n"
+}
+
+private fun plainCodeLine(line: String): String =
+    "│ ${line.padEnd(PANEL_WIDTH - 4)} │\n"
+
+private fun plainCodeBlockEnd(): String =
+    "└${"─".repeat(PANEL_WIDTH - 2)}┘\n"

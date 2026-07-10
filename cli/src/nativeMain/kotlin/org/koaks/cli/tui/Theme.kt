@@ -12,6 +12,15 @@ internal class Theme(val enabled: Boolean) {
     fun warn(text: String): String = color(Ansi.YELLOW, text)
     fun error(text: String): String = color(Ansi.RED, text)
     fun command(text: String): String = color(Ansi.BLUE, text)
+    fun bold(text: String): String = color(Ansi.BOLD, text)
+    fun inlineCode(text: String): String = color(Ansi.BLUE, text)
+    fun codeBlockFrame(text: String): String = color(Ansi.DIM, text)
+    fun codeBlockLanguage(text: String): String = color(Ansi.BOLD + Ansi.CODE_LANGUAGE, text)
+    fun codeBlockText(text: String): String = color(Ansi.CODE_TEXT, text)
+    fun codeKeyword(text: String): String = color(Ansi.BOLD + Ansi.CODE_KEYWORD, text)
+    fun codeString(text: String): String = color(Ansi.CODE_STRING, text)
+    fun codeComment(text: String): String = color(Ansi.CODE_COMMENT, text)
+    fun codeNumber(text: String): String = color(Ansi.CODE_NUMBER, text)
 
     /** The assistant message marker shown before the first text delta. */
     fun assistantMark(): String = color(Ansi.BOLD + Ansi.CYAN, "◆")

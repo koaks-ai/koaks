@@ -1,6 +1,7 @@
 package org.koaks.cli.app
 
 import org.koaks.cli.tui.Output
+import org.koaks.cli.tui.TerminalMarkdownRenderer
 import org.koaks.cli.tui.Theme
 import org.koaks.framework.loop.AgentEvent
 
@@ -16,13 +17,15 @@ internal class EventPrinter(
     private var needsAssistantContinuationGap = false
     private var contentStarted = false
     private var endedWithNewLine = false
+    private val markdown = TerminalMarkdownRenderer(theme, PANEL_WIDTH)
 
     fun print(event: AgentEvent) {
         when (event) {
             is AgentEvent.TextDelta -> {
                 ensureAssistantPrompt()
-                markContent(event.text)
-                output.write(event.text)
+                val rendered = markdown.render(event.text)
+                markContent(rendered)
+                output.write(rendered)
                 output.flush()
             }
 
@@ -36,15 +39,18 @@ internal class EventPrinter(
             }
 
             is AgentEvent.Completed -> {
+                flushAssistantMarkdown()
                 if (!endedWithNewLine) output.writeLine()
             }
 
             is AgentEvent.Terminated -> {
+                flushAssistantMarkdown()
                 if (!endedWithNewLine) output.writeLine()
                 output.writeLine(theme.warn("[terminated] ${event.reason}"))
             }
 
             is AgentEvent.Failed -> {
+                flushAssistantMarkdown()
                 ensureLineStart()
                 output.writeLine(theme.error("[error] ${event.error.message}"))
             }
@@ -56,6 +62,7 @@ internal class EventPrinter(
     }
 
     private fun printToolCall(event: AgentEvent.ToolCallRequested) {
+        flushAssistantMarkdown()
         toolNames[event.call.id] = event.call.name
         val wasReasoningActive = reasoningPromptActive
         ensureLineStart()
@@ -71,6 +78,7 @@ internal class EventPrinter(
     }
 
     private fun printToolResult(event: AgentEvent.ToolResult) {
+        flushAssistantMarkdown()
         ensureLineStart()
 
         val toolName = toolNames[event.callId] ?: event.callId
@@ -130,6 +138,15 @@ internal class EventPrinter(
     private fun markContent(text: String) {
         contentStarted = true
         if (text.isNotEmpty()) endedWithNewLine = text.endsWith("\n")
+    }
+
+    private fun flushAssistantMarkdown() {
+        val rendered = markdown.finish()
+        if (rendered.isNotEmpty()) {
+            markContent(rendered)
+            output.write(rendered)
+            output.flush()
+        }
     }
 
     private fun markLineWritten() {
