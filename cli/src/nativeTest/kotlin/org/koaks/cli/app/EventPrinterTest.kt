@@ -22,7 +22,7 @@ class EventPrinterTest {
 
         assertEquals(
             """
-            [koaks] 让我查看一下当前文件夹的内容。
+            ◆ 让我查看一下当前文件夹的内容。
             [tool call] Bash {"command":"ls -la"}
             [tool result] Bash
               file.txt
@@ -48,7 +48,7 @@ class EventPrinterTest {
             [tool result] Bash
               file.txt
             
-            [koaks] 当前文件夹有 file.txt
+            ◆ 当前文件夹有 file.txt
             """.trimIndent(),
             output.content(),
         )
@@ -67,7 +67,7 @@ class EventPrinterTest {
             """
             先分析一下问题。
 
-            [koaks] 答案来了。
+            ◆ 答案来了。
             """.trimIndent(),
             output.content(),
         )
@@ -81,7 +81,7 @@ class EventPrinterTest {
         printer.print(AgentEvent.ReasoningDelta("隐藏思考"))
         printer.print(AgentEvent.TextDelta("只显示答案。"))
 
-        assertEquals("[koaks] 只显示答案。", output.content())
+        assertEquals("◆ 只显示答案。", output.content())
     }
 
     @Test

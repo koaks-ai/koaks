@@ -100,7 +100,7 @@ internal class EventPrinter(
         if (wasReasoningActive) output.writeLine()
         if (needsAssistantContinuationGap) output.writeLine()
         if (!assistantPromptPrinted) {
-            output.write("${theme.prompt("koaks")} ")
+            output.write("${theme.assistantMark()} ")
             contentStarted = true
             endedWithNewLine = false
             assistantPromptPrinted = true
