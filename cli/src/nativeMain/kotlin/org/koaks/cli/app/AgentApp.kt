@@ -43,6 +43,7 @@ internal class AgentApp(
             while (true) {
                 var lastEditorSnapshot: LineEditorSnapshot? = null
                 var staticMenuRows = 0
+                var fixedMenuRows = 0
                 if (layout.fixedInput) {
                     InputBox.renderFixed(output, layout, theme)
                 } else {
@@ -64,7 +65,13 @@ internal class AgentApp(
                         ) { snapshot ->
                             lastEditorSnapshot = snapshot
                             if (layout.fixedInput) {
-                                InputBox.renderFixedEditor(output, layout, theme, snapshot)
+                                fixedMenuRows = InputBox.renderFixedEditor(
+                                    output = output,
+                                    layout = layout,
+                                    theme = theme,
+                                    snapshot = snapshot,
+                                    previousMenuRows = fixedMenuRows,
+                                )
                             } else {
                                 staticMenuRows = InputBox.renderStaticEditor(
                                     output = output,
@@ -80,7 +87,7 @@ internal class AgentApp(
                     lineReader.readLine()
                 }?.trimEnd() ?: break
                 if (layout.fixedInput) {
-                    InputBox.restoreOutputCursor(output, layout, theme)
+                    InputBox.restoreOutputCursor(output, layout, theme, fixedMenuRows)
                 } else {
                     val snapshot = lastEditorSnapshot
                     if (snapshot == null) {

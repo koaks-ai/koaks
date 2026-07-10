@@ -8,6 +8,7 @@ import org.koaks.cli.tui.TerminalLayout
 import org.koaks.cli.tui.Theme
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class InputBoxTest {
@@ -67,6 +68,22 @@ class InputBoxTest {
     }
 
     @Test
+    fun fixedOutputScrollRegionStopsRightAboveInputBox() {
+        val output = RecordingOutput()
+        val layout = TerminalLayout.of(
+            rows = 40,
+            columns = 80,
+            fixedInput = true,
+            commandMenuRows = 6,
+        )
+
+        InputBox.enterFixedLayout(output, layout)
+
+        assertEquals(layout.inputTopRow - 1, layout.outputBottomRow)
+        assertContains(output.content, Ansi.scrollRegion(1, layout.inputTopRow - 1))
+    }
+
+    @Test
     fun rendersFixedCommandMenuAboveInputBox() {
         val output = RecordingOutput()
         val suggestions = listOf(
@@ -87,8 +104,9 @@ class InputBoxTest {
             recognizedCommandEnd = null,
         )
 
-        InputBox.renderFixedEditor(output, layout, Theme(enabled = true), snapshot)
+        val rows = InputBox.renderFixedEditor(output, layout, Theme(enabled = true), snapshot)
 
+        assertEquals(suggestions.size, rows)
         assertTrue(layout.menuTopRow < layout.inputTopRow)
         assertTrue(output.content.indexOf(Ansi.cursor(layout.menuTopRow, 1)) <
             output.content.indexOf(Ansi.cursor(layout.inputTopRow, 1)))
@@ -115,8 +133,9 @@ class InputBoxTest {
             recognizedCommandEnd = null,
         )
 
-        InputBox.renderFixedEditor(output, layout, Theme(enabled = true), snapshot)
+        val rows = InputBox.renderFixedEditor(output, layout, Theme(enabled = true), snapshot)
 
+        assertEquals(suggestions.size, rows)
         val adjacentMenuCursor = Ansi.cursor(layout.inputTopRow - suggestions.size, 1)
         assertContains(output.content, adjacentMenuCursor)
         assertTrue(output.content.lastIndexOf(adjacentMenuCursor) <

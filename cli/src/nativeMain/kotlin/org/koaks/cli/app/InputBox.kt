@@ -83,27 +83,32 @@ internal object InputBox {
         layout: TerminalLayout,
         theme: Theme,
         snapshot: LineEditorSnapshot,
-    ) {
-        clearReservedInputArea(output, layout)
-        if (snapshot.menuVisible) {
-            drawExpandedFixedInputBox(output, layout, theme, snapshot)
+        previousMenuRows: Int = 0,
+    ): Int {
+        val menuLines = commandMenuLines(snapshot, theme, layout.columns - 2, layout.commandMenuRows)
+        val menuRowsToClear = maxOf(previousMenuRows, menuLines.size)
+        clearReservedInputArea(output, layout, menuRowsToClear)
+        if (menuLines.isNotEmpty()) {
+            drawExpandedFixedInputBox(output, layout, theme, snapshot, menuLines)
             output.write(Ansi.cursor(layout.inputRow, inputCursorColumn(snapshot)))
         } else {
             drawCompactFixedInputBox(output, layout, theme, snapshot)
             output.write(Ansi.cursor(layout.compactInputRow, inputCursorColumn(snapshot)))
         }
+        return menuLines.size
     }
 
-    fun restoreOutputCursor(output: Output, layout: TerminalLayout, theme: Theme) {
+    fun restoreOutputCursor(output: Output, layout: TerminalLayout, theme: Theme, menuRows: Int = 0) {
         output.write(Ansi.RESTORE_CURSOR)
         output.write(Ansi.SAVE_CURSOR)
-        clearReservedInputArea(output, layout)
+        clearReservedInputArea(output, layout, menuRows)
         drawCompactFixedInputBox(output, layout, theme)
         output.write(Ansi.RESTORE_CURSOR)
     }
 
-    private fun clearReservedInputArea(output: Output, layout: TerminalLayout) {
-        for (row in layout.reservedInputTopRow..layout.inputBottomRow) {
+    private fun clearReservedInputArea(output: Output, layout: TerminalLayout, menuRows: Int) {
+        val topRow = (layout.inputTopRow - menuRows).coerceAtLeast(1)
+        for (row in topRow..layout.inputBottomRow) {
             output.write("${Ansi.cursor(row, 1)}${Ansi.CLEAR_LINE}")
         }
     }
@@ -130,9 +135,9 @@ internal object InputBox {
         layout: TerminalLayout,
         theme: Theme,
         snapshot: LineEditorSnapshot,
+        menuLines: List<String>,
     ) {
         val line = fixedInputLine(layout)
-        val menuLines = commandMenuLines(snapshot, theme, layout.columns - 2, layout.commandMenuRows)
         val menuTopRow = layout.inputTopRow - menuLines.size
         menuLines.forEachIndexed { index, menuLine ->
             output.write(Ansi.cursor(menuTopRow + index, 1))
