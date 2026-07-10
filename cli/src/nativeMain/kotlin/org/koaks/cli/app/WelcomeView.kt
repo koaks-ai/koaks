@@ -32,15 +32,15 @@ internal object WelcomeView {
             output.write("${Ansi.CLEAR_SCREEN}${Ansi.HOME}")
         }
 
-        output.writeLine(theme.dim(panelLine('┌', '┐')))
+        output.writeLine(panelLine('┌', '┐'))
         PIXEL_LOGO_SHADOW.forEach { line ->
             output.writeLine(panelRow(styleLogoShadow(line, theme)))
         }
-        output.writeLine(theme.dim(panelLine('├', '┤')))
+        output.writeLine(panelLine('├', '┤'))
         output.writeLine(panelRow("${theme.label("Provider")} ${config.provider.id}  ${theme.label("Model")} ${config.modelName}"))
         output.writeLine(panelRow("${theme.label("Thread")} ${config.threadId}  ${theme.label("History")} ${config.historyMessages} messages"))
         output.writeLine(panelRow(theme.dim("Type /help for commands. Type /exit, /quit, or :q to leave.")))
-        output.writeLine(theme.dim(panelLine('└', '┘')))
+        output.writeLine(panelLine('└', '┘'))
     }
 
     private fun styleLogoShadow(line: String, theme: Theme): String {
