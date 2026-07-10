@@ -9,7 +9,6 @@ class LineEditorTest {
         LineSuggestion("/help", "Show help"),
         LineSuggestion("/status", "Show status"),
         LineSuggestion("/exit", "Quit"),
-        LineSuggestion("/quit", "Quit"),
     )
 
     @Test
