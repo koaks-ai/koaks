@@ -13,6 +13,18 @@ import kotlin.test.assertTrue
 
 class InputBoxTest {
     @Test
+    fun staticInputUsesBlinkingBarCursorAndRestoresDefault() {
+        val output = RecordingOutput()
+        val theme = Theme(enabled = true)
+
+        InputBox.renderStaticStart(output, theme)
+        InputBox.renderStaticEnd(output, theme, inputWasEchoed = false)
+
+        assertTrue(output.content.startsWith(Ansi.BLINKING_BAR_CURSOR))
+        assertTrue(output.content.endsWith(Ansi.RESET_CURSOR_STYLE))
+    }
+
+    @Test
     fun rendersRecognizedCommandTokenInBlue() {
         val output = RecordingOutput()
         val snapshot = LineEditorSnapshot(
@@ -81,6 +93,17 @@ class InputBoxTest {
 
         assertEquals(layout.inputTopRow - 1, layout.outputBottomRow)
         assertContains(output.content, Ansi.scrollRegion(1, layout.inputTopRow - 1))
+        assertTrue(output.content.startsWith(Ansi.BLINKING_BAR_CURSOR))
+    }
+
+    @Test
+    fun leavingFixedLayoutRestoresDefaultCursorStyle() {
+        val output = RecordingOutput()
+        val layout = TerminalLayout.of(rows = 40, columns = 80, fixedInput = true)
+
+        InputBox.leaveFixedLayout(output, layout)
+
+        assertContains(output.content, Ansi.RESET_CURSOR_STYLE)
     }
 
     @Test

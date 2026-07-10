@@ -9,6 +9,7 @@ import org.koaks.cli.tui.Theme
 
 internal object InputBox {
     fun renderStaticStart(output: Output, theme: Theme, commandMenuRows: Int = 0) {
+        if (theme.enabled) output.write(Ansi.BLINKING_BAR_CURSOR)
         output.writeLine()
         repeat(commandMenuRows.coerceAtLeast(0)) { output.writeLine() }
         output.writeLine(theme.inputBorder(inputLine()))
@@ -18,6 +19,7 @@ internal object InputBox {
     fun renderStaticEnd(output: Output, theme: Theme, inputWasEchoed: Boolean) {
         if (!inputWasEchoed) output.writeLine()
         output.writeLine(theme.inputBorder(inputLine()))
+        if (theme.enabled) output.write(Ansi.RESET_CURSOR_STYLE)
     }
 
     fun renderStaticEditor(
@@ -61,14 +63,15 @@ internal object InputBox {
         output.write("\r${Ansi.CLEAR_LINE}")
         output.writeLine(inputContent(snapshot, theme))
         output.writeLine(theme.inputBorder(inputLine()))
+        if (theme.enabled) output.write(Ansi.RESET_CURSOR_STYLE)
     }
 
     fun enterFixedLayout(output: Output, layout: TerminalLayout) {
-        output.write("${Ansi.CLEAR_SCREEN}${Ansi.HOME}${Ansi.scrollRegion(1, layout.outputBottomRow)}")
+        output.write("${Ansi.BLINKING_BAR_CURSOR}${Ansi.CLEAR_SCREEN}${Ansi.HOME}${Ansi.scrollRegion(1, layout.outputBottomRow)}")
     }
 
     fun leaveFixedLayout(output: Output, layout: TerminalLayout) {
-        output.write("${Ansi.RESET_SCROLL_REGION}${Ansi.cursor(layout.rows, 1)}${Ansi.RESET}")
+        output.write("${Ansi.RESET_SCROLL_REGION}${Ansi.cursor(layout.rows, 1)}${Ansi.RESET_CURSOR_STYLE}${Ansi.RESET}")
     }
 
     fun resizeFixedLayout(

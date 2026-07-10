@@ -26,6 +26,8 @@ internal object Ansi {
     val SAVE_CURSOR = "${CSI}s"
     val RESTORE_CURSOR = "${CSI}u"
     val RESET_SCROLL_REGION = "${CSI}r"
+    val BLINKING_BAR_CURSOR = "${CSI}5 q"
+    val RESET_CURSOR_STYLE = "${CSI}0 q"
 
     /** Moves the cursor to a 1-based [row], [column]. */
     fun cursor(row: Int, column: Int): String = "$CSI${row};${column}H"
