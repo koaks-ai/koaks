@@ -8,7 +8,7 @@ kotlin {
     targets.named<KotlinNativeTarget>("windowsX64") {
         binaries {
             executable {
-                baseName = "koaks"
+                baseName = "koaks-cli"
                 entryPoint = "org.koaks.cli.main"
             }
         }
@@ -17,7 +17,7 @@ kotlin {
     targets.named<KotlinNativeTarget>("macosArm") {
         binaries {
             executable {
-                baseName = "koaks"
+                baseName = "koaks-cli"
                 entryPoint = "org.koaks.cli.main"
             }
         }
