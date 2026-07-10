@@ -39,7 +39,7 @@ internal object WelcomeView {
         output.writeLine(panelLine('├', '┤'))
         output.writeLine(panelRow("${theme.label("Provider")} ${config.provider.id}  ${theme.label("Model")} ${config.modelName}"))
         output.writeLine(panelRow("${theme.label("Thread")} ${config.threadId}  ${theme.label("History")} ${config.historyMessages} messages"))
-        output.writeLine(panelRow(theme.dim("Type /help for commands. Type /exit, /quit, or :q to leave.")))
+        output.writeLine(panelRow(theme.dim("Type /help for commands. Type /exit to leave.")))
         output.writeLine(panelLine('└', '┘'))
     }
 

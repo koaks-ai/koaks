@@ -147,7 +147,7 @@ private object ReasoningCommand : SlashCommand {
 }
 
 private object ExitCommand : SlashCommand {
-    override val names: Set<String> = setOf("/exit", "/quit", ":q")
+    override val names: Set<String> = setOf("/exit")
     override val description: String = "Quit the agent"
 
     override fun run(input: String, context: AgentContext, registry: CommandRegistry): CommandResult =
