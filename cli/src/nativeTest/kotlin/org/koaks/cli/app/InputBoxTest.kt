@@ -4,6 +4,7 @@ import org.koaks.cli.tui.Ansi
 import org.koaks.cli.tui.LineEditorSnapshot
 import org.koaks.cli.tui.LineSuggestion
 import org.koaks.cli.tui.Output
+import org.koaks.cli.tui.TerminalLayout
 import org.koaks.cli.tui.Theme
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -44,6 +45,23 @@ class InputBoxTest {
 
         assertContains(output.content, "${Ansi.BOLD}${Ansi.BLUE}/exit")
         kotlin.test.assertEquals(suggestions.size, rows)
+    }
+
+    @Test
+    fun positionsFixedInputCursorAfterWideCharacters() {
+        val output = RecordingOutput()
+        val layout = TerminalLayout.of(rows = 40, columns = 80, fixedInput = true)
+        val snapshot = LineEditorSnapshot(
+            text = "为什么",
+            cursor = 3,
+            suggestions = emptyList(),
+            selectedSuggestionIndex = null,
+            recognizedCommandEnd = null,
+        )
+
+        InputBox.renderFixedEditor(output, layout, Theme(enabled = true), snapshot)
+
+        assertContains(output.content, Ansi.cursor(layout.compactInputRow, 11))
     }
 }
 

@@ -19,6 +19,11 @@ class TextUtilTest {
     }
 
     @Test
+    fun measuresWideCharactersByTerminalColumns() {
+        assertEquals(10, TextUtil.visibleWidth("为什么光标"))
+    }
+
+    @Test
     fun padsByVisibleWidth() {
         val styled = "${Ansi.BOLD}hi${Ansi.RESET}"
 
@@ -30,5 +35,11 @@ class TextUtilTest {
         val styled = "${Ansi.BOLD}hello${Ansi.RESET}"
 
         assertEquals("${Ansi.BOLD}hel", TextUtil.truncateVisible(styled, 3))
+    }
+
+    @Test
+    fun truncatesWideCharactersWithoutOverflowingWidth() {
+        assertEquals("为什", TextUtil.truncateVisible("为什么", 4))
+        assertEquals("为什", TextUtil.truncateVisible("为什么", 5))
     }
 }

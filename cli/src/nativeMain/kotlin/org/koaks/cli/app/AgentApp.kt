@@ -131,14 +131,14 @@ internal class AgentApp(
         val nativeSize = Terminal.size()
         val rows = (
             env.value("KOAKS_TERM_ROWS")?.toIntOrNull()
-                ?: env.value("LINES")?.toIntOrNull()
                 ?: nativeSize?.rows
+                ?: env.value("LINES")?.toIntOrNull()
                 ?: DEFAULT_TERM_ROWS
             )
         val columns = (
             env.value("KOAKS_TERM_COLS")?.toIntOrNull()
-                ?: env.value("COLUMNS")?.toIntOrNull()
                 ?: nativeSize?.columns
+                ?: env.value("COLUMNS")?.toIntOrNull()
                 ?: PANEL_WIDTH
             )
         return TerminalLayout.of(
