@@ -57,7 +57,9 @@ internal class EventPrinter(
 
     private fun printToolCall(event: AgentEvent.ToolCallRequested) {
         toolNames[event.call.id] = event.call.name
+        val wasReasoningActive = reasoningPromptActive
         ensureLineStart()
+        if (wasReasoningActive) output.writeLine()
 
         val arguments = event.call.arguments.compactForLine()
         val suffix = if (arguments.isBlank()) "" else " $arguments"
@@ -93,7 +95,9 @@ internal class EventPrinter(
     private fun ensureAssistantPrompt() {
         if (assistantPromptActive) return
 
+        val wasReasoningActive = reasoningPromptActive
         ensureLineStart()
+        if (wasReasoningActive) output.writeLine()
         if (needsAssistantContinuationGap) output.writeLine()
         if (!assistantPromptPrinted) {
             output.write("${theme.prompt("koaks")} ")

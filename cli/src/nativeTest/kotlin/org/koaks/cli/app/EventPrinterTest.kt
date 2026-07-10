@@ -66,6 +66,7 @@ class EventPrinterTest {
         assertEquals(
             """
             先分析一下问题。
+
             [koaks] 答案来了。
             """.trimIndent(),
             output.content(),
@@ -81,6 +82,25 @@ class EventPrinterTest {
         printer.print(AgentEvent.TextDelta("只显示答案。"))
 
         assertEquals("[koaks] 只显示答案。", output.content())
+    }
+
+    @Test
+    fun separatesReasoningFromToolCallWhenEnabled() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = true, output = output, theme = Theme(enabled = false))
+
+        printer.print(AgentEvent.ReasoningDelta("先查一下。"))
+        printer.print(AgentEvent.ToolCallRequested(ToolCall("call-1", "Bash", """{"command":"ls"}""")))
+
+        assertEquals(
+            """
+            先查一下。
+
+            [tool call] Bash {"command":"ls"}
+            
+            """.trimIndent(),
+            output.content(),
+        )
     }
 
     @Test
