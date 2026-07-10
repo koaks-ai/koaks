@@ -16,19 +16,34 @@ internal class TerminalLayout private constructor(
     val fixedInput: Boolean,
     val rows: Int,
     val columns: Int,
+    val commandMenuRows: Int,
 ) {
-    val outputBottomRow: Int = (rows - INPUT_BOX_HEIGHT).coerceAtLeast(1)
-    val inputTopRow: Int = (rows - INPUT_BOX_HEIGHT + 1).coerceAtLeast(1)
-    val inputRow: Int = (rows - 1).coerceAtLeast(1)
+    private val reservedInputHeight: Int = INPUT_BOX_HEIGHT + commandMenuRows
+
+    val outputBottomRow: Int = (rows - reservedInputHeight).coerceAtLeast(1)
+    val inputTopRow: Int = (rows - reservedInputHeight + 1).coerceAtLeast(1)
+    val inputRow: Int = (inputTopRow + 1).coerceAtMost(rows)
     val inputBottomRow: Int = rows.coerceAtLeast(1)
+    val compactInputTopRow: Int = (rows - INPUT_BOX_HEIGHT + 1).coerceAtLeast(1)
+    val compactInputRow: Int = (rows - 1).coerceAtLeast(1)
+    val menuTopRow: Int = inputRow + 1
 
     companion object {
         /** Builds a layout, clamping to the minimum usable rows/columns. */
-        fun of(rows: Int, columns: Int, fixedInput: Boolean): TerminalLayout =
-            TerminalLayout(
+        fun of(
+            rows: Int,
+            columns: Int,
+            fixedInput: Boolean,
+            commandMenuRows: Int = 0,
+        ): TerminalLayout {
+            val safeRows = rows.coerceAtLeast(INPUT_BOX_HEIGHT + 3)
+            val availableMenuRows = (safeRows - INPUT_BOX_HEIGHT - 3).coerceAtLeast(0)
+            return TerminalLayout(
                 fixedInput = fixedInput,
-                rows = rows.coerceAtLeast(INPUT_BOX_HEIGHT + 3),
+                rows = safeRows,
                 columns = columns.coerceAtLeast(32),
+                commandMenuRows = commandMenuRows.coerceIn(0, availableMenuRows),
             )
+        }
     }
 }

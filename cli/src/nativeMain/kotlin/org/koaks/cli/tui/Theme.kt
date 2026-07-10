@@ -11,6 +11,7 @@ internal class Theme(val enabled: Boolean) {
     fun dim(text: String): String = color(Ansi.DIM, text)
     fun warn(text: String): String = color(Ansi.YELLOW, text)
     fun error(text: String): String = color(Ansi.RED, text)
+    fun command(text: String): String = color(Ansi.BLUE, text)
 
     /** A bracketed speaker tag, e.g. `[koaks]`. */
     fun prompt(text: String): String = color(Ansi.BOLD + Ansi.CYAN, "[$text]")
@@ -18,6 +19,7 @@ internal class Theme(val enabled: Boolean) {
     fun inputBorder(text: String): String = color(Ansi.DIM, text)
     fun inputSide(): String = color(Ansi.DIM, "│")
     fun inputPrompt(): String = color(Ansi.BOLD + Ansi.GREEN, "›")
+    fun commandMenuSelection(text: String): String = color(Ansi.BOLD + Ansi.BLUE, text)
 
     private fun color(code: String, text: String): String =
         if (enabled) "$code$text${Ansi.RESET}" else text

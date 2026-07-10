@@ -11,6 +11,9 @@ import org.koaks.cli.config.toBooleanFlagOrFalse
 import org.koaks.cli.config.value
 import org.koaks.cli.tui.DEFAULT_TERM_ROWS
 import org.koaks.cli.tui.LineReader
+import org.koaks.cli.tui.LineEditorSnapshot
+import org.koaks.cli.tui.LineReadRequest
+import org.koaks.cli.tui.LineSuggestion
 import org.koaks.cli.tui.Output
 import org.koaks.cli.tui.StdinLineReader
 import org.koaks.cli.tui.StdoutOutput
@@ -38,6 +41,8 @@ internal class AgentApp(
             var hasCompletedTurn = false
 
             while (true) {
+                var lastEditorSnapshot: LineEditorSnapshot? = null
+                var staticMenuRows = 0
                 if (layout.fixedInput) {
                     InputBox.renderFixed(output, layout, theme)
                 } else {
@@ -45,11 +50,40 @@ internal class AgentApp(
                 }
                 output.flush()
 
-                val input = lineReader.readLine()?.trimEnd() ?: break
+                val input = if (theme.enabled) {
+                    lineReader.readLine(
+                        LineReadRequest(
+                            suggestions = commands.suggestions.map { suggestion ->
+                                LineSuggestion(suggestion.name, suggestion.description)
+                            },
+                            commandNames = commands.commandNames,
+                        ) { snapshot ->
+                            lastEditorSnapshot = snapshot
+                            if (layout.fixedInput) {
+                                InputBox.renderFixedEditor(output, layout, theme, snapshot)
+                            } else {
+                                staticMenuRows = InputBox.renderStaticEditor(
+                                    output = output,
+                                    theme = theme,
+                                    snapshot = snapshot,
+                                    previousMenuRows = staticMenuRows,
+                                )
+                            }
+                            output.flush()
+                        }
+                    )
+                } else {
+                    lineReader.readLine()
+                }?.trimEnd() ?: break
                 if (layout.fixedInput) {
                     InputBox.restoreOutputCursor(output, layout, theme)
                 } else {
-                    InputBox.renderStaticEnd(output, theme, Terminal.stdinIsTty())
+                    val snapshot = lastEditorSnapshot
+                    if (snapshot == null) {
+                        InputBox.renderStaticEnd(output, theme, Terminal.stdinIsTty())
+                    } else {
+                        InputBox.renderStaticInteractiveEnd(output, theme, snapshot, staticMenuRows)
+                    }
                 }
 
                 val commandInput = input.trim()
@@ -111,6 +145,7 @@ internal class AgentApp(
             rows = rows,
             columns = columns,
             fixedInput = theme.enabled && fixedInputEnabled(env),
+            commandMenuRows = commands.suggestions.size,
         )
     }
 
