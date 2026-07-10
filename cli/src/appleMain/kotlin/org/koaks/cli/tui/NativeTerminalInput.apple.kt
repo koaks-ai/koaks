@@ -4,8 +4,10 @@ package org.koaks.cli.tui
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
+import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.set
 import platform.posix.ECHO
 import platform.posix.ICANON
 import platform.posix.ISIG
