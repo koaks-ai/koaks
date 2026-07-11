@@ -23,7 +23,7 @@ fun main() = runBlocking {
             openai(
                 baseUrl = EnvTools.loadValue("OPENAI_BASE_URL"),
                 apiKey = EnvTools.loadValue("OPENAI_API_KEY"),
-                modelName = "gpt-5.4",
+                modelName = "gpt-5.6-luna",
             ) {
                 reasoningEffort = "medium"
                 temperature = 0.9

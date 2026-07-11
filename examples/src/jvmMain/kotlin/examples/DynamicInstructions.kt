@@ -37,16 +37,18 @@ fun main() = runBlocking {
             +"始终用中文回答。"
 
             // Resolved per run — keeps the date fresh without rebuilding the agent.
-            dynamic { "今天的日期是 ${LocalDate.now().format(DateTimeFormatter.ISO_DATE)}。" }
+            dynamic {
+                "今天的日期是 ${LocalDate.now().format(DateTimeFormatter.ISO_DATE)}。"
+            }
 
             // Returns null when there's no profile, so the segment is simply skipped.
             dynamic { lookupUserProfile(userId)?.let { "用户偏好：$it" } }
         }
         model {
             openai(
-                baseUrl = EnvTools.loadValue("BASE_URL"),
-                apiKey = EnvTools.loadValue("API_KEY"),
-                modelName = "qwen3.7-plus",
+                baseUrl = EnvTools.loadValue("OPENAI_BASE_URL"),
+                apiKey = EnvTools.loadValue("OPENAI_API_KEY"),
+                modelName = "gpt-5.6-luna",
             ) {
                 temperature = 0.7
             }
