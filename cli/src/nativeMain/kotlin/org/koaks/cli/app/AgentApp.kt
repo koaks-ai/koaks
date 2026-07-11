@@ -28,7 +28,8 @@ internal class AgentApp(
     private val environment: Environment = PosixEnvironment,
     private val commands: CommandRegistry = CommandRegistry.builtins(),
 ) {
-    private val session = AgentSession(initialConfig)
+    private val trace = CliTrace.open(environment)
+    private val session = AgentSession(initialConfig, trace.takeIf { it.enabled })
 
     suspend fun run() {
         val theme = Theme(ansiEnabled(environment))
@@ -115,6 +116,7 @@ internal class AgentApp(
                     output.writeLine("${theme.inputPrompt()} $input")
                 }
                 val events = try {
+                    trace.turnStarted(input.length)
                     session.stream(input)
                 } catch (e: CliException) {
                     output.writeLine(theme.error("[error] ${e.message}"))
@@ -125,14 +127,24 @@ internal class AgentApp(
                 output.flush()
 
                 val eventPrinter = EventPrinter(session.config.showReasoning, output, theme)
-                events.collect { event ->
-                    eventPrinter.print(event)
+                trace.collectorStarted()
+                try {
+                    events.collect { event ->
+                        trace.eventReceived(event)
+                        eventPrinter.print(event)
+                        trace.eventRendered(event)
+                    }
+                    trace.collectorCompleted()
+                } catch (t: Throwable) {
+                    trace.collectorFailed(t)
+                    throw t
                 }
                 hasCompletedTurn = true
             }
             closedNormally = true
         } finally {
             session.close()
+            trace.close()
             if (layout.fixedInput) InputBox.leaveFixedLayout(output, layout)
             if (closedNormally) {
                 output.writeLine("\n${theme.dim("session closed")}")

@@ -6,7 +6,10 @@ import org.koaks.cli.config.AgentConfig
 import org.koaks.framework.loop.Agent
 import org.koaks.framework.loop.AgentEvent
 
-internal class AgentSession(initialConfig: AgentConfig) : AutoCloseable {
+internal class AgentSession(
+    initialConfig: AgentConfig,
+    private val trace: CliTrace? = null,
+) : AutoCloseable {
     var config: AgentConfig = initialConfig
         private set
 
@@ -18,7 +21,7 @@ internal class AgentSession(initialConfig: AgentConfig) : AutoCloseable {
     }
 
     fun stream(input: String): Flow<AgentEvent> {
-        val activeAgent = assistant ?: AgentFactory.build(config).also { assistant = it }
+        val activeAgent = assistant ?: AgentFactory.build(config, trace).also { assistant = it }
         return activeAgent.thread(config.threadId).stream(input)
     }
 

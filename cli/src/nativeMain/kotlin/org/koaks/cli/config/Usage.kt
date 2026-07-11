@@ -8,6 +8,9 @@ internal fun usageText(): String =
     Options:
       -h, --help
 
+    Diagnostics:
+      KOAKS_TRACE_FILE=path   Write timing-only CLI lifecycle logs to path.
+
     Config:
       Default path: ${'$'}HOME/.koaks/config.toml
 

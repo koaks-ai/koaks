@@ -8,13 +8,14 @@ import org.koaks.cli.config.Provider
 import org.koaks.cli.tool.registerBuiltinCliTools
 import org.koaks.framework.loop.Agent
 import org.koaks.framework.loop.agent
+import org.koaks.framework.middleware.AgentListener
 import org.koaks.provider.anthropic.anthropic
 import org.koaks.provider.ollama.ollama
 import org.koaks.provider.openai.openai
 import org.koaks.provider.qwen.qwen
 
 internal object AgentFactory {
-    fun build(config: AgentConfig): Agent {
+    fun build(config: AgentConfig, listener: AgentListener? = null): Agent {
         val apiKey = config.apiKey ?: missingApiKey(config.provider)
         return agent {
             name = "koaks-cli"
@@ -23,6 +24,7 @@ internal object AgentFactory {
                 window(config.historyMessages)
             }
             terminateAfter(maxSteps = 1024)
+            listener?.let { install(it) }
             tools {
                 registerBuiltinCliTools()
             }
