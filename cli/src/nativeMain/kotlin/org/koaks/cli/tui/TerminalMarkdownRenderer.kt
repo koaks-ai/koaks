@@ -19,10 +19,11 @@ internal class TerminalMarkdownRenderer(
     private var state = State.Normal
     private var pending = ""
     private var atLineStart = false
-    private val span = StringBuilder()
     private val fenceInfo = StringBuilder()
     private var codeLanguage = "text"
     private val codeLine = StringBuilder()
+    private var codeLineWidth = 0
+    private var codeLineHasEmittedChunk = false
     private val safeBlockWidth: Int = blockWidth.coerceAtLeast(MIN_CODE_BLOCK_WIDTH)
     private val codeContentWidth: Int = safeBlockWidth - CODE_BLOCK_HORIZONTAL_CHROME
 
@@ -52,16 +53,10 @@ internal class TerminalMarkdownRenderer(
             when (state) {
                 State.Normal -> Unit
                 State.Bold -> {
-                    appendPlain(out, "**")
-                    appendPlain(out, span.toString())
-                    span.clear()
                     state = State.Normal
                 }
 
                 State.InlineCode -> {
-                    appendPlain(out, "`")
-                    appendPlain(out, span.toString())
-                    span.clear()
                     state = State.Normal
                 }
 
@@ -76,7 +71,6 @@ internal class TerminalMarkdownRenderer(
                     emitCodeText(out, pending)
                     pending = ""
                     closeCodeBlock(out)
-                    span.clear()
                     fenceInfo.clear()
                     state = State.Normal
                 }
@@ -96,15 +90,20 @@ internal class TerminalMarkdownRenderer(
             if (!atLineStart) appendPlain(out, "\n")
             consume(3)
             fenceInfo.clear()
-            span.clear()
             state = State.FenceInfo
             return
         }
 
         if (pending.startsWith("**")) {
             consume(2)
-            span.clear()
             state = State.Bold
+            return
+        }
+
+        val specialAt = pending.indexOfAny(charArrayOf('*', '`'))
+        if (specialAt > 0) {
+            appendPlain(out, pending.substring(0, specialAt))
+            consume(specialAt)
             return
         }
 
@@ -112,7 +111,6 @@ internal class TerminalMarkdownRenderer(
         if (first == '`') {
             if (!final && pending.length < 3) return
             consume(1)
-            span.clear()
             state = State.InlineCode
             return
         }
@@ -131,10 +129,8 @@ internal class TerminalMarkdownRenderer(
     ) {
         val closeAt = pending.indexOf(delimiter)
         if (closeAt >= 0) {
-            span.append(pending.substring(0, closeAt))
+            appendStyled(out, pending.substring(0, closeAt), style)
             consume(closeAt + delimiter.length)
-            appendStyled(out, span.toString(), style)
-            span.clear()
             state = State.Normal
             return
         }
@@ -142,7 +138,7 @@ internal class TerminalMarkdownRenderer(
         val hold = if (!final && delimiter == "**" && pending.endsWith("*")) 1 else 0
         val take = pending.length - hold
         if (take > 0) {
-            span.append(pending.substring(0, take))
+            appendStyled(out, pending.substring(0, take), style)
             consume(take)
         }
     }
@@ -223,6 +219,8 @@ internal class TerminalMarkdownRenderer(
     private fun openCodeBlock(out: StringBuilder) {
         codeLanguage = fenceInfo.toString().trim().substringBefore(' ').ifBlank { "text" }
         codeLine.clear()
+        codeLineWidth = 0
+        codeLineHasEmittedChunk = false
 
         appendStyled(out, "┌─ ", theme::codeBlockFrame)
         appendStyled(out, codeLanguage, theme::codeBlockLanguage)
@@ -236,20 +234,41 @@ internal class TerminalMarkdownRenderer(
 
     private fun emitCodeText(out: StringBuilder, text: String) {
         val normalized = text.replace("\r\n", "\n").replace('\r', '\n')
-        normalized.forEach { char ->
-            if (char == '\n') {
+        var index = 0
+        while (index < normalized.length) {
+            if (normalized[index] == '\n') {
                 emitCodeLine(out)
+                index++
             } else {
-                codeLine.append(char)
+                val displayText = normalized.nextDisplayText(index)
+                val displayWidth = TextUtil.visibleWidth(displayText)
+                if (codeLine.isNotEmpty() && codeLineWidth + displayWidth > codeContentWidth) {
+                    emitBufferedCodeLineChunk(out)
+                }
+                codeLine.append(displayText)
+                codeLineWidth += displayWidth
+                if (codeLineWidth >= codeContentWidth) {
+                    emitBufferedCodeLineChunk(out)
+                }
+                index += displayText.length
             }
         }
     }
 
     private fun emitCodeLine(out: StringBuilder) {
-        codeLine.toString().wrapVisible(codeContentWidth).forEach { chunk ->
-            emitCodeLineChunk(out, chunk)
+        if (codeLine.isNotEmpty()) {
+            emitBufferedCodeLineChunk(out)
+        } else if (!codeLineHasEmittedChunk) {
+            emitCodeLineChunk(out, "")
         }
+        codeLineHasEmittedChunk = false
+    }
+
+    private fun emitBufferedCodeLineChunk(out: StringBuilder) {
+        emitCodeLineChunk(out, codeLine.toString())
         codeLine.clear()
+        codeLineWidth = 0
+        codeLineHasEmittedChunk = true
     }
 
     private fun emitCodeLineChunk(out: StringBuilder, line: String) {
@@ -263,12 +282,14 @@ internal class TerminalMarkdownRenderer(
     }
 
     private fun closeCodeBlock(out: StringBuilder) {
-        if (codeLine.isNotEmpty()) emitCodeLine(out)
+        if (codeLine.isNotEmpty()) emitBufferedCodeLineChunk(out)
         appendStyled(out, "└", theme::codeBlockFrame)
         appendStyled(out, TextUtil.rule('─', safeBlockWidth - 2), theme::codeBlockFrame)
         appendStyled(out, "┘\n", theme::codeBlockFrame)
         fenceInfo.clear()
         codeLine.clear()
+        codeLineWidth = 0
+        codeLineHasEmittedChunk = false
     }
 
     private fun highlightedCode(line: String): String {
@@ -419,31 +440,6 @@ internal class TerminalMarkdownRenderer(
         var index = start
         while (index < length && predicate(this[index])) index++
         return index
-    }
-
-    private fun String.wrapVisible(width: Int): List<String> {
-        if (isEmpty()) return listOf("")
-
-        val chunks = mutableListOf<String>()
-        val current = StringBuilder()
-        var currentWidth = 0
-        var index = 0
-
-        while (index < length) {
-            val charText = nextDisplayText(index)
-            val charWidth = TextUtil.visibleWidth(charText)
-            if (current.isNotEmpty() && currentWidth + charWidth > width) {
-                chunks += current.toString()
-                current.clear()
-                currentWidth = 0
-            }
-            current.append(charText)
-            currentWidth += charWidth
-            index += charText.length
-        }
-
-        chunks += current.toString()
-        return chunks
     }
 
     private fun String.nextDisplayText(index: Int): String {

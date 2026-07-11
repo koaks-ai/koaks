@@ -4,6 +4,7 @@ package org.koaks.cli.tui
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.posix.fflush
+import platform.posix.stdout
 
 /**
  * The sink every renderer writes to. Abstracting stdout behind an interface keeps the
@@ -26,6 +27,6 @@ internal class StdoutOutput : Output {
     override fun write(text: String) = print(text)
     override fun writeLine(text: String) = println(text)
     override fun flush() {
-        fflush(null)
+        fflush(stdout)
     }
 }

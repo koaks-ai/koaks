@@ -4,6 +4,8 @@ import org.koaks.cli.tui.Output
 import org.koaks.cli.tui.TerminalMarkdownRenderer
 import org.koaks.cli.tui.Theme
 import org.koaks.framework.loop.AgentEvent
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TimeSource
 
 internal class EventPrinter(
     private val showReasoning: Boolean,
@@ -17,6 +19,9 @@ internal class EventPrinter(
     private var needsAssistantContinuationGap = false
     private var contentStarted = false
     private var endedWithNewLine = false
+    private var hasFlushedStreamingContent = false
+    private var unflushedStreamingChars = 0
+    private var lastStreamingFlush = TimeSource.Monotonic.markNow()
     private val markdown = TerminalMarkdownRenderer(theme, PANEL_WIDTH)
 
     fun print(event: AgentEvent) {
@@ -26,33 +31,37 @@ internal class EventPrinter(
                 val rendered = markdown.render(event.text)
                 markContent(rendered)
                 output.write(rendered)
-                output.flush()
+                flushStreamingOutputIfNeeded(rendered)
             }
 
             is AgentEvent.ReasoningDelta -> {
                 if (showReasoning) {
                     ensureReasoningPrompt()
                     markContent(event.text)
-                    output.write(theme.dim(event.text))
-                    output.flush()
+                    val rendered = theme.dim(event.text)
+                    output.write(rendered)
+                    flushStreamingOutputIfNeeded(rendered)
                 }
             }
 
             is AgentEvent.Completed -> {
                 flushAssistantMarkdown()
                 if (!endedWithNewLine) output.writeLine()
+                flushOutput()
             }
 
             is AgentEvent.Terminated -> {
                 flushAssistantMarkdown()
                 if (!endedWithNewLine) output.writeLine()
                 output.writeLine(theme.warn("[terminated] ${event.reason}"))
+                flushOutput()
             }
 
             is AgentEvent.Failed -> {
                 flushAssistantMarkdown()
                 ensureLineStart()
                 output.writeLine(theme.error("[error] ${event.error.message}"))
+                flushOutput()
             }
 
             is AgentEvent.ToolCallRequested -> printToolCall(event)
@@ -75,6 +84,7 @@ internal class EventPrinter(
         assistantPromptActive = false
         reasoningPromptActive = false
         needsAssistantContinuationGap = true
+        flushOutput()
     }
 
     private fun printToolResult(event: AgentEvent.ToolResult) {
@@ -98,6 +108,7 @@ internal class EventPrinter(
         assistantPromptActive = false
         reasoningPromptActive = false
         needsAssistantContinuationGap = true
+        flushOutput()
     }
 
     private fun ensureAssistantPrompt() {
@@ -145,8 +156,27 @@ internal class EventPrinter(
         if (rendered.isNotEmpty()) {
             markContent(rendered)
             output.write(rendered)
-            output.flush()
+            flushStreamingOutputIfNeeded(rendered)
         }
+    }
+
+    private fun flushStreamingOutputIfNeeded(rendered: String) {
+        if (rendered.isEmpty()) return
+
+        unflushedStreamingChars += rendered.length
+        val shouldFlush =
+            !hasFlushedStreamingContent ||
+                rendered.contains('\n') ||
+                unflushedStreamingChars >= STREAMING_FLUSH_CHARS ||
+                lastStreamingFlush.elapsedNow() >= STREAMING_FLUSH_INTERVAL
+        if (shouldFlush) flushOutput()
+    }
+
+    private fun flushOutput() {
+        output.flush()
+        hasFlushedStreamingContent = true
+        unflushedStreamingChars = 0
+        lastStreamingFlush = TimeSource.Monotonic.markNow()
     }
 
     private fun markLineWritten() {
@@ -181,5 +211,7 @@ internal class EventPrinter(
 
     private companion object {
         const val TOOL_RESULT_PREVIEW_LINES = 5
+        const val STREAMING_FLUSH_CHARS = 128
+        val STREAMING_FLUSH_INTERVAL = 16.milliseconds
     }
 }

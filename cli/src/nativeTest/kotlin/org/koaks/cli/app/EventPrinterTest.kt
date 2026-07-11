@@ -111,6 +111,21 @@ class EventPrinterTest {
     }
 
     @Test
+    fun streamsDelimitedSpanContentBeforeClosingDelimiterArrives() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+
+        printer.print(AgentEvent.TextDelta("这是 **正在流式输出"))
+        assertEquals("◆ 这是 正在流式输出", output.content())
+
+        printer.print(AgentEvent.TextDelta("的粗体** 和 `代码"))
+        assertEquals("◆ 这是 正在流式输出的粗体 和 代码", output.content())
+
+        printer.print(AgentEvent.TextDelta("片段`。"))
+        assertEquals("◆ 这是 正在流式输出的粗体 和 代码片段。", output.content())
+    }
+
+    @Test
     fun rendersCodeBlockAtStartOnItsOwnLine() {
         val output = BufferOutput()
         val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
@@ -142,6 +157,31 @@ class EventPrinterTest {
             "◆ \n" + plainCodeBlock("kotlin", "code block"),
             output.content(),
         )
+    }
+
+    @Test
+    fun streamsFullCodeLineChunkBeforeNewlineArrives() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+        val fullWidthChunk = "x".repeat(PANEL_WIDTH - 4)
+
+        printer.print(AgentEvent.TextDelta("```text\n$fullWidthChunk"))
+
+        assertEquals(
+            "◆ \n" + plainCodeBlockStart("text") + plainCodeLine(fullWidthChunk),
+            output.content(),
+        )
+    }
+
+    @Test
+    fun rendersLargePlainTextDeltaWithoutChangingContent() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+        val text = "plain text ".repeat(2_000)
+
+        printer.print(AgentEvent.TextDelta(text))
+
+        assertEquals("◆ $text", output.content())
     }
 
     @Test
