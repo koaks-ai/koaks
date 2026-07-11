@@ -6,13 +6,10 @@ import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.toKString
-import kotlin.random.Random
 import platform.posix.FILE
 import platform.posix.fclose
 import platform.posix.fgets
 import platform.posix.fopen
-import platform.posix.remove
-import platform.posix.system
 
 internal data class CommandResult(
     val status: Int,
@@ -35,21 +32,8 @@ internal data class TextWindowScan(
 )
 
 internal object NativeCliIo {
-    fun runBash(command: String, maxOutputChars: Int): CommandResult {
-        val outputPath = temporaryOutputPath()
-        val status = system(BashCommandLine.build(command, outputPath))
-        val output = readRawText(path = outputPath, maxChars = maxOutputChars)
-        remove(outputPath)
-
-        return CommandResult(
-            status = status,
-            output = output.text.ifEmpty {
-                if (status == 0) "" else "Unable to read command output. Make sure ${BashCommandLine.shellName} is installed and available on PATH."
-            },
-            totalOutputChars = output.totalChars,
-            truncated = output.truncated,
-        )
-    }
+    fun runBash(command: String, maxOutputChars: Int): CommandResult =
+        BashCommandLine.execute(command, maxOutputChars)
 
     fun readTextWindow(
         path: String,
@@ -71,26 +55,6 @@ internal object NativeCliIo {
         } finally {
             fclose(file)
         }
-    }
-
-    private fun readRawText(path: String, maxChars: Int): RawTextRead {
-        val file = fopen(path, "rb") ?: return RawTextRead("", 0, false)
-        val output = StringBuilder()
-        var totalChars = 0
-        var truncated = false
-        try {
-            readChunks(file) { chunk ->
-                totalChars += chunk.length
-                val remaining = maxChars - output.length
-                if (remaining > 0) {
-                    output.append(chunk.take(remaining))
-                }
-                if (chunk.length > remaining) truncated = true
-            }
-        } finally {
-            fclose(file)
-        }
-        return RawTextRead(output.toString(), totalChars, truncated)
     }
 
     private fun readChunks(file: kotlinx.cinterop.CPointer<FILE>, onChunk: (String) -> Unit) {
@@ -167,12 +131,3 @@ internal object NativeCliIo {
 }
 
 private const val IO_BUFFER_SIZE = 8192
-
-private data class RawTextRead(
-    val text: String,
-    val totalChars: Int,
-    val truncated: Boolean,
-)
-
-private fun temporaryOutputPath(): String =
-    ".koaks-bash-output-${Random.nextInt(0, Int.MAX_VALUE)}.log"

@@ -4,5 +4,5 @@ internal expect object BashCommandLine {
     val shellName: String
     val commandSyntaxGuidance: String
 
-    fun build(command: String, outputPath: String): String
+    fun execute(command: String, maxOutputChars: Int): CommandResult
 }
