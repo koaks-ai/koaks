@@ -9,7 +9,7 @@ class BashToolTest {
     fun descriptionIncludesCurrentOperatingSystemAndShell() {
         assertContains(BashTool.description, "Current operating system: $currentOperatingSystemName.")
         assertContains(BashTool.description, "Current shell: ${BashCommandLine.shellName}.")
-        assertContains(BashTool.description, "Use command syntax for the current operating system and shell.")
+        assertContains(BashTool.description, BashCommandLine.commandSyntaxGuidance)
     }
 
     @Test

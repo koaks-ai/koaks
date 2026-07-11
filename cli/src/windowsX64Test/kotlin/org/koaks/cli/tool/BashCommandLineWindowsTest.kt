@@ -3,6 +3,7 @@ package org.koaks.cli.tool
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class BashCommandLineWindowsTest {
     @Test
@@ -35,5 +36,18 @@ class BashCommandLineWindowsTest {
         )
 
         assertEquals(7, result.status)
+    }
+
+    @Test
+    fun rendersPowerShellErrorsAsPlainTextInsteadOfCliXml() {
+        val result = NativeCliIo.runBash(
+            command = "Get-ChildItem -DefinitelyNotARealParameter",
+            maxOutputChars = 10_000,
+        )
+
+        assertEquals(1, result.status)
+        assertContains(result.output, "Get-ChildItem")
+        assertFalse(result.output.contains("#< CLIXML"))
+        assertFalse(result.output.contains("<Objs Version="))
     }
 }

@@ -6,6 +6,9 @@ import kotlin.io.encoding.Base64
 
 internal actual object BashCommandLine {
     actual val shellName: String = "PowerShell (`powershell.exe`)"
+    actual val commandSyntaxGuidance: String =
+        "On Windows, use PowerShell syntax and cmdlets only. " +
+            "Do not use Bash syntax or GNU-style options such as `ls -la`, `cat`, `grep`, or `rm -rf`."
 
     actual fun build(command: String, outputPath: String): String {
         val encodedCommand = Base64.encode(powerShellScript(command).encodeUtf16LittleEndian())
@@ -21,15 +24,16 @@ private fun cmdQuote(value: String): String =
 
 private fun powerShellScript(command: String): String =
     """
+    ${'$'}ProgressPreference = 'SilentlyContinue'
     ${'$'}koaksUtf8 = New-Object System.Text.UTF8Encoding ${'$'}false
     [Console]::InputEncoding = ${'$'}koaksUtf8
     [Console]::OutputEncoding = ${'$'}koaksUtf8
     ${'$'}OutputEncoding = ${'$'}koaksUtf8
     & {
     $command
-    }
-    ${'$'}koaksSucceeded = ${'$'}?
-    ${'$'}koaksNativeStatus = ${'$'}global:LASTEXITCODE
+    ${'$'}script:koaksSucceeded = ${'$'}?
+    ${'$'}script:koaksNativeStatus = ${'$'}global:LASTEXITCODE
+    } *>&1 | Out-String -Stream
     if (${'$'}koaksNativeStatus -is [int]) {
         exit ${'$'}koaksNativeStatus
     }
