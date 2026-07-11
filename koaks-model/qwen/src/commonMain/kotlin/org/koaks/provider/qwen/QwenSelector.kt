@@ -5,6 +5,7 @@ import org.koaks.framework.loop.ModelScope
 import org.koaks.framework.loop.ModelSelection
 import org.koaks.framework.model.ModelCapabilities
 import org.koaks.framework.provider.ModelConfig
+import org.koaks.framework.provider.DEFAULT_STREAM_IDLE_TIMEOUT_MS
 
 /** Qwen's OpenAI-compatible API base URL. */
 const val QWEN_DEFAULT_BASE_URL: String = "https://dashscope.aliyuncs.com/compatible-mode"
@@ -31,6 +32,12 @@ class QwenConfig(
     /** Maps to Qwen's `enable_thinking`; surfaced as `ReasoningDelta` events. */
     var enableThinking: Boolean? = null
 
+    /** Maximum silence between SSE lines before the request fails. */
+    var streamIdleTimeoutMs: Long = DEFAULT_STREAM_IDLE_TIMEOUT_MS
+
+    /** Require the standard `data: [DONE]` terminator; disable for non-standard gateways. */
+    var requireStreamEndMarker: Boolean = true
+
     private var caps = ModelCapabilities()
     fun capabilities(block: CapabilitiesScope.() -> Unit) {
         caps = CapabilitiesScope(caps).apply(block).build()
@@ -40,6 +47,8 @@ class QwenConfig(
         baseUrl = normalizeChatCompletionsUrl(baseUrl),
         apiKey = apiKey,
         modelName = modelName,
+        streamIdleTimeoutMs = streamIdleTimeoutMs,
+        requireStreamEndMarker = requireStreamEndMarker,
     )
 
     internal fun params(): QwenParams = QwenParams(

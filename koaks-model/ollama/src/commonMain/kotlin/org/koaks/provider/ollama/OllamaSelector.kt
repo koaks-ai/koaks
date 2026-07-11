@@ -5,6 +5,7 @@ import org.koaks.framework.loop.ModelScope
 import org.koaks.framework.loop.ModelSelection
 import org.koaks.framework.model.ModelCapabilities
 import org.koaks.framework.provider.ModelConfig
+import org.koaks.framework.provider.DEFAULT_STREAM_IDLE_TIMEOUT_MS
 import org.koaks.framework.provider.StreamFormat
 
 /**
@@ -29,6 +30,9 @@ class OllamaConfig(
     /** Maps to Ollama's `think`; surfaced as `ReasoningDelta` events. */
     var think: Boolean? = null
 
+    /** Maximum silence between NDJSON lines before the request fails. */
+    var streamIdleTimeoutMs: Long = DEFAULT_STREAM_IDLE_TIMEOUT_MS
+
     private var caps = ModelCapabilities(parallelToolCalls = false)
     fun capabilities(block: OllamaCapabilitiesScope.() -> Unit) {
         caps = OllamaCapabilitiesScope(caps).apply(block).build()
@@ -39,6 +43,7 @@ class OllamaConfig(
         apiKey = apiKey,
         modelName = modelName,
         streamFormat = StreamFormat.NDJSON,
+        streamIdleTimeoutMs = streamIdleTimeoutMs,
     )
 
     internal fun params(): OllamaParams = OllamaParams(

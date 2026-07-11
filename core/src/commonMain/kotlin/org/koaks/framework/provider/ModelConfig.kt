@@ -21,9 +21,22 @@ data class ModelConfig(
     val connectTimeoutMs: Long = 5_000,
     val requestTimeoutMs: Long = 600_000,
     val socketTimeoutMs: Long = 600_000,
+    /** Maximum silence between response lines before a streaming call is failed. */
+    val streamIdleTimeoutMs: Long = DEFAULT_STREAM_IDLE_TIMEOUT_MS,
+    /** Whether an EOF without [streamEndMarker] is a truncated response. */
+    val requireStreamEndMarker: Boolean = false,
     val retry: RetryBudget = RetryBudget(),
     val rateLimit: RateLimit? = null,
-)
+) {
+    init {
+        require(connectTimeoutMs > 0) { "connectTimeoutMs must be positive" }
+        require(requestTimeoutMs > 0) { "requestTimeoutMs must be positive" }
+        require(socketTimeoutMs > 0) { "socketTimeoutMs must be positive" }
+        require(streamIdleTimeoutMs > 0) { "streamIdleTimeoutMs must be positive" }
+    }
+}
+
+const val DEFAULT_STREAM_IDLE_TIMEOUT_MS: Long = 60_000
 
 /**
  * How a provider frames its streaming response.

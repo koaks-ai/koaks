@@ -19,6 +19,7 @@ import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.policy.Recovery
 import org.koaks.framework.policy.TerminationDecision
 import org.koaks.framework.tool.ToolOutcome
+import org.koaks.framework.transport.StreamIdleTimeoutException
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -330,8 +331,15 @@ private fun Agent.terminationDecision(state: AgentState): TerminationDecision =
         is TerminationDecision.Stop -> budgetDecision
     }
 
-private fun Throwable.toAgentError(): AgentError = AgentError.ModelError(
-    message = message ?: "model call failed",
-    retriable = false,
-    cause = this,
-)
+private fun Throwable.toAgentError(): AgentError = when (this) {
+    is StreamIdleTimeoutException -> AgentError.Timeout(
+        stage = "model response stream idle",
+        elapsedMs = idleTimeoutMs,
+    )
+
+    else -> AgentError.ModelError(
+        message = message ?: "model call failed",
+        retriable = false,
+        cause = this,
+    )
+}

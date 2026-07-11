@@ -5,6 +5,7 @@ import org.koaks.framework.loop.ModelScope
 import org.koaks.framework.loop.ModelSelection
 import org.koaks.framework.model.ModelCapabilities
 import org.koaks.framework.provider.ModelConfig
+import org.koaks.framework.provider.DEFAULT_STREAM_IDLE_TIMEOUT_MS
 
 /** OpenAI's default API base URL. */
 const val OPENAI_DEFAULT_BASE_URL: String = "https://api.openai.com"
@@ -33,6 +34,12 @@ class OpenAIConfig(
     /** Maps to OpenAI's `reasoning_effort`: `"low" | "medium" | "high"`. */
     var reasoningEffort: String? = null
 
+    /** Maximum silence between SSE lines before the request fails. */
+    var streamIdleTimeoutMs: Long = DEFAULT_STREAM_IDLE_TIMEOUT_MS
+
+    /** Require the standard `data: [DONE]` terminator; disable for non-standard gateways. */
+    var requireStreamEndMarker: Boolean = true
+
     private var caps = ModelCapabilities()
     fun capabilities(block: OpenAICapabilitiesScope.() -> Unit) {
         caps = OpenAICapabilitiesScope(caps).apply(block).build()
@@ -42,6 +49,8 @@ class OpenAIConfig(
         baseUrl = normalizeChatCompletionsUrl(baseUrl),
         apiKey = apiKey,
         modelName = modelName,
+        streamIdleTimeoutMs = streamIdleTimeoutMs,
+        requireStreamEndMarker = requireStreamEndMarker,
     )
 
     internal fun params(): OpenAIParams = OpenAIParams(

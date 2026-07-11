@@ -7,6 +7,7 @@ import org.koaks.framework.loop.ModelSelection
 import org.koaks.framework.model.ModelCapabilities
 import org.koaks.framework.provider.AuthScheme
 import org.koaks.framework.provider.ModelConfig
+import org.koaks.framework.provider.DEFAULT_STREAM_IDLE_TIMEOUT_MS
 
 /** Anthropic's default Messages API endpoint. */
 const val ANTHROPIC_DEFAULT_BASE_URL: String = "https://api.anthropic.com/v1/messages"
@@ -42,6 +43,9 @@ class AnthropicConfig(
     /** The `anthropic-version` header sent with every request. */
     var anthropicVersion: String = ANTHROPIC_DEFAULT_VERSION
 
+    /** Maximum silence between SSE lines before the request fails. */
+    var streamIdleTimeoutMs: Long = DEFAULT_STREAM_IDLE_TIMEOUT_MS
+
     private var caps = ModelCapabilities(jsonMode = false)
     fun capabilities(block: AnthropicCapabilitiesScope.() -> Unit) {
         caps = AnthropicCapabilitiesScope(caps).apply(block).build()
@@ -53,6 +57,7 @@ class AnthropicConfig(
         modelName = modelName,
         auth = AuthScheme.Header("x-api-key"),
         customHeaders = mapOf("anthropic-version" to anthropicVersion),
+        streamIdleTimeoutMs = streamIdleTimeoutMs,
     )
 
     internal fun params(): AnthropicParams = AnthropicParams(

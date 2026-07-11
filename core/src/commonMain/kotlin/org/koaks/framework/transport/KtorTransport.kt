@@ -20,6 +20,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koaks.framework.net.provideEngine
 import org.koaks.framework.provider.ModelConfig
 import org.koaks.framework.provider.RateLimit
@@ -118,11 +119,16 @@ class KtorTransport(
                 throw TransportException("HTTP ${response.status.value}: $err", response.status.value)
             }
             val channel: ByteReadChannel = response.bodyAsChannel()
+            var endMarkerReceived = false
             while (!channel.isClosedForRead) {
-                val line = channel.readUTF8Line() ?: break
-                if (isEndMarker(config, line)) break
+                val line = readStreamLine(channel, config.streamIdleTimeoutMs) ?: break
+                if (isEndMarker(config, line)) {
+                    endMarkerReceived = true
+                    break
+                }
                 onLine(line)
             }
+            validateStreamEnd(config, endMarkerReceived)
         }
     }
 
@@ -162,3 +168,27 @@ class TransportException(
     val statusCode: Int? = null,
     cause: Throwable? = null,
 ) : RuntimeException(message, cause)
+
+/** The HTTP stream stayed open but produced no complete line within its idle budget. */
+class StreamIdleTimeoutException(val idleTimeoutMs: Long) : RuntimeException(
+    "model response stream was idle for ${idleTimeoutMs}ms",
+)
+
+private data class StreamLine(val value: String?)
+
+internal suspend fun readStreamLine(channel: ByteReadChannel, idleTimeoutMs: Long): String? {
+    require(idleTimeoutMs > 0) { "idleTimeoutMs must be positive" }
+    val result = withTimeoutOrNull(idleTimeoutMs) {
+        // Wrap the nullable line so EOF (a successful null read) stays distinct from timeout.
+        StreamLine(channel.readUTF8Line())
+    } ?: throw StreamIdleTimeoutException(idleTimeoutMs)
+    return result.value
+}
+
+internal fun validateStreamEnd(config: ModelConfig, endMarkerReceived: Boolean) {
+    if (config.requireStreamEndMarker && !endMarkerReceived) {
+        throw TransportException(
+            "model response stream ended before the '${config.streamEndMarker}' marker",
+        )
+    }
+}

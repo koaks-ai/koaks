@@ -34,6 +34,12 @@ kotlin {
                 api(libs.ktor.client.darwin)
             }
         }
+        val commonTest by getting {
+            dependencies {
+                implementation(kotlin("test"))
+                implementation(libs.coroutines.test)
+            }
+        }
         val windowsX64Main by getting {
             dependencies {
                 api(libs.ktor.client.winhttp)
