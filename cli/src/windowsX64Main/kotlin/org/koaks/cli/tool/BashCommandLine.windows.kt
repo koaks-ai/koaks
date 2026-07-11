@@ -294,6 +294,34 @@ private data class WindowsProcessOutput(
         fun launchFailure(error: Int): WindowsProcessOutput =
             WindowsProcessOutput(1, byteArrayOf(), 0, false, byteArrayOf(), false, error)
     }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other == null || this::class != other::class) return false
+
+        other as WindowsProcessOutput
+
+        if (status != other.status) return false
+        if (stdoutTotalBytes != other.stdoutTotalBytes) return false
+        if (stdoutTruncated != other.stdoutTruncated) return false
+        if (stderrTruncated != other.stderrTruncated) return false
+        if (launchError != other.launchError) return false
+        if (!stdout.contentEquals(other.stdout)) return false
+        if (!stderr.contentEquals(other.stderr)) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = status
+        result = 31 * result + stdoutTotalBytes
+        result = 31 * result + stdoutTruncated.hashCode()
+        result = 31 * result + stderrTruncated.hashCode()
+        result = 31 * result + (launchError ?: 0)
+        result = 31 * result + stdout.contentHashCode()
+        result = 31 * result + stderr.contentHashCode()
+        return result
+    }
 }
 
 private fun startupDiagnostic(stdout: String, stderr: String, status: Int): String {
