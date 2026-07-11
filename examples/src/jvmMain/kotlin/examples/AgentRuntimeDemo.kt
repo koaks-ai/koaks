@@ -19,7 +19,9 @@ import org.koaks.runtime.sched.taskGraph
 /**
  * A self-contained tour of `koaks-runtime` that runs WITHOUT any API keys: it uses a
  * trivial [EchoModel] so you can see the kernel's behavior (concurrent spawn, priority,
- * a task DAG, IPC, the context store, metrics) deterministically.
+ * a task DAG, the context store, metrics) deterministically.
+ *
+ * For the **recommended real-model usage**, see [AgentRuntimeExample].
  *
  * Run this `main` to see the runtime coordinate several agents like an OS coordinates
  * processes.
