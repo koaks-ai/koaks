@@ -15,7 +15,7 @@ internal data class BashInput(
 )
 
 internal object BashTool : Tool<BashInput> {
-    override val name: String = "Bash"
+    override val name: String = BashCommandLine.toolName
     override val description: String =
         "Run a shell command from the current working directory. " +
             "Current operating system: $currentOperatingSystemName. " +

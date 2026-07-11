@@ -43,6 +43,7 @@ import platform.windows.WAIT_OBJECT_0
 import platform.windows.WaitForSingleObject
 
 internal actual object BashCommandLine {
+    actual val toolName: String = "PowerShell"
     actual val shellName: String = "PowerShell (`powershell.exe`)"
     actual val commandSyntaxGuidance: String =
         "On Windows, use PowerShell syntax and cmdlets only. " +

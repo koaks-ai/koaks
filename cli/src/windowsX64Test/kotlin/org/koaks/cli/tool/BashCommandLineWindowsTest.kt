@@ -7,6 +7,11 @@ import kotlin.test.assertFalse
 
 class BashCommandLineWindowsTest {
     @Test
+    fun registersToolAsPowerShell() {
+        assertEquals("PowerShell", BashTool.name)
+    }
+
+    @Test
     fun runsPowerShellSyntax() {
         val result = NativeCliIo.runBash(
             command = "\$items = @(1, 2, 3); Write-Output \$items.Count",

@@ -14,6 +14,7 @@ import platform.posix.remove
 import platform.posix.system
 
 internal actual object BashCommandLine {
+    actual val toolName: String = "Bash"
     actual val shellName: String = "Bash (`bash`)"
     actual val commandSyntaxGuidance: String = "Use Bash command syntax."
 
