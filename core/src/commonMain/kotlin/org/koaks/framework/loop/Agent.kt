@@ -42,15 +42,21 @@ class Agent internal constructor(
 
     private val runner = AgentRunner(this)
 
-    /** Streams the agent's events for a single user input. */
-    fun stream(input: String): Flow<AgentEvent> = flow {
+    /**
+     * Streams the agent's events for a single user input.
+     *
+     * [context] messages (if any) are inserted after the system instructions and before
+     * the user [input] — used by runtimes to inject shared context without owning the agent.
+     */
+    fun stream(input: String, context: List<Message> = emptyList()): Flow<AgentEvent> = flow {
         // Build inside the flow so any `dynamic { }` instruction segment resolves in
         // this coroutine context, once, before the first model step.
-        emitAll(runner.stream(initialMessages(input)))
+        emitAll(runner.stream(initialMessages(input, context)))
     }
 
     /** Runs to terminal state and returns the result. */
-    suspend fun run(input: String): AgentResult = runner.run(initialMessages(input))
+    suspend fun run(input: String, context: List<Message> = emptyList()): AgentResult =
+        runner.run(initialMessages(input, context))
 
     /** Runs and produces structured output per [spec] (used by the reified `run<T>`). */
     suspend fun runStructured(input: String, spec: OutputSpec): AgentResult =
@@ -75,9 +81,16 @@ class Agent internal constructor(
     /** Whether any registered tool has external side effects. */
     internal val hasSideEffectingTools: Boolean get() = tools.hasSideEffectingTools()
 
-    /** Builds the initial messages: system instructions (if any) + user input. */
-    private suspend fun initialMessages(input: String): List<Message> = buildList {
+    /**
+     * Builds the initial messages: system instructions (if any) + optional shared
+     * [context] + user input.
+     */
+    private suspend fun initialMessages(
+        input: String,
+        context: List<Message> = emptyList(),
+    ): List<Message> = buildList {
         instructions.resolve()?.let { add(Message.system(it)) }
+        addAll(context)
         add(Message.user(input))
     }
 

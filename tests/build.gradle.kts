@@ -7,6 +7,7 @@ kotlin {
         val commonTest by getting {
             dependencies {
                 implementation(project(":core"))
+                implementation(project(":koaks-runtime"))
                 implementation(project(":koaks-model:qwen"))
                 implementation(project(":koaks-model:ollama"))
                 implementation(project(":koaks-model:openai"))
