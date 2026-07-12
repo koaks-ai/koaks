@@ -7,6 +7,8 @@ import org.koaks.framework.tool.Tool
 internal fun ToolScope.registerBuiltinCliTools() {
     tool(BashTool)
     tool(ReadTool)
+    tool(WriteTool)
+    tool(EditTool)
 }
 
 @Serializable
@@ -137,6 +139,143 @@ internal object ReadTool : Tool<ReadInput> {
             truncatedByChars
 }
 
+@Serializable
+internal data class WriteInput(
+    val path: String,
+    val content: String,
+)
+
+internal object WriteTool : Tool<WriteInput> {
+    override val name: String = "Write"
+    override val description: String =
+        "Create a new file, or overwrite an existing file, with the given `content`. " +
+            "`path` may be relative to the current working directory and parent directories must already exist. " +
+            "Use this to author whole files; to change part of an existing file prefer the `Edit` tool. " +
+            "The write is atomic and returns a short confirmation with the file's line and byte counts."
+    override val inputSerializer = WriteInput.serializer()
+    override val hasSideEffects: Boolean = true
+
+    override suspend fun execute(input: WriteInput): String {
+        val path = input.path.trim()
+        if (path.isEmpty()) return "Error: path is required."
+        if (input.content.length > MAX_WRITE_FILE_CHARS) {
+            return "Error: content exceeds the $MAX_WRITE_FILE_CHARS character limit; split the work or use the shell tool."
+        }
+
+        val existed = NativeCliIo.fileExists(path)
+        val write = NativeCliIo.writeWholeFile(path, input.content)
+        if (write.error != null) return "Error: ${write.error}"
+
+        val lineCount = when {
+            input.content.isEmpty() -> 0
+            input.content.endsWith("\n") -> input.content.count { it == '\n' }
+            else -> input.content.count { it == '\n' } + 1
+        }
+        val verb = if (existed) "Overwrote" else "Created"
+        return "✓ $verb ${displayName(path)}  ($lineCount lines, ${write.bytesWritten} bytes)"
+    }
+}
+
+@Serializable
+internal data class EditInput(
+    val path: String,
+    val oldString: String,
+    val newString: String,
+    val replaceAll: Boolean = false,
+)
+
+internal object EditTool : Tool<EditInput> {
+    override val name: String = "Edit"
+    override val description: String =
+        "Replace an exact text fragment in an existing file. Read the file first, then pass the " +
+            "verbatim `oldString` to replace and the `newString` to insert. " +
+            "`oldString` must match the file content exactly (including indentation) and must be " +
+            "unique unless `replaceAll` is true. Provide enough surrounding context to make it unique. " +
+            "Line endings are matched using `\\n` and the file's original CRLF/LF style is preserved. " +
+            "To create a new file use the `Write` tool instead."
+    override val inputSerializer = EditInput.serializer()
+    override val hasSideEffects: Boolean = true
+
+    override suspend fun execute(input: EditInput): String {
+        val path = input.path.trim()
+        if (path.isEmpty()) return "Error: path is required."
+        if (input.oldString.isEmpty()) {
+            return "Error: oldString is required. To create a new file, use the Write tool."
+        }
+        if (input.oldString == input.newString) {
+            return "Error: oldString and newString are identical; nothing to change."
+        }
+
+        val read = NativeCliIo.readWholeFile(path, MAX_EDIT_FILE_BYTES)
+        if (read.error != null) return "Error: ${read.error}"
+        val original = read.text ?: return "Error: unable to read file: $path"
+
+        val useCrlf = original.contains("\r\n")
+        val normalized = if (useCrlf) original.replace("\r\n", "\n") else original
+
+        val occurrences = countOccurrences(normalized, input.oldString)
+        if (occurrences == 0) {
+            return "Error: oldString was not found in $path. " +
+                "Read the file again and copy the exact text (including whitespace)."
+        }
+        if (occurrences > 1 && !input.replaceAll) {
+            return "Error: oldString matched $occurrences locations in $path. " +
+                "Add more surrounding context to make it unique, or set replace_all=true."
+        }
+
+        val updated = if (input.replaceAll) {
+            normalized.replace(input.oldString, input.newString)
+        } else {
+            normalized.replaceFirst(input.oldString, input.newString)
+        }
+
+        val toWrite = if (useCrlf) updated.replace("\n", "\r\n") else updated
+        val write = NativeCliIo.writeWholeFile(path, toWrite)
+        if (write.error != null) return "Error: ${write.error}"
+
+        val replacements = if (input.replaceAll) occurrences else 1
+        return buildEditSummary(path, updated, input.newString, replacements)
+    }
+
+    private fun buildEditSummary(
+        path: String,
+        updated: String,
+        newString: String,
+        replacements: Int,
+    ): String = buildString {
+        val plural = if (replacements == 1) "replacement" else "replacements"
+        appendLine("✓ Edited ${displayName(path)}  ($replacements $plural)")
+
+        val index = if (newString.isEmpty()) -1 else updated.indexOf(newString)
+        if (index < 0) return@buildString
+
+        val startLine = updated.substring(0, index).count { it == '\n' } + 1
+        val previewLineCount = (newString.count { it == '\n' } + 1).coerceAtMost(EDIT_PREVIEW_MAX_LINES)
+        val allLines = updated.split("\n")
+        val from = (startLine - 1).coerceIn(0, allLines.size)
+        val to = (from + previewLineCount).coerceAtMost(allLines.size)
+        if (from >= to) return@buildString
+
+        val width = to.toString().length
+        for (i in from until to) {
+            appendLine("${(i + 1).toString().padStart(width)} | ${allLines[i].take(EDIT_PREVIEW_MAX_LINE_CHARS)}")
+        }
+    }.trimEnd()
+
+    private fun countOccurrences(haystack: String, needle: String): Int {
+        if (needle.isEmpty()) return 0
+        var count = 0
+        var from = 0
+        while (true) {
+            val at = haystack.indexOf(needle, from)
+            if (at < 0) break
+            count += 1
+            from = at + needle.length
+        }
+        return count
+    }
+}
+
 private fun displayName(path: String): String =
     path.substringAfterLast('/').substringAfterLast('\\').ifEmpty { path }
 
@@ -153,3 +292,7 @@ private const val MAX_READ_WINDOW_LINES = 400
 private const val MAX_AUTO_READ_CHARS = 30_000
 private const val MAX_READ_WINDOW_CHARS = 30_000
 private const val MAX_BASH_OUTPUT_CHARS = 30_000
+private const val MAX_EDIT_FILE_BYTES = 1_000_000L
+private const val MAX_WRITE_FILE_CHARS = 1_000_000
+private const val EDIT_PREVIEW_MAX_LINES = 20
+private const val EDIT_PREVIEW_MAX_LINE_CHARS = 200
