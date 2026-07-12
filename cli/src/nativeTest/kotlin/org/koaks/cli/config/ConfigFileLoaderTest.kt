@@ -18,6 +18,7 @@ class ConfigFileLoaderTest {
             val config = ConfigFileLoader.load(TestEnvironment("HOME" to home))
 
             assertEquals(Provider.OPENAI, config.defaultProvider)
+            assertEquals(false, config.showReasoning)
             assertEquals(listOf(Provider.OPENAI, Provider.ANTHROPIC), config.providerOrder)
             assertEquals("gpt-5.5", config.providers[Provider.OPENAI]?.defaultModel)
             assertEquals(listOf("gpt-5.5"), config.providers[Provider.OPENAI]?.modelList)
@@ -35,6 +36,7 @@ class ConfigFileLoaderTest {
         val config = TomlConfigParser.parse(ConfigFileLoader.defaultConfigText())
 
         assertEquals(Provider.OPENAI, config.defaultProvider)
+        assertEquals(false, config.showReasoning)
         assertEquals("gpt-5.5", config.providers[Provider.OPENAI]?.modelOrDefault(Provider.OPENAI))
         assertEquals("claude-opus-4-8", config.providers[Provider.ANTHROPIC]?.modelOrDefault(Provider.ANTHROPIC))
     }

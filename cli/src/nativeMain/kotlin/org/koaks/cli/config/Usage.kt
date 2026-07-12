@@ -15,6 +15,7 @@ internal fun usageText(): String =
       Default path: ${'$'}HOME/.koaks/config.toml
 
       provider = "openai"
+      show_reasoning = false
 
       [providers.openai]
       base_url = "https://api.openai.com"
@@ -32,4 +33,5 @@ internal fun usageText(): String =
       koaks
       /provider anthropic
       /model claude-opus-4-8
+      /reasoning on
     """.trimIndent()

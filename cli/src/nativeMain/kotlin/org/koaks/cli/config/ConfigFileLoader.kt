@@ -31,6 +31,8 @@ internal object ConfigFileLoader {
         # Koaks CLI configuration.
         # Add api_key under a provider before using remote models.
         provider = "openai"
+        # Enable model thinking / show reasoning output (same as /reasoning on|off).
+        show_reasoning = false
 
         [providers.openai]
         base_url = "${Provider.OPENAI.defaultBaseUrl}"
