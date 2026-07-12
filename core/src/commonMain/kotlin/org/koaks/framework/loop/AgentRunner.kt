@@ -93,20 +93,32 @@ class AgentRunner(private val agent: Agent) {
                     agent.listeners.forEach { it.onModelEvent(event) }
                     when (event) {
                         is ModelEvent.TextDelta -> {
+                            logger.debug { "AgentRunner: emitting text delta: ${event.text}" }
                             emittedText = true
                             out(AgentEvent.TextDelta(event.text))
                         }
 
-                        is ModelEvent.ReasoningDelta ->
+                        is ModelEvent.ReasoningDelta -> {
+                            logger.debug { "AgentRunner: emitting reasoning delta: ${event.text}" }
                             out(AgentEvent.ReasoningDelta(event.text))
+                        }
 
-                        is ModelEvent.ToolCallCompleted ->
+
+                        is ModelEvent.ToolCallCompleted -> {
+                            logger.debug { "AgentRunner: emitting tool result: ${event.call}" }
                             out(AgentEvent.ToolCallRequested(event.call))
+                        }
 
-                        is ModelEvent.Failed ->
+
+                        is ModelEvent.Failed -> {
+                            logger.error { "AgentRunner: emitting model failure: ${event.error}" }
                             throw ModelFailure(event.error)
+                        }
 
-                        else -> {}
+                        else -> {
+                            // ignore other model events (e.g. usage, metadata)
+                            logger.debug { "AgentRunner: ignoring model event: $event"}
+                        }
                     }
                 }
             } catch (t: Throwable) {
@@ -165,6 +177,7 @@ class AgentRunner(private val agent: Agent) {
                                     is ToolDecision.ProceedWith -> {
                                         current = decision.call.copy(id = call.id)
                                     }
+
                                     is ToolDecision.Deny -> {
                                         denied = ToolOutcome.Failure(
                                             AgentError.ToolError(
