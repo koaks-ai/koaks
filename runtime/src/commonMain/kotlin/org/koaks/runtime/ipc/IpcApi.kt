@@ -1,13 +1,14 @@
 package org.koaks.runtime.ipc
 
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import org.koaks.runtime.acb.AgentId
 import org.koaks.runtime.context.ContextRef
 import org.koaks.runtime.resource.RuntimeContext
-import kotlin.coroutines.coroutineContext
 
 private suspend fun runtimeCtx(): RuntimeContext =
-    coroutineContext[RuntimeContext] ?: error("IPC is only available inside a runtime-spawned agent")
+    currentCoroutineContext()[RuntimeContext]
+        ?: error("IPC is only available inside a runtime-spawned agent")
 
 private suspend fun hub(): IpcHub = runtimeCtx().ipc
 

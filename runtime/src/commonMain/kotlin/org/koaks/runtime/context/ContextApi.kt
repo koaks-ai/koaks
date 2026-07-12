@@ -1,11 +1,12 @@
 package org.koaks.runtime.context
 
+import kotlinx.coroutines.currentCoroutineContext
 import org.koaks.framework.model.Message
 import org.koaks.runtime.resource.RuntimeContext
-import kotlin.coroutines.coroutineContext
 
 private suspend fun ctx(): RuntimeContext =
-    coroutineContext[RuntimeContext] ?: error("context store is only available inside a runtime-spawned agent")
+    currentCoroutineContext()[RuntimeContext]
+        ?: error("context store is only available inside a runtime-spawned agent")
 
 /**
  * Stores [messages] in the shared context store from within a runtime-spawned agent.

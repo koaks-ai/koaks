@@ -1,5 +1,6 @@
 package org.koaks.runtime.resource
 
+import kotlinx.coroutines.currentCoroutineContext
 import org.koaks.framework.loop.Agent
 import org.koaks.runtime.acb.Acb
 import org.koaks.runtime.acb.AgentHandle
@@ -11,12 +12,11 @@ import org.koaks.runtime.ipc.IpcHub
 import org.koaks.runtime.observe.RuntimeEvent
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.coroutineContext
 
 /**
  * Spawns a child instance on the same runtime. Bound into [RuntimeContext] so tools can
  * create children without holding the full [org.koaks.runtime.AgentRuntime] (no close /
- * reap / metrics). The current instance is always recorded as [parent].
+ * reap / metrics). The current instance is always recorded as the child's parent.
  */
 fun interface AgentSpawner {
     fun spawn(
@@ -86,7 +86,7 @@ class RuntimeContext internal constructor(
 }
 
 /** The current runtime context, or `null` when running outside a runtime (direct path). */
-suspend fun currentRuntimeContext(): RuntimeContext? = coroutineContext[RuntimeContext]
+suspend fun currentRuntimeContext(): RuntimeContext? = currentCoroutineContext()[RuntimeContext]
 
 /**
  * Spawns a child agent from inside a runtime-spawned instance (tool / coroutine).
@@ -99,7 +99,7 @@ suspend fun spawnChild(
     quota: Quota? = null,
     contextRefs: List<ContextRef> = emptyList(),
 ): AgentHandle {
-    val ctx = coroutineContext[RuntimeContext]
+    val ctx = currentRuntimeContext()
         ?: error("spawnChild is only available inside a runtime-spawned agent")
     return ctx.spawn(agent, input, priority, quota, contextRefs)
 }
@@ -117,7 +117,7 @@ suspend fun <T> withRuntimeResource(
     mode: AccessMode = AccessMode.WRITE,
     block: suspend () -> T,
 ): T {
-    val ctx = coroutineContext[RuntimeContext] ?: return block()
+    val ctx = currentRuntimeContext() ?: return block()
     ctx.enterWaiting()
     try {
         return ctx.resources.withResource(id, mode) {
