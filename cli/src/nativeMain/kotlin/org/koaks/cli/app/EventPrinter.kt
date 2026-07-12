@@ -12,6 +12,7 @@ internal class EventPrinter(
     private val showReasoning: Boolean,
     private val output: Output,
     private val theme: Theme,
+    private val trace: CliTrace? = null,
 ) {
     private var assistantPromptActive = false
     private var assistantPromptPrinted = false
@@ -23,16 +24,35 @@ internal class EventPrinter(
     private var hasFlushedStreamingContent = false
     private var unflushedStreamingChars = 0
     private var lastStreamingFlush = TimeSource.Monotonic.markNow()
-    private val markdown = TerminalMarkdownRenderer(theme, PANEL_WIDTH)
+    private val markdown = TerminalMarkdownRenderer(
+        theme = theme,
+        blockWidth = PANEL_WIDTH,
+        onFallback = { fallback ->
+            trace?.markdownFallback(
+                reason = fallback.reason,
+                state = fallback.state,
+                pendingChars = fallback.pendingChars,
+                errorType = fallback.errorType,
+            )
+        },
+    )
 
     fun print(event: AgentEvent) {
         when (event) {
             is AgentEvent.TextDelta -> {
+                trace?.renderStage(event, "prompt.start")
                 ensureAssistantPrompt()
+                trace?.renderStage(event, "prompt.completed")
+                trace?.renderStage(event, "markdown.start")
                 val rendered = markdown.render(event.text)
+                trace?.renderStage(event, "markdown.completed", rendered.length)
                 markContent(rendered)
+                trace?.renderStage(event, "stdout.write.start", rendered.length)
                 output.write(rendered)
+                trace?.renderStage(event, "stdout.write.completed", rendered.length)
+                trace?.renderStage(event, "stdout.flush_check.start", rendered.length)
                 flushStreamingOutputIfNeeded(rendered)
+                trace?.renderStage(event, "stdout.flush_check.completed", rendered.length)
             }
 
             is AgentEvent.ReasoningDelta -> {

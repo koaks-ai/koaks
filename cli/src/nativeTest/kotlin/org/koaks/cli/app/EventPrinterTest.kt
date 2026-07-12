@@ -167,6 +167,21 @@ class EventPrinterTest {
     }
 
     @Test
+    fun handlesInlineCodeOpenerSplitBeforeContent() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+
+        printer.print(AgentEvent.TextDelta("拆分的反引号：`"))
+        assertEquals("◆ 拆分的反引号：", output.content())
+
+        printer.print(AgentEvent.TextDelta("code"))
+        assertEquals("◆ 拆分的反引号：code", output.content())
+
+        printer.print(AgentEvent.TextDelta("`。"))
+        assertEquals("◆ 拆分的反引号：code。", output.content())
+    }
+
+    @Test
     fun rendersCodeBlockAtStartOnItsOwnLine() {
         val output = BufferOutput()
         val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))

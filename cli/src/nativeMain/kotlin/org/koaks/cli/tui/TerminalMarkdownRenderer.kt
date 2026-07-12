@@ -7,7 +7,17 @@ package org.koaks.cli.tui
 internal class TerminalMarkdownRenderer(
     private val theme: Theme,
     private val blockWidth: Int = DEFAULT_CODE_BLOCK_WIDTH,
+    private val onFallback: (MarkdownFallback) -> Unit = {},
+    /** Test seam: return true to simulate a broken drain that reports progress without consuming input. */
+    private val drainTestHook: (() -> Boolean)? = null,
 ) {
+    internal data class MarkdownFallback(
+        val reason: String,
+        val state: String,
+        val pendingChars: Int,
+        val errorType: String? = null,
+    )
+
     private enum class State {
         Normal,
         Bold,
@@ -16,8 +26,14 @@ internal class TerminalMarkdownRenderer(
         CodeBlock,
     }
 
+    private enum class DrainResult {
+        Progressed,
+        NeedMoreInput,
+    }
+
     private var state = State.Normal
     private var pending = ""
+    private var plainTextMode = false
     private var atLineStart = false
     private val fenceInfo = StringBuilder()
     private var codeLanguage = "text"
@@ -30,68 +46,112 @@ internal class TerminalMarkdownRenderer(
     private val codeContentWidth: Int = safeBlockWidth - CODE_BLOCK_HORIZONTAL_CHROME
 
     fun render(text: String): String {
+        if (plainTextMode) return text
         pending += text
         return drain(final = false)
     }
 
-    fun finish(): String = drain(final = true)
+    fun finish(): String = if (plainTextMode) "" else drain(final = true)
 
     private fun drain(final: Boolean): String {
         val out = StringBuilder()
 
         while (pending.isNotEmpty()) {
-            when (state) {
-                State.Normal -> drainNormal(out, final)
-                State.Bold -> drainDelimitedSpan(out, "**", theme::bold, final)
-                State.InlineCode -> drainDelimitedSpan(out, "`", theme::inlineCode, final)
-                State.FenceInfo -> drainFenceInfo(out, final)
-                State.CodeBlock -> drainCodeBlock(out, final)
+            val pendingBefore = pending
+            val stateBefore = state
+            val stepOut = StringBuilder()
+            val result = try {
+                if (drainTestHook?.invoke() == true) {
+                    DrainResult.Progressed
+                } else {
+                    when (state) {
+                        State.Normal -> drainNormal(stepOut, final)
+                        State.Bold -> drainDelimitedSpan(stepOut, "**", theme::bold, final)
+                        State.InlineCode -> drainDelimitedSpan(stepOut, "`", theme::inlineCode, final)
+                        State.FenceInfo -> drainFenceInfo(stepOut, final)
+                        State.CodeBlock -> drainCodeBlock(stepOut, final)
+                    }
+                }
+            } catch (error: Exception) {
+                pending = pendingBefore
+                fallbackToPlainText(out, reason = FALLBACK_EXCEPTION, error = error)
+                return out.toString()
             }
 
-            if (!final && shouldWaitForMore()) break
+            when (result) {
+                DrainResult.NeedMoreInput -> {
+                    if (stepOut.isNotEmpty() || pending != pendingBefore || state != stateBefore) {
+                        pending = pendingBefore
+                        fallbackToPlainText(out, reason = FALLBACK_NO_PROGRESS)
+                        return out.toString()
+                    }
+                    break
+                }
+
+                DrainResult.Progressed -> {
+                    if (pending.length >= pendingBefore.length) {
+                        pending = pendingBefore
+                        fallbackToPlainText(out, reason = FALLBACK_NO_PROGRESS)
+                        return out.toString()
+                    }
+                    out.append(stepOut)
+                }
+            }
         }
 
         if (final) {
-            when (state) {
-                State.Normal -> Unit
-                State.Bold -> {
-                    state = State.Normal
-                }
-
-                State.InlineCode -> {
-                    state = State.Normal
-                }
-
-                State.FenceInfo -> {
-                    if (codeBlockOpened) {
-                        closeCodeBlock(out)
-                    } else {
-                        appendPlain(out, "```")
-                        appendPlain(out, fenceInfo.toString())
-                    }
-                    fenceInfo.clear()
-                    state = State.Normal
-                }
-
-                State.CodeBlock -> {
-                    emitCodeText(out, pending)
-                    pending = ""
-                    closeCodeBlock(out)
-                    fenceInfo.clear()
-                    state = State.Normal
-                }
-            }
-
-            if (pending.isNotEmpty()) {
-                appendPlain(out, pending)
-                pending = ""
+            val pendingBefore = pending
+            val finalOut = StringBuilder()
+            try {
+                finalizeMarkdown(finalOut)
+                out.append(finalOut)
+            } catch (error: Exception) {
+                pending = pendingBefore
+                fallbackToPlainText(out, reason = FALLBACK_EXCEPTION, error = error)
             }
         }
 
         return out.toString()
     }
 
-    private fun drainNormal(out: StringBuilder, final: Boolean) {
+    private fun finalizeMarkdown(out: StringBuilder) {
+        when (state) {
+            State.Normal -> Unit
+            State.Bold -> {
+                state = State.Normal
+            }
+
+            State.InlineCode -> {
+                state = State.Normal
+            }
+
+            State.FenceInfo -> {
+                if (codeBlockOpened) {
+                    closeCodeBlock(out)
+                } else {
+                    appendPlain(out, "```")
+                    appendPlain(out, fenceInfo.toString())
+                }
+                fenceInfo.clear()
+                state = State.Normal
+            }
+
+            State.CodeBlock -> {
+                emitCodeText(out, pending)
+                pending = ""
+                closeCodeBlock(out)
+                fenceInfo.clear()
+                state = State.Normal
+            }
+        }
+
+        if (pending.isNotEmpty()) {
+            appendPlain(out, pending)
+            pending = ""
+        }
+    }
+
+    private fun drainNormal(out: StringBuilder, final: Boolean): DrainResult {
         if (pending.startsWith("```")) {
             if (!atLineStart) appendPlain(out, "\n")
             consume(3)
@@ -107,34 +167,37 @@ internal class TerminalMarkdownRenderer(
                 }
                 openCodeBlock(out)
             }
-            return
+            return DrainResult.Progressed
         }
 
         if (pending.startsWith("**")) {
             consume(2)
             state = State.Bold
-            return
+            return DrainResult.Progressed
         }
 
         val specialAt = pending.indexOfAny(charArrayOf('*', '`'))
         if (specialAt > 0) {
             appendPlain(out, pending.substring(0, specialAt))
             consume(specialAt)
-            return
+            return DrainResult.Progressed
         }
 
         val first = pending[0]
         if (first == '`') {
-            if (!final && pending.length < 3) return
+            if (!final && pending.length < 3 && pending.all { it == '`' }) {
+                return DrainResult.NeedMoreInput
+            }
             consume(1)
             state = State.InlineCode
-            return
+            return DrainResult.Progressed
         }
 
-        if (first == '*' && !final && pending.length == 1) return
+        if (first == '*' && !final && pending.length == 1) return DrainResult.NeedMoreInput
 
         appendPlain(out, first.toString())
         consume(1)
+        return DrainResult.Progressed
     }
 
     private fun drainDelimitedSpan(
@@ -142,13 +205,13 @@ internal class TerminalMarkdownRenderer(
         delimiter: String,
         style: (String) -> String,
         final: Boolean,
-    ) {
+    ): DrainResult {
         val closeAt = pending.indexOf(delimiter)
         if (closeAt >= 0) {
             appendStyled(out, pending.substring(0, closeAt), style)
             consume(closeAt + delimiter.length)
             state = State.Normal
-            return
+            return DrainResult.Progressed
         }
 
         val hold = if (!final && delimiter == "**" && pending.endsWith("*")) 1 else 0
@@ -156,10 +219,12 @@ internal class TerminalMarkdownRenderer(
         if (take > 0) {
             appendStyled(out, pending.substring(0, take), style)
             consume(take)
+            return DrainResult.Progressed
         }
+        return DrainResult.NeedMoreInput
     }
 
-    private fun drainFenceInfo(out: StringBuilder, final: Boolean) {
+    private fun drainFenceInfo(out: StringBuilder, final: Boolean): DrainResult {
         val newlineAt = pending.indexOf('\n')
         if (newlineAt >= 0) {
             fenceInfo.append(pending.substring(0, newlineAt))
@@ -167,18 +232,19 @@ internal class TerminalMarkdownRenderer(
             refreshCodeLanguage()
             if (!codeBlockOpened) openCodeBlock(out)
             state = State.CodeBlock
-            return
+            return DrainResult.Progressed
         }
 
-        if (final) return
+        if (final) return DrainResult.NeedMoreInput
 
         fenceInfo.append(pending)
         pending = ""
         refreshCodeLanguage()
         if (!codeBlockOpened) openCodeBlock(out)
+        return DrainResult.Progressed
     }
 
-    private fun drainCodeBlock(out: StringBuilder, final: Boolean) {
+    private fun drainCodeBlock(out: StringBuilder, final: Boolean): DrainResult {
         val closeAt = pending.indexOf("```")
         if (closeAt >= 0) {
             emitCodeText(out, pending.substring(0, closeAt))
@@ -187,7 +253,7 @@ internal class TerminalMarkdownRenderer(
             fenceInfo.clear()
             state = State.Normal
             consumeFenceTrailingNewline()
-            return
+            return DrainResult.Progressed
         }
 
         val hold = if (!final) pending.trailingBacktickCount().coerceAtMost(2) else 0
@@ -195,7 +261,9 @@ internal class TerminalMarkdownRenderer(
         if (take > 0) {
             emitCodeText(out, pending.substring(0, take))
             consume(take)
+            return DrainResult.Progressed
         }
+        return DrainResult.NeedMoreInput
     }
 
     private fun consumeFenceTrailingNewline() {
@@ -206,17 +274,34 @@ internal class TerminalMarkdownRenderer(
         }
     }
 
-    private fun shouldWaitForMore(): Boolean =
-        when (state) {
-            State.Normal -> (pending.length == 1 && (pending[0] == '*' || pending[0] == '`')) ||
-                (pending.length == 2 && pending[0] == '`' && pending[1] == '`')
-
-            State.Bold -> pending.length == 1 && pending[0] == '*'
-            State.InlineCode -> false
-            // Frame is already open; only wait when a partial fence token is pending.
-            State.FenceInfo -> false
-            State.CodeBlock -> pending.all { it == '`' } && pending.length < 3
+    private fun fallbackToPlainText(out: StringBuilder, reason: String, error: Exception? = null) {
+        val fallback = MarkdownFallback(
+            reason = reason,
+            state = state.name.lowercase(),
+            pendingChars = pending.length,
+            errorType = error?.let { it::class.simpleName ?: "Exception" },
+        )
+        if (pending.isNotEmpty()) appendPlain(out, pending)
+        pending = ""
+        plainTextMode = true
+        resetParserState()
+        try {
+            onFallback(fallback)
+        } catch (_: Exception) {
+            // Diagnostics are best-effort and must never break response rendering.
         }
+    }
+
+    private fun resetParserState() {
+        state = State.Normal
+        fenceInfo.clear()
+        codeLanguage = "text"
+        codeBlockOpened = false
+        codeLine.clear()
+        codeLineWidth = 0
+        codeLineOpenDrawn = false
+        codeLineHasEmittedChunk = false
+    }
 
     private fun consume(count: Int) {
         pending = pending.substring(count)
@@ -531,6 +616,8 @@ internal class TerminalMarkdownRenderer(
         }
 
     private companion object {
+        const val FALLBACK_NO_PROGRESS = "no_progress"
+        const val FALLBACK_EXCEPTION = "exception"
         const val DEFAULT_CODE_BLOCK_WIDTH = 78
         const val MIN_CODE_BLOCK_WIDTH = 16
         const val CODE_BLOCK_HORIZONTAL_CHROME = 4

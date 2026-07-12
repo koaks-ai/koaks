@@ -33,6 +33,9 @@ internal class CliTrace(
     private var modelEventsInStep = 0
     private var modelRequestStartedMillis = 0L
     private var turn = 0
+    private var agentEventsInTurn = 0
+    private var currentAgentEventIndex = 0
+    private var agentEventReceivedMillis = 0L
     private var textRunActive = false
     private var reasoningRunActive = false
     private val toolStartedMillis = mutableMapOf<String, Long>()
@@ -43,6 +46,8 @@ internal class CliTrace(
         turn++
         textRunActive = false
         reasoningRunActive = false
+        agentEventsInTurn = 0
+        currentAgentEventIndex = 0
         toolStartedMillis.clear()
         log("turn.start", "turn=$turn input_chars=$inputLength")
     }
@@ -50,6 +55,13 @@ internal class CliTrace(
     fun collectorStarted() = log("collector.start", "turn=$turn")
 
     fun eventReceived(event: AgentEvent) {
+        agentEventsInTurn++
+        currentAgentEventIndex = agentEventsInTurn
+        agentEventReceivedMillis = elapsedMillis()
+        log(
+            "agent.event.received",
+            "turn=$turn index=$currentAgentEventIndex type=${event.kind()}${event.sizeFields()}",
+        )
         when (event) {
             is AgentEvent.TextDelta -> {
                 if (!textRunActive) log("agent.text.first", "turn=$turn step=$currentStep chars=${event.text.length}")
@@ -92,11 +104,33 @@ internal class CliTrace(
         }
     }
 
-    /** Called after EventPrinter has written and flushed a tool result to stdout. */
+    /** Called after EventPrinter has written the event and performed any required stdout flush. */
     fun eventRendered(event: AgentEvent) {
+        log(
+            "agent.event.rendered",
+            "turn=$turn index=$currentAgentEventIndex type=${event.kind()}" +
+                " render_ms=${elapsedMillis() - agentEventReceivedMillis}",
+        )
         if (event is AgentEvent.ToolResult) {
             log("tool.result.rendered", "turn=$turn step=$currentStep id=${event.callId.safe()}")
         }
+    }
+
+    fun renderStage(event: AgentEvent, stage: String, renderedChars: Int? = null) {
+        log(
+            "agent.render.stage",
+            "turn=$turn index=$currentAgentEventIndex type=${event.kind()} stage=$stage" +
+                (renderedChars?.let { " rendered_chars=$it" } ?: ""),
+        )
+    }
+
+    fun markdownFallback(reason: String, state: String, pendingChars: Int, errorType: String?) {
+        log(
+            "markdown.fallback",
+            "turn=$turn index=$currentAgentEventIndex reason=${reason.safe()} state=${state.safe()}" +
+                " pending_chars=$pendingChars" +
+                (errorType?.let { " error=${it.safe()}" } ?: ""),
+        )
     }
 
     fun collectorCompleted() = log("collector.completed", "turn=$turn")
@@ -203,6 +237,29 @@ private fun ModelEvent.sizeFields(): String = when (this) {
         " name_chars=${call.name.length} arguments_chars=${call.arguments.length}"
     is ModelEvent.Completed -> ""
     is ModelEvent.Failed -> " message_chars=${error.message.length}"
+}
+
+private fun AgentEvent.kind(): String = when (this) {
+    is AgentEvent.TextDelta -> "text"
+    is AgentEvent.ReasoningDelta -> "reasoning"
+    is AgentEvent.ToolCallRequested -> "tool_call"
+    is AgentEvent.ToolResult -> "tool_result"
+    is AgentEvent.StepCompleted -> "step_completed"
+    is AgentEvent.Completed -> "completed"
+    is AgentEvent.Terminated -> "terminated"
+    is AgentEvent.Failed -> "failed"
+}
+
+private fun AgentEvent.sizeFields(): String = when (this) {
+    is AgentEvent.TextDelta -> " chars=${text.length}"
+    is AgentEvent.ReasoningDelta -> " chars=${text.length}"
+    is AgentEvent.ToolCallRequested ->
+        " name_chars=${call.name.length} arguments_chars=${call.arguments.length}"
+    is AgentEvent.ToolResult -> " output_chars=${output.length}"
+    is AgentEvent.StepCompleted -> " step=$step"
+    is AgentEvent.Completed -> " message_chars=${message.text.length}"
+    is AgentEvent.Terminated -> " message_chars=${message.text.length}"
+    is AgentEvent.Failed -> " message_chars=${error.message.length}"
 }
 
 private fun String.safe(): String = replace(Regex("[^A-Za-z0-9_.:-]"), "_").take(120)

@@ -126,7 +126,7 @@ internal class AgentApp(
                 output.writeLine()
                 output.flush()
 
-                val eventPrinter = EventPrinter(session.config.showReasoning, output, theme)
+                val eventPrinter = EventPrinter(session.config.showReasoning, output, theme, trace)
                 trace.collectorStarted()
                 try {
                     events.collect { event ->
