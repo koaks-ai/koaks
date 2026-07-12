@@ -46,6 +46,7 @@ import org.koaks.runtime.resource.ResourceRegistry
 import org.koaks.runtime.resource.RuntimeContext
 import org.koaks.runtime.sched.Scheduler
 import org.koaks.runtime.sched.TaskGraph
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Configuration for an [AgentRuntime]. Mutated only inside the `AgentRuntime { }`
@@ -293,8 +294,8 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
     ): AgentResult {
         val wall = quota.wallClockMillis ?: return collectStream(agent, input, contextPrefix, acb, control, quota)
         return try {
-            withTimeout(wall) { collectStream(agent, input, contextPrefix, acb, control, quota) }
-        } catch (e: TimeoutCancellationException) {
+            withTimeout(wall.milliseconds) { collectStream(agent, input, contextPrefix, acb, control, quota) }
+        } catch (_: TimeoutCancellationException) {
             val error = AgentError.Timeout("agent wall-clock", wall)
             val usage = acb.snapshot.usage
             acb.markFailed(error, usage)
