@@ -618,7 +618,7 @@ internal class TerminalMarkdownRenderer(
     private companion object {
         const val FALLBACK_NO_PROGRESS = "no_progress"
         const val FALLBACK_EXCEPTION = "exception"
-        const val DEFAULT_CODE_BLOCK_WIDTH = 78
+        const val DEFAULT_CODE_BLOCK_WIDTH = 87
         const val MIN_CODE_BLOCK_WIDTH = 16
         const val CODE_BLOCK_HORIZONTAL_CHROME = 4
         val KEYWORDS_BY_LANGUAGE = mapOf(
