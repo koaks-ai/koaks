@@ -2,12 +2,14 @@ package org.koaks.cli.app
 
 import org.koaks.cli.tui.Ansi
 import org.koaks.cli.tui.Output
+import org.koaks.cli.tui.TextUtil
 import org.koaks.cli.tui.Theme
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.model.ToolCall
 import kotlin.test.assertContains
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class EventPrinterTest {
     @Test
@@ -23,8 +25,7 @@ class EventPrinterTest {
         assertEquals(
             """
             ◆ 让我查看一下当前文件夹的内容。
-            [tool call] Bash {"command":"ls -la"}
-            [tool result] Bash
+            ▸ Bash  ls -la
               file.txt
             
             当前文件夹包含 file.txt。
@@ -44,8 +45,7 @@ class EventPrinterTest {
 
         assertEquals(
             """
-            [tool call] Bash {"command":"ls"}
-            [tool result] Bash
+            ▸ Bash  ls
               file.txt
             
             ◆ 当前文件夹有 file.txt
@@ -302,7 +302,7 @@ class EventPrinterTest {
             """
             先查一下。
 
-            [tool call] Bash {"command":"ls"}
+            ▸ Bash  ls
             
             """.trimIndent(),
             output.content(),
@@ -333,8 +333,7 @@ class EventPrinterTest {
 
         assertEquals(
             """
-            [tool call] Bash {"command":"ls"}
-            [tool result] Bash
+            ▸ Bash  ls
               line-1
               line-2
               line-3
@@ -348,14 +347,15 @@ class EventPrinterTest {
     }
 
     @Test
-    fun dimsToolResultNameWithHeading() {
+    fun dimsToolCallLine() {
         val output = BufferOutput()
         val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = true))
 
         printer.print(AgentEvent.ToolCallRequested(ToolCall("call-1", "Bash", """{"command":"ls"}""")))
         printer.print(AgentEvent.ToolResult("call-1", "file.txt", isError = false))
 
-        assertContains(output.content(), "${Ansi.DIM}[tool result] Bash${Ansi.RESET}")
+        assertContains(output.content(), "${Ansi.DIM}▸ Bash  ls${Ansi.RESET}")
+        assertContains(output.content(), "${Ansi.DIM}  file.txt${Ansi.RESET}")
     }
 
     @Test
@@ -368,13 +368,133 @@ class EventPrinterTest {
 
         assertEquals(
             """
-            [tool call] Read {"path":"file.kt"}
-            [tool result] Read
+            ▸ Read  file.kt
               one
               two
               three
               four
               five
+            
+            """.trimIndent(),
+            output.content(),
+        )
+    }
+
+    @Test
+    fun truncatesLongToolCommandSummary() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+        val command = "echo " + "x".repeat(120)
+
+        printer.print(
+            AgentEvent.ToolCallRequested(
+                ToolCall("call-1", "PowerShell", """{"command":"$command"}""")
+            )
+        )
+
+        val line = output.content().trimEnd('\n')
+        assertTrue(line.startsWith("▸ PowerShell  echo "))
+        assertTrue(line.endsWith("..."))
+        assertTrue(TextUtil.visibleWidth(line) <= PANEL_WIDTH)
+    }
+
+    @Test
+    fun summarizesReadPathWithLineRange() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+
+        printer.print(
+            AgentEvent.ToolCallRequested(
+                ToolCall(
+                    id = "call-1",
+                    name = "Read",
+                    arguments = """{"path":"D:\\DevLab\\Kotlin\\koaks\\runtime\\AgentRuntime.kt","offset":66,"limit":50}""",
+                )
+            )
+        )
+
+        assertEquals("▸ Read  AgentRuntime.kt  66-115\n", output.content())
+    }
+
+    @Test
+    fun printsCompactToolResultDirectly() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+
+        printer.print(AgentEvent.ToolCallRequested(ToolCall("call-1", "PowerShell", """{"command":"ls"}""")))
+        printer.print(
+            AgentEvent.ToolResult(
+                callId = "call-1",
+                output = """
+                    ✓ exit 0
+                    FullName
+                    D:\DevLab\Kotlin\koaks\runtime\src\AgentRuntime.kt
+                    extra-1
+                    extra-2
+                    extra-3
+                """.trimIndent(),
+                isError = false,
+            )
+        )
+
+        assertEquals(
+            """
+            ▸ PowerShell  ls
+              ✓ exit 0
+              FullName
+              D:\DevLab\Kotlin\koaks\runtime\src\AgentRuntime.kt
+              extra-1
+              extra-2
+              ...
+            
+            """.trimIndent(),
+            output.content(),
+        )
+    }
+
+    @Test
+    fun printsOkStatusFromToolOutput() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+
+        printer.print(AgentEvent.ToolCallRequested(ToolCall("call-1", "Bash", """{"command":"true"}""")))
+        printer.print(
+            AgentEvent.ToolResult(
+                callId = "call-1",
+                output = "✓ exit 0",
+                isError = false,
+            )
+        )
+
+        assertEquals(
+            """
+            ▸ Bash  true
+              ✓ exit 0
+            
+            """.trimIndent(),
+            output.content(),
+        )
+    }
+
+    @Test
+    fun printsFailedToolOutputDirectly() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+
+        printer.print(AgentEvent.ToolCallRequested(ToolCall("call-1", "Bash", """{"command":"false"}""")))
+        printer.print(
+            AgentEvent.ToolResult(
+                callId = "call-1",
+                output = "✗ exit 1\nbombed",
+                isError = false,
+            )
+        )
+
+        assertEquals(
+            """
+            ▸ Bash  false
+              ✗ exit 1
+              bombed
             
             """.trimIndent(),
             output.content(),

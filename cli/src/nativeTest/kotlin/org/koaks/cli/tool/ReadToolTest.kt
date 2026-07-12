@@ -18,10 +18,12 @@ class ReadToolTest {
         withTempTextFile("alpha\nbeta\n") { path ->
             val output = ReadTool.executeForTest(ReadInput(path = path))
 
-            assertContains(output, "Path: $path")
-            assertContains(output, "Stats: Total Lines=2  Total Chars=11  Showing=1-2")
+            assertContains(output, path.substringAfterLast('/').substringAfterLast('\\'))
+            assertContains(output, "1-2")
             assertContains(output, "1 | alpha")
             assertContains(output, "2 | beta")
+            assertFalse(output.contains("Path:"))
+            assertFalse(output.contains("Stats:"))
         }
     }
 
@@ -45,8 +47,9 @@ class ReadToolTest {
             val output = ReadTool.executeForTest(ReadInput(path = path))
 
             assertContains(output, "File is too large")
-            assertContains(output, "Stats: Total Lines=401")
+            assertContains(output, "401 lines")
             assertContains(output, "offset=1")
+            assertFalse(output.contains("Stats:"))
         }
     }
 }

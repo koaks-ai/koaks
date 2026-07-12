@@ -31,19 +31,17 @@ internal object BashTool : Tool<BashInput> {
         if (command.isEmpty()) return "Error: command is required."
 
         val result = NativeCliIo.runBash(command, MAX_BASH_OUTPUT_CHARS)
+        val statusMark = if (result.status == 0) "✓" else "✗"
         return buildString {
-            appendLine("Command: $command")
-            appendLine("Stats: Status=${result.status}")
-            if (result.output.isBlank()) {
-                appendLine("Output: <empty>")
-            } else {
-                appendLine("=== Output ===")
-                append(result.output.trimEnd())
+            appendLine("$statusMark exit ${result.status}")
+            val body = result.output.trimEnd()
+            if (body.isNotEmpty()) {
+                append(body)
                 appendLine()
             }
             if (result.truncated) {
                 appendLine(
-                    "[output truncated to $MAX_BASH_OUTPUT_CHARS of ${result.totalOutputChars} characters]"
+                    "[truncated to $MAX_BASH_OUTPUT_CHARS of ${result.totalOutputChars} characters]"
                 )
             }
         }.trimEnd()
@@ -102,8 +100,7 @@ internal object ReadTool : Tool<ReadInput> {
     }
 
     private fun buildLargeFileSummary(path: String, scan: TextWindowScan): String = buildString {
-        appendLine("Path: $path")
-        appendLine("Stats: Total Lines=${scan.totalLines}  Total Chars=${scan.totalChars}")
+        appendLine("${displayName(path)}  (${scan.totalLines} lines, ${scan.totalChars} chars)")
         append("File is too large to return automatically; ")
         append("use offset=1 and limit=$DEFAULT_READ_WINDOW_LINES to read a window.")
     }.trimEnd()
@@ -117,23 +114,20 @@ internal object ReadTool : Tool<ReadInput> {
     ): String = buildString {
         val firstLine = scan.lines.firstOrNull()?.number
         val lastLine = scan.lines.lastOrNull()?.number
-        appendLine("Path: $path")
-        append("Stats: Total Lines=${scan.totalLines}")
-        append("  Total Chars=${scan.totalChars}")
+        val name = displayName(path)
         if (firstLine == null || lastLine == null) {
-            appendLine("  Requested=$offset-${offset + effectiveLimit - 1}")
-            appendLine("No lines in requested range.")
+            appendLine("$name  $offset-${offset + effectiveLimit - 1}")
+            append("No lines in requested range.")
             return@buildString
         }
 
-        appendLine("  Showing=$firstLine-$lastLine")
+        appendLine("$name  $firstLine-$lastLine")
         if (requestedLimit != effectiveLimit) {
             appendLine("[requested limit $requestedLimit was capped to $effectiveLimit lines]")
         }
         if (scan.truncatedByChars) {
-            appendLine("[content truncated at $MAX_READ_WINDOW_CHARS characters for this read]")
+            appendLine("[content truncated at $MAX_READ_WINDOW_CHARS characters]")
         }
-        appendLine()
         append(formatNumberedLines(scan.lines, scan.totalLines))
     }.trimEnd()
 
@@ -142,6 +136,9 @@ internal object ReadTool : Tool<ReadInput> {
             totalChars > MAX_AUTO_READ_CHARS ||
             truncatedByChars
 }
+
+private fun displayName(path: String): String =
+    path.substringAfterLast('/').substringAfterLast('\\').ifEmpty { path }
 
 private fun formatNumberedLines(lines: List<NumberedTextLine>, totalLines: Long): String {
     val width = maxOf(totalLines.toString().length, lines.lastOrNull()?.number?.toString()?.length ?: 1)

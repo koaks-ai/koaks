@@ -3,6 +3,7 @@ package org.koaks.cli.tool
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertFalse
 
 class BashToolTest {
     @Test
@@ -13,12 +14,13 @@ class BashToolTest {
     }
 
     @Test
-    fun outputUsesCompactStatsHeader() = runBlocking {
+    fun outputUsesCompactStatusAndBody() = runBlocking {
         val output = BashTool.execute(BashInput(command = "echo koaks-bash-test"))
 
-        assertContains(output, "Command: echo koaks-bash-test")
-        assertContains(output, "Stats: Status=0")
-        assertContains(output, "=== Output ===")
+        assertContains(output, "✓ exit 0")
         assertContains(output, "koaks-bash-test")
+        assertFalse(output.contains("Command:"))
+        assertFalse(output.contains("Stats:"))
+        assertFalse(output.contains("=== Output ==="))
     }
 }
