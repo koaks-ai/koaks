@@ -16,6 +16,7 @@ internal class EventPrinter(
     private var assistantPromptActive = false
     private var assistantPromptPrinted = false
     private var reasoningPromptActive = false
+    private var thinkingPlaceholderShown = false
     private var needsAssistantContinuationGap = false
     private var contentStarted = false
     private var endedWithNewLine = false
@@ -41,17 +42,21 @@ internal class EventPrinter(
                     val rendered = theme.dim(event.text)
                     output.write(rendered)
                     flushStreamingOutputIfNeeded(rendered)
+                } else {
+                    ensureThinkingPlaceholder()
                 }
             }
 
             is AgentEvent.Completed -> {
                 flushAssistantMarkdown()
+                clearThinkingPlaceholder()
                 if (!endedWithNewLine) output.writeLine()
                 flushOutput()
             }
 
             is AgentEvent.Terminated -> {
                 flushAssistantMarkdown()
+                clearThinkingPlaceholder()
                 if (!endedWithNewLine) output.writeLine()
                 output.writeLine(theme.warn("[terminated] ${event.reason}"))
                 flushOutput()
@@ -59,6 +64,7 @@ internal class EventPrinter(
 
             is AgentEvent.Failed -> {
                 flushAssistantMarkdown()
+                clearThinkingPlaceholder()
                 ensureLineStart()
                 output.writeLine(theme.error("[error] ${event.error.message}"))
                 flushOutput()
@@ -72,6 +78,7 @@ internal class EventPrinter(
 
     private fun printToolCall(event: AgentEvent.ToolCallRequested) {
         flushAssistantMarkdown()
+        clearThinkingPlaceholder()
         toolNames[event.call.id] = event.call.name
         val wasReasoningActive = reasoningPromptActive
         ensureLineStart()
@@ -114,6 +121,7 @@ internal class EventPrinter(
     private fun ensureAssistantPrompt() {
         if (assistantPromptActive) return
 
+        clearThinkingPlaceholder()
         val wasReasoningActive = reasoningPromptActive
         ensureLineStart()
         if (wasReasoningActive) output.writeLine()
@@ -142,6 +150,25 @@ internal class EventPrinter(
         reasoningPromptActive = true
     }
 
+    private fun ensureThinkingPlaceholder() {
+        if (thinkingPlaceholderShown || contentStarted) return
+        output.write(theme.dim("…"))
+        thinkingPlaceholderShown = true
+        contentStarted = true
+        endedWithNewLine = false
+        flushOutput()
+    }
+
+    private fun clearThinkingPlaceholder() {
+        if (!thinkingPlaceholderShown) return
+        // Move to a new line so the assistant answer / tool output does not trail the marker.
+        if (!endedWithNewLine) {
+            output.writeLine()
+            endedWithNewLine = true
+        }
+        thinkingPlaceholderShown = false
+    }
+
     private fun ensureLineStart() {
         if (contentStarted && !endedWithNewLine) output.writeLine()
     }
@@ -161,9 +188,12 @@ internal class EventPrinter(
     }
 
     private fun flushStreamingOutputIfNeeded(rendered: String) {
-        if (rendered.isEmpty()) return
+        if (rendered.isNotEmpty()) {
+            unflushedStreamingChars += rendered.length
+        } else if (!hasFlushedStreamingContent && unflushedStreamingChars == 0) {
+            return
+        }
 
-        unflushedStreamingChars += rendered.length
         val shouldFlush =
             !hasFlushedStreamingContent ||
                 rendered.contains('\n') ||

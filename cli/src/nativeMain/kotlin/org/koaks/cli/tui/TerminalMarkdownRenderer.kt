@@ -21,8 +21,10 @@ internal class TerminalMarkdownRenderer(
     private var atLineStart = false
     private val fenceInfo = StringBuilder()
     private var codeLanguage = "text"
+    private var codeBlockOpened = false
     private val codeLine = StringBuilder()
     private var codeLineWidth = 0
+    private var codeLineOpenDrawn = false
     private var codeLineHasEmittedChunk = false
     private val safeBlockWidth: Int = blockWidth.coerceAtLeast(MIN_CODE_BLOCK_WIDTH)
     private val codeContentWidth: Int = safeBlockWidth - CODE_BLOCK_HORIZONTAL_CHROME
@@ -61,8 +63,12 @@ internal class TerminalMarkdownRenderer(
                 }
 
                 State.FenceInfo -> {
-                    appendPlain(out, "```")
-                    appendPlain(out, fenceInfo.toString())
+                    if (codeBlockOpened) {
+                        closeCodeBlock(out)
+                    } else {
+                        appendPlain(out, "```")
+                        appendPlain(out, fenceInfo.toString())
+                    }
                     fenceInfo.clear()
                     state = State.Normal
                 }
@@ -90,7 +96,17 @@ internal class TerminalMarkdownRenderer(
             if (!atLineStart) appendPlain(out, "\n")
             consume(3)
             fenceInfo.clear()
+            codeBlockOpened = false
             state = State.FenceInfo
+            // If the language newline is not in this chunk yet, open the frame now so the
+            // stream does not appear frozen while waiting for it.
+            if (!pending.contains('\n')) {
+                if (pending.isNotEmpty()) {
+                    fenceInfo.append(pending)
+                    pending = ""
+                }
+                openCodeBlock(out)
+            }
             return
         }
 
@@ -148,7 +164,8 @@ internal class TerminalMarkdownRenderer(
         if (newlineAt >= 0) {
             fenceInfo.append(pending.substring(0, newlineAt))
             consume(newlineAt + 1)
-            openCodeBlock(out)
+            refreshCodeLanguage()
+            if (!codeBlockOpened) openCodeBlock(out)
             state = State.CodeBlock
             return
         }
@@ -157,6 +174,8 @@ internal class TerminalMarkdownRenderer(
 
         fenceInfo.append(pending)
         pending = ""
+        refreshCodeLanguage()
+        if (!codeBlockOpened) openCodeBlock(out)
     }
 
     private fun drainCodeBlock(out: StringBuilder, final: Boolean) {
@@ -194,7 +213,8 @@ internal class TerminalMarkdownRenderer(
 
             State.Bold -> pending.length == 1 && pending[0] == '*'
             State.InlineCode -> false
-            State.FenceInfo -> pending.isEmpty()
+            // Frame is already open; only wait when a partial fence token is pending.
+            State.FenceInfo -> false
             State.CodeBlock -> pending.all { it == '`' } && pending.length < 3
         }
 
@@ -216,11 +236,17 @@ internal class TerminalMarkdownRenderer(
         if (text.isNotEmpty()) atLineStart = text.endsWith("\n")
     }
 
-    private fun openCodeBlock(out: StringBuilder) {
+    private fun refreshCodeLanguage() {
         codeLanguage = fenceInfo.toString().trim().substringBefore(' ').ifBlank { "text" }
+    }
+
+    private fun openCodeBlock(out: StringBuilder) {
+        refreshCodeLanguage()
         codeLine.clear()
         codeLineWidth = 0
+        codeLineOpenDrawn = false
         codeLineHasEmittedChunk = false
+        codeBlockOpened = true
 
         appendStyled(out, "┌─ ", theme::codeBlockFrame)
         appendStyled(out, codeLanguage, theme::codeBlockLanguage)
@@ -237,58 +263,89 @@ internal class TerminalMarkdownRenderer(
         var index = 0
         while (index < normalized.length) {
             if (normalized[index] == '\n') {
-                emitCodeLine(out)
+                finishCodeLine(out)
                 index++
             } else {
                 val displayText = normalized.nextDisplayText(index)
                 val displayWidth = TextUtil.visibleWidth(displayText)
                 if (codeLine.isNotEmpty() && codeLineWidth + displayWidth > codeContentWidth) {
-                    emitBufferedCodeLineChunk(out)
+                    emitWrappedCodeLine(out)
                 }
                 codeLine.append(displayText)
                 codeLineWidth += displayWidth
                 if (codeLineWidth >= codeContentWidth) {
-                    emitBufferedCodeLineChunk(out)
+                    emitWrappedCodeLine(out)
                 }
                 index += displayText.length
             }
         }
+        // Redraw the in-progress line as a full highlighted + padded row so streaming
+        // stays visible without breaking the right border or syntax colors.
+        redrawOpenCodeLine(out)
     }
 
-    private fun emitCodeLine(out: StringBuilder) {
-        if (codeLine.isNotEmpty()) {
-            emitBufferedCodeLineChunk(out)
-        } else if (!codeLineHasEmittedChunk) {
-            emitCodeLineChunk(out, "")
+    private fun redrawOpenCodeLine(out: StringBuilder) {
+        if (codeLine.isEmpty()) return
+        if (codeLineOpenDrawn) out.append('\r')
+        emitHighlightedCodeLine(out, codeLine.toString(), terminate = false)
+        codeLineOpenDrawn = true
+    }
+
+    private fun finishCodeLine(out: StringBuilder) {
+        when {
+            codeLineOpenDrawn || codeLine.isNotEmpty() -> {
+                if (codeLineOpenDrawn) out.append('\r')
+                emitHighlightedCodeLine(out, codeLine.toString(), terminate = true)
+            }
+
+            !codeLineHasEmittedChunk -> {
+                emitHighlightedCodeLine(out, "", terminate = true)
+            }
         }
+        codeLine.clear()
+        codeLineWidth = 0
+        codeLineOpenDrawn = false
         codeLineHasEmittedChunk = false
     }
 
-    private fun emitBufferedCodeLineChunk(out: StringBuilder) {
-        emitCodeLineChunk(out, codeLine.toString())
+    private fun emitWrappedCodeLine(out: StringBuilder) {
+        if (codeLineOpenDrawn) out.append('\r')
+        emitHighlightedCodeLine(out, codeLine.toString(), terminate = true)
         codeLine.clear()
         codeLineWidth = 0
+        codeLineOpenDrawn = false
         codeLineHasEmittedChunk = true
     }
 
-    private fun emitCodeLineChunk(out: StringBuilder, line: String) {
+    private fun emitHighlightedCodeLine(out: StringBuilder, line: String, terminate: Boolean) {
         appendStyled(out, "│ ", theme::codeBlockFrame)
         val highlighted = highlightedCode(line)
         out.append(highlighted)
         markOutput(TextUtil.stripAnsi(highlighted))
         val padding = codeContentWidth - TextUtil.visibleWidth(highlighted)
         appendStyled(out, TextUtil.rule(' ', padding), theme::codeBlockText)
-        appendStyled(out, " │\n", theme::codeBlockFrame)
+        appendStyled(out, " │", theme::codeBlockFrame)
+        if (terminate) {
+            out.append('\n')
+            atLineStart = true
+            codeLineHasEmittedChunk = true
+        }
     }
 
     private fun closeCodeBlock(out: StringBuilder) {
-        if (codeLine.isNotEmpty()) emitBufferedCodeLineChunk(out)
+        if (codeLine.isNotEmpty() || codeLineOpenDrawn) {
+            finishCodeLine(out)
+            codeLineHasEmittedChunk = false
+        }
         appendStyled(out, "└", theme::codeBlockFrame)
         appendStyled(out, TextUtil.rule('─', safeBlockWidth - 2), theme::codeBlockFrame)
         appendStyled(out, "┘\n", theme::codeBlockFrame)
         fenceInfo.clear()
+        codeLanguage = "text"
+        codeBlockOpened = false
         codeLine.clear()
         codeLineWidth = 0
+        codeLineOpenDrawn = false
         codeLineHasEmittedChunk = false
     }
 

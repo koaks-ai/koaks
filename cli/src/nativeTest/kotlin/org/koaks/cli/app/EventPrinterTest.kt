@@ -74,14 +74,55 @@ class EventPrinterTest {
     }
 
     @Test
-    fun dropsReasoningWhenDisabled() {
+    fun showsThinkingPlaceholderWhenReasoningDisabled() {
         val output = BufferOutput()
         val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
 
         printer.print(AgentEvent.ReasoningDelta("隐藏思考"))
         printer.print(AgentEvent.TextDelta("只显示答案。"))
 
-        assertEquals("◆ 只显示答案。", output.content())
+        assertEquals("…\n◆ 只显示答案。", output.content())
+    }
+
+    @Test
+    fun streamsShortCodeLineBeforeNewlineArrives() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+
+        printer.print(AgentEvent.TextDelta("```text\n"))
+        printer.print(AgentEvent.TextDelta("hi"))
+
+        assertEquals(
+            "◆ \n" + plainCodeBlockStart("text") + plainCodeLineOpen("hi"),
+            output.content(),
+        )
+
+        printer.print(AgentEvent.TextDelta("\n```\n"))
+
+        assertEquals(
+            "◆ \n" + plainCodeBlockStart("text") + plainCodeLineOpen("hi") + "\r" + plainCodeBlock("text", "hi").removePrefix(plainCodeBlockStart("text")),
+            output.content(),
+        )
+    }
+
+    @Test
+    fun opensCodeBlockFrameBeforeLanguageNewlineArrives() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+
+        printer.print(AgentEvent.TextDelta("```"))
+
+        assertEquals(
+            "◆ \n" + plainCodeBlockStart("text"),
+            output.content(),
+        )
+
+        printer.print(AgentEvent.TextDelta("kotlin\nval x = 1\n```\n"))
+
+        assertEquals(
+            "◆ \n" + plainCodeBlock("text", "val x = 1"),
+            output.content(),
+        )
     }
 
     @Test
@@ -370,7 +411,10 @@ private fun plainCodeBlockStart(language: String): String {
 }
 
 private fun plainCodeLine(line: String): String =
-    "│ ${line.padEnd(PANEL_WIDTH - 4)} │\n"
+    plainCodeLineOpen(line) + "\n"
+
+private fun plainCodeLineOpen(line: String): String =
+    "│ ${line.padEnd(PANEL_WIDTH - 4)} │"
 
 private fun plainCodeBlockEnd(): String =
     "└${"─".repeat(PANEL_WIDTH - 2)}┘\n"
