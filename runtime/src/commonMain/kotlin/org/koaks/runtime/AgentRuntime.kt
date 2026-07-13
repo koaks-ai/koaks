@@ -30,6 +30,8 @@ import org.koaks.runtime.acb.Acb
 import org.koaks.runtime.acb.AcbSnapshot
 import org.koaks.runtime.acb.AgentHandle
 import org.koaks.runtime.acb.AgentId
+import org.koaks.runtime.acb.ChannelEventSink
+import org.koaks.runtime.acb.EventSink
 import org.koaks.runtime.acb.InstanceControl
 import org.koaks.runtime.acb.LifecycleState
 import org.koaks.runtime.context.ContextRef
@@ -171,6 +173,12 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
      * @param contextRefs shared context blocks resolved (with [parent]'s / null requester
      *   permissions) and prepended to the agent's initial messages — large history travels
      *   by reference id at the call site, and only expands here once.
+     * @param observe when `true`, wires the instance's outward [AgentEvent] stream into
+     *   [AgentHandle.events] (its stdout) so the caller can stream output while it runs.
+     *   Defaults to `false`: await-only, with no event buffering. An observed instance retains
+     *   its events until [AgentHandle.events] is collected. If that sole collection stops early,
+     *   the remaining events are discarded, so observation should be enabled only when the
+     *   caller intends to consume the stream.
      */
     fun spawn(
         agent: Agent,
@@ -179,6 +187,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota? = null,
         parent: AgentId? = null,
         contextRefs: List<ContextRef> = emptyList(),
+        observe: Boolean = false,
     ): AgentHandle {
         val id = AgentId(idSeq.getAndUpdate { it + 1 })
         val acb = Acb(id, agent.name, priority, parent)
@@ -190,6 +199,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         val control = InstanceControl()
         ipc.mailbox(id) // ensure the instance has an inbox before it can be addressed
 
+        // Create the output sink before the run coroutine starts so no head events are lost.
+        val sink: EventSink = if (observe) ChannelEventSink() else EventSink.NONE
+
         val childSpawner = AgentSpawner { childAgent, childInput, childPriority, childQuota, childRefs ->
             spawn(childAgent, childInput, childPriority, childQuota, parent = id, contextRefs = childRefs)
         }
@@ -198,9 +210,20 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             RuntimeContext(resources, id, ipc, context, acb, childSpawner, ::emit),
         ) {
             val prefix = resolveContextPrefix(contextRefs, requester = parent ?: id)
-            runInstance(agent, input, prefix, acb, control, priority, effectiveQuota)
+            runInstance(agent, input, prefix, acb, control, priority, effectiveQuota, sink)
         }
-        val handle = AgentHandle(id, acb, control, deferred)
+        // Deferred completion owns the sink lifecycle. In particular, cancellation is normalized
+        // here rather than only inside runInstance: the coroutine body may never start at all.
+        deferred.invokeOnCompletion { cause ->
+            if (cause is CancellationException) {
+                val usage = acb.snapshot.usage
+                val reason = TerminationReason.Custom(cause.message ?: "cancelled")
+                sink.finish(AgentEvent.Terminated(Message.assistant(""), usage, reason))
+            } else {
+                sink.close(cause)
+            }
+        }
+        val handle = AgentHandle(id, acb, control, deferred, sink.events)
         handles.update { it + (id to handle) }
         return handle
     }
@@ -267,13 +290,14 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         control: InstanceControl,
         priority: Int,
         quota: Quota,
+        sink: EventSink,
     ): AgentResult {
         acb.markReady()
         return try {
             scheduler.withSlot(priority) {
                 acb.markRunning()
                 emit(RuntimeEvent.Running(acb.id, agent.name))
-                runWithQuota(agent, input, contextPrefix, acb, control, quota)
+                runWithQuota(agent, input, contextPrefix, acb, control, quota, sink)
             }
         } catch (c: CancellationException) {
             acb.markCancelled()
@@ -291,16 +315,19 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         acb: Acb,
         control: InstanceControl,
         quota: Quota,
+        sink: EventSink,
     ): AgentResult {
-        val wall = quota.wallClockMillis ?: return collectStream(agent, input, contextPrefix, acb, control, quota)
+        val wall = quota.wallClockMillis
+            ?: return collectStream(agent, input, contextPrefix, acb, control, quota, sink)
         return try {
-            withTimeout(wall.milliseconds) { collectStream(agent, input, contextPrefix, acb, control, quota) }
+            withTimeout(wall.milliseconds) { collectStream(agent, input, contextPrefix, acb, control, quota, sink) }
         } catch (_: TimeoutCancellationException) {
             val error = AgentError.Timeout("agent wall-clock", wall)
             val usage = acb.snapshot.usage
             acb.markFailed(error, usage)
             emit(RuntimeEvent.Failed(acb.id, error))
             cancelDescendants(acb.id, "parent ${acb.id} timed out")
+            sink.emit(AgentEvent.Failed(error, usage))
             AgentResult.Failed(error, usage)
         }
     }
@@ -313,6 +340,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         acb: Acb,
         control: InstanceControl,
         quota: Quota,
+        sink: EventSink,
     ): AgentResult {
         var terminal: AgentEvent.Terminal? = null
         var lastFailure: AgentError? = null
@@ -332,6 +360,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                     emit(RuntimeEvent.Resumed(acb.id))
                 }
 
+                sink.emit(event)
                 acb.observe(event)
                 when (event) {
                     is AgentEvent.TextDelta -> stepText.append(event.text)
@@ -368,7 +397,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             emit(RuntimeEvent.Cancelled(acb.id))
             cancelDescendants(acb.id, "parent ${acb.id} quota exceeded")
             val reason = TerminationReason.Custom("quota exceeded: ${q.dimension}")
-            return AgentResult.Terminated(Message.assistant(lastAssistant), u, reason)
+            val message = Message.assistant(lastAssistant)
+            sink.emit(AgentEvent.Terminated(message, u, reason))
+            return AgentResult.Terminated(message, u, reason)
         }
 
         return when (val term = terminal) {

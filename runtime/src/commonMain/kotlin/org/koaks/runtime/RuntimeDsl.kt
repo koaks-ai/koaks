@@ -41,7 +41,8 @@ fun Agent.spawnIn(
     input: String,
     priority: Int = 0,
     contextRefs: List<ContextRef> = emptyList(),
-): AgentHandle = runtime.spawn(this, input, priority, contextRefs = contextRefs)
+    observe: Boolean = false,
+): AgentHandle = runtime.spawn(this, input, priority, contextRefs = contextRefs, observe = observe)
 
 /** Awaits every handle's terminal result, preserving order. */
 suspend fun awaitAll(vararg handles: AgentHandle): List<AgentResult> = handles.map { it.await() }

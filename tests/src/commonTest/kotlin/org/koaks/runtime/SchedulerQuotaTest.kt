@@ -2,6 +2,7 @@ package org.koaks.runtime
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -9,6 +10,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.koaks.framework.loop.Agent
+import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.AgentResult
 import org.koaks.framework.loop.FakeLanguageModel
 import org.koaks.framework.loop.agent
@@ -125,12 +127,15 @@ class SchedulerQuotaTest {
 
         val runtime = AgentRuntime()
         runtime.use {
-            val h = it.spawn(a, "hi", quota = quota { maxToolCalls = 1 })
+            val h = it.spawn(a, "hi", quota = quota { maxToolCalls = 1 }, observe = true)
             val result = h.await()
             assertTrue(result is AgentResult.Terminated)
             val reason = result.reason
             assertTrue(reason is TerminationReason.Custom && reason.message.contains("maxToolCalls"))
             assertEquals(LifecycleState.CANCELLED, h.state)
+            val terminal = h.events.toList().last()
+            assertTrue(terminal is AgentEvent.Terminated)
+            assertEquals(result.reason, terminal.reason)
         }
     }
 
@@ -141,12 +146,15 @@ class SchedulerQuotaTest {
 
         val runtime = AgentRuntime { dispatcher = StandardTestDispatcher(testScheduler) }
         runtime.use {
-            val h = it.spawn(stuck, "hi", quota = quota { wallClockMillis = 50 })
+            val h = it.spawn(stuck, "hi", quota = quota { wallClockMillis = 50 }, observe = true)
             advanceUntilIdle()
             val result = h.await()
             assertTrue(result is AgentResult.Failed)
             assertTrue(result.error is AgentError.Timeout)
             assertEquals(LifecycleState.FAILED, h.state)
+            val terminal = h.events.toList().last()
+            assertTrue(terminal is AgentEvent.Failed)
+            assertTrue(terminal.error is AgentError.Timeout)
         }
     }
 
