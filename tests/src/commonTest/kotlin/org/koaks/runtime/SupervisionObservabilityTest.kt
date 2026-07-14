@@ -1,12 +1,15 @@
 package org.koaks.runtime
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.koaks.framework.loop.Agent
+import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.AgentResult
 import org.koaks.framework.loop.FakeLanguageModel
 import org.koaks.framework.loop.agent
@@ -38,12 +41,12 @@ class SupervisionObservabilityTest {
             val sub = launch(UnconfinedTestDispatcher(testScheduler)) {
                 it.events.collect { e -> seen += e }
             }
-            val h = it.spawn(sayAgent("m", "hi"), "go")
+            val streamed = async { it.stream(sayAgent("m", "hi"), "go").toList() }
             advanceUntilIdle()
-            val result = h.await()
+            val agentEvents = streamed.await()
             sub.cancel()
 
-            assertTrue(result is AgentResult.Completed)
+            assertTrue(agentEvents.last() is AgentEvent.Completed)
             assertTrue(seen.any { e -> e is RuntimeEvent.Spawned })
             assertTrue(seen.any { e -> e is RuntimeEvent.Running })
             assertTrue(seen.any { e -> e is RuntimeEvent.Finished })

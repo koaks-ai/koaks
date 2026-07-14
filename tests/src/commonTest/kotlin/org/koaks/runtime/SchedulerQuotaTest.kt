@@ -2,6 +2,8 @@ package org.koaks.runtime
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -115,7 +117,11 @@ class SchedulerQuotaTest {
         // an error result and the loop continues — until the quota preempts it.
         val model = FakeLanguageModel(
             listOf(ModelEvent.ToolCallCompleted(ToolCall("c1", "noop", "{}")), ModelEvent.Completed(Usage.ZERO)),
-            listOf(ModelEvent.ToolCallCompleted(ToolCall("c2", "noop", "{}")), ModelEvent.Completed(Usage.ZERO)),
+            listOf(
+                ModelEvent.TextDelta("current-step"),
+                ModelEvent.ToolCallCompleted(ToolCall("c2", "noop", "{}")),
+                ModelEvent.Completed(Usage.ZERO),
+            ),
             listOf(ModelEvent.ToolCallCompleted(ToolCall("c3", "noop", "{}")), ModelEvent.Completed(Usage.ZERO)),
             listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
         )
@@ -127,15 +133,12 @@ class SchedulerQuotaTest {
 
         val runtime = AgentRuntime()
         runtime.use {
-            val h = it.spawn(a, "hi", quota = quota { maxToolCalls = 1 }, observe = true)
-            val result = h.await()
-            assertTrue(result is AgentResult.Terminated)
-            val reason = result.reason
-            assertTrue(reason is TerminationReason.Custom && reason.message.contains("maxToolCalls"))
-            assertEquals(LifecycleState.CANCELLED, h.state)
-            val terminal = h.events.toList().last()
+            val terminal = it.stream(a, "hi", quota = quota { maxToolCalls = 1 }).toList().last()
             assertTrue(terminal is AgentEvent.Terminated)
-            assertEquals(result.reason, terminal.reason)
+            val reason = terminal.reason
+            assertTrue(reason is TerminationReason.Custom && reason.message.contains("maxToolCalls"))
+            assertEquals("current-step", terminal.message.text)
+            assertEquals(LifecycleState.CANCELLED, it.agents.single().state)
         }
     }
 
@@ -146,15 +149,14 @@ class SchedulerQuotaTest {
 
         val runtime = AgentRuntime { dispatcher = StandardTestDispatcher(testScheduler) }
         runtime.use {
-            val h = it.spawn(stuck, "hi", quota = quota { wallClockMillis = 50 }, observe = true)
+            val collection = async {
+                it.stream(stuck, "hi", quota = quota { wallClockMillis = 50 }).toList()
+            }
             advanceUntilIdle()
-            val result = h.await()
-            assertTrue(result is AgentResult.Failed)
-            assertTrue(result.error is AgentError.Timeout)
-            assertEquals(LifecycleState.FAILED, h.state)
-            val terminal = h.events.toList().last()
+            val terminal = collection.await().last()
             assertTrue(terminal is AgentEvent.Failed)
             assertTrue(terminal.error is AgentError.Timeout)
+            assertEquals(LifecycleState.FAILED, it.agents.single().state)
         }
     }
 
@@ -175,6 +177,33 @@ class SchedulerQuotaTest {
             assertEquals("RA", results.getValue("A").text)
             assertEquals("RB", results.getValue("B").text)
             assertEquals("RA", bInput)
+        }
+    }
+
+    @Test
+    fun cancelling_submit_cancels_running_node_instances() = runTest {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val graph = taskGraph {
+            task(
+                id = "blocked",
+                agent = probeAgent("blocked") {
+                    started.complete(Unit)
+                    release.await()
+                },
+                input = "go",
+            )
+        }
+        val runtime = AgentRuntime { dispatcher = StandardTestDispatcher(testScheduler) }
+
+        runtime.use {
+            val submission = async { it.submit(graph) }
+            advanceUntilIdle()
+            started.await()
+            submission.cancelAndJoin()
+            advanceUntilIdle()
+
+            assertEquals(LifecycleState.CANCELLED, it.agents.single().state)
         }
     }
 }

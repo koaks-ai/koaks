@@ -7,17 +7,23 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.koaks.framework.loop.Agent
 import org.koaks.framework.loop.AgentEvent
@@ -107,6 +113,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
     private val idSeq = MutableStateFlow(0L)
     private val acbs = MutableStateFlow<Map<AgentId, Acb>>(emptyMap())
     private val handles = MutableStateFlow<Map<AgentId, AgentHandle>>(emptyMap())
+    private val closed = MutableStateFlow(false)
 
     /** Snapshots of all instances the runtime currently knows about. */
     val agents: List<AcbSnapshot> get() = acbs.value.values.map { it.snapshot }
@@ -164,21 +171,71 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         }
     }
 
+    /** Runs [agent] as a runtime-managed foreground instance and returns its terminal result. */
+    suspend fun run(
+        agent: Agent,
+        input: String,
+        priority: Int = 0,
+        quota: Quota? = null,
+        parent: AgentId? = null,
+        contextRefs: List<ContextRef> = emptyList(),
+    ): AgentResult {
+        val handle = spawn(agent, input, priority, quota, parent, contextRefs)
+        return try {
+            handle.await()
+        } catch (c: CancellationException) {
+            // `spawn` belongs to the runtime scope, so awaiting it is not enough to propagate
+            // caller cancellation. Foreground `run` owns the instance and must cancel it.
+            cancelAndJoin(handle, c.message ?: "runtime run cancelled")
+            throw c
+        }
+    }
+
     /**
-     * Spawns [agent] on [input] as a new run instance and returns its [AgentHandle].
-     * The agent is passed by value (the runtime never owns or registers agents), so the
-     * same immutable agent can be spawned repeatedly, each time getting a fresh ACB.
+     * Streams one runtime-managed foreground execution. The returned flow is cold: every
+     * collection creates a fresh instance. Downstream backpressure reaches the agent, and
+     * stopping collection cooperatively cancels the instance instead of leaving background
+     * work behind. A slow collector pauses the agent while it still owns its scheduler slot;
+     * callers that need decoupling should add an explicit bounded `buffer` downstream.
+     */
+    fun stream(
+        agent: Agent,
+        input: String,
+        priority: Int = 0,
+        quota: Quota? = null,
+        parent: AgentId? = null,
+        contextRefs: List<ContextRef> = emptyList(),
+    ): Flow<AgentEvent> = channelFlow {
+        val handle = spawnInternal(
+            agent = agent,
+            input = input,
+            priority = priority,
+            quota = quota,
+            parent = parent,
+            contextRefs = contextRefs,
+            sink = ChannelEventSink(channel),
+        )
+        try {
+            handle.join()
+        } finally {
+            // A failed channel send can race the collector's own cancellation and complete the
+            // deferred before this finally runs. A non-terminal ACB still requires cancellation
+            // cleanup even when Deferred.isActive has already flipped to false.
+            if (handle.isActive || !handle.state.isTerminal) {
+                cancelAndJoin(handle, "runtime stream collection stopped")
+            }
+        }
+    }.buffer(Channel.RENDEZVOUS)
+
+    /**
+     * Spawns [agent] as a runtime-managed background instance and returns its [AgentHandle].
+     * The agent is passed by value (the runtime never owns or registers agents), so the same
+     * immutable agent can be spawned repeatedly, each time getting a fresh ACB.
      *
-     * @param quota per-instance quota; falls back to the runtime's default when `null`.
-     * @param contextRefs shared context blocks resolved (with [parent]'s / null requester
-     *   permissions) and prepended to the agent's initial messages — large history travels
-     *   by reference id at the call site, and only expands here once.
-     * @param observe when `true`, wires the instance's outward [AgentEvent] stream into
-     *   [AgentHandle.events] (its stdout) so the caller can stream output while it runs.
-     *   Defaults to `false`: await-only, with no event buffering. An observed instance retains
-     *   its events until [AgentHandle.events] is collected. If that sole collection stops early,
-     *   the remaining events are discarded, so observation should be enabled only when the
-     *   caller intends to consume the stream.
+     * @param quota per-instance quota; falls back to the runtime default when `null`.
+     * @param parent optional parent instance used for lifecycle propagation and context access.
+     * @param contextRefs shared context blocks resolved with [parent]'s permissions (or this
+     *   instance's identity for a root run) and prepended to the initial messages.
      */
     fun spawn(
         agent: Agent,
@@ -187,8 +244,19 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota? = null,
         parent: AgentId? = null,
         contextRefs: List<ContextRef> = emptyList(),
-        observe: Boolean = false,
+    ): AgentHandle = spawnInternal(agent, input, priority, quota, parent, contextRefs, EventSink.NONE)
+
+    private fun spawnInternal(
+        agent: Agent,
+        input: String,
+        priority: Int,
+        quota: Quota?,
+        parent: AgentId?,
+        contextRefs: List<ContextRef>,
+        sink: EventSink,
     ): AgentHandle {
+        check(!closed.value) { "AgentRuntime is closed" }
+
         val id = AgentId(idSeq.getAndUpdate { it + 1 })
         val acb = Acb(id, agent.name, priority, parent)
         acbs.update { it + (id to acb) }
@@ -199,9 +267,6 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         val control = InstanceControl()
         ipc.mailbox(id) // ensure the instance has an inbox before it can be addressed
 
-        // Create the output sink before the run coroutine starts so no head events are lost.
-        val sink: EventSink = if (observe) ChannelEventSink() else EventSink.NONE
-
         val childSpawner = AgentSpawner { childAgent, childInput, childPriority, childQuota, childRefs ->
             spawn(childAgent, childInput, childPriority, childQuota, parent = id, contextRefs = childRefs)
         }
@@ -209,23 +274,53 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         val deferred: Deferred<AgentResult> = scope.async(
             RuntimeContext(resources, id, ipc, context, acb, childSpawner, ::emit),
         ) {
-            val prefix = resolveContextPrefix(contextRefs, requester = parent ?: id)
-            runInstance(agent, input, prefix, acb, control, priority, effectiveQuota, sink)
-        }
-        // Deferred completion owns the sink lifecycle. In particular, cancellation is normalized
-        // here rather than only inside runInstance: the coroutine body may never start at all.
-        deferred.invokeOnCompletion { cause ->
-            if (cause is CancellationException) {
-                val usage = acb.snapshot.usage
-                val reason = TerminationReason.Custom(cause.message ?: "cancelled")
-                sink.finish(AgentEvent.Terminated(Message.assistant(""), usage, reason))
-            } else {
-                sink.close(cause)
+            try {
+                val prefix = resolveContextPrefix(contextRefs, requester = parent ?: id)
+                runInstance(agent, input, prefix, acb, control, priority, effectiveQuota, sink)
+            } catch (c: CancellationException) {
+                throw c
+            } catch (t: Throwable) {
+                val snapshot = acb.snapshot
+                if (!snapshot.state.isTerminal) {
+                    val error = AgentError.ModelError(
+                        message = t.message ?: "runtime instance failed unexpectedly",
+                        retriable = false,
+                        cause = t,
+                    )
+                    acb.markFailed(error, snapshot.usage)
+                    emit(RuntimeEvent.Failed(id, error))
+                    cancelDescendants(id, "parent $id failed")
+                }
+                throw t
             }
         }
-        val handle = AgentHandle(id, acb, control, deferred, sink.events)
+        deferred.invokeOnCompletion { cause ->
+            // Cancellation can win before the coroutine body reaches runInstance. Preserve a
+            // terminal state for externally retained handles even on that pre-start path.
+            if (cause is CancellationException && !acb.snapshot.state.isTerminal) {
+                acb.markCancelled()
+            }
+            sink.close(cause)
+        }
+        val handle = AgentHandle(id, acb, control, deferred)
         handles.update { it + (id to handle) }
+
+        // close() may race the non-suspending registration above. Do not leave a cancelled
+        // handle or mailbox reinserted into a runtime that has already been torn down.
+        if (closed.value) {
+            handle.cancel("agent runtime closed")
+            handles.update { it - id }
+            acbs.update { it - id }
+            ipc.remove(id)
+            error("AgentRuntime is closed")
+        }
         return handle
+    }
+
+    /** Cancels a foreground-owned instance and waits for its runtime coroutine to unwind. */
+    private suspend fun cancelAndJoin(handle: AgentHandle, reason: String) {
+        handle.cancel(reason)
+        withContext(NonCancellable) { handle.join() }
     }
 
     /** Resolves [refs] in order into a flat message prefix for the agent loop. */
@@ -271,7 +366,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                 try {
                     val deps = node.dependsOn.associateWith { results.getValue(it).await() }
                     val input = node.input(deps)
-                    val result = spawn(node.agent, input, node.priority).await()
+                    // submit is a structured foreground API: cancellation of the graph must also
+                    // cancel each runtime-scoped node instance rather than only its awaiter.
+                    val result = run(node.agent, input, node.priority)
                     results.getValue(node.id).complete(result)
                 } catch (t: Throwable) {
                     results.getValue(node.id).completeExceptionally(t)
@@ -397,7 +494,8 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             emit(RuntimeEvent.Cancelled(acb.id))
             cancelDescendants(acb.id, "parent ${acb.id} quota exceeded")
             val reason = TerminationReason.Custom("quota exceeded: ${q.dimension}")
-            val message = Message.assistant(lastAssistant)
+            val currentText = stepText.toString()
+            val message = Message.assistant(currentText.ifEmpty { lastAssistant })
             sink.emit(AgentEvent.Terminated(message, u, reason))
             return AgentResult.Terminated(message, u, reason)
         }
@@ -426,10 +524,12 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
 
     /** Cancels all running instances and tears down the runtime scope. */
     override fun close() {
+        if (!closed.compareAndSet(expect = false, update = true)) return
+        handles.value.values.forEach { it.cancel("agent runtime closed") }
+        job.cancel(CancellationException("agent runtime closed"))
         ipc.closeAll()
         handles.value = emptyMap()
         acbs.value = emptyMap()
-        job.cancel()
     }
 }
 

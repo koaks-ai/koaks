@@ -2,7 +2,9 @@ package org.koaks.runtime
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import org.koaks.framework.loop.Agent
+import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.AgentResult
 import org.koaks.runtime.acb.AgentHandle
 import org.koaks.runtime.context.ContextRef
@@ -32,17 +34,32 @@ suspend fun <R> withAgentRuntime(
 }
 
 /**
- * Fluent alternative to [AgentRuntime.spawn]: `agent.spawnIn(runtime, "task")`. Defined
- * in the runtime module so the dependency direction stays `runtime -> core` (core's
- * [Agent] never learns about the runtime).
+ * Fluent runtime entry points. Defined in the runtime module so the dependency direction
+ * stays `runtime -> core` (core's [Agent] never learns about the runtime).
  */
+suspend fun Agent.runIn(
+    runtime: AgentRuntime,
+    input: String,
+    priority: Int = 0,
+    quota: Quota? = null,
+    contextRefs: List<ContextRef> = emptyList(),
+): AgentResult = runtime.run(this, input, priority, quota, contextRefs = contextRefs)
+
+fun Agent.streamIn(
+    runtime: AgentRuntime,
+    input: String,
+    priority: Int = 0,
+    quota: Quota? = null,
+    contextRefs: List<ContextRef> = emptyList(),
+): Flow<AgentEvent> = runtime.stream(this, input, priority, quota, contextRefs = contextRefs)
+
 fun Agent.spawnIn(
     runtime: AgentRuntime,
     input: String,
     priority: Int = 0,
+    quota: Quota? = null,
     contextRefs: List<ContextRef> = emptyList(),
-    observe: Boolean = false,
-): AgentHandle = runtime.spawn(this, input, priority, contextRefs = contextRefs, observe = observe)
+): AgentHandle = runtime.spawn(this, input, priority, quota, contextRefs = contextRefs)
 
 /** Awaits every handle's terminal result, preserving order. */
 suspend fun awaitAll(vararg handles: AgentHandle): List<AgentResult> = handles.map { it.await() }

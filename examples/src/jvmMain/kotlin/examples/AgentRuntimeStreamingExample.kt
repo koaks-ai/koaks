@@ -1,7 +1,5 @@
 package examples
 
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -18,23 +16,17 @@ import org.koaks.runtime.AgentRuntime
 /**
  * Streaming the output of an AgentRuntime instance — WITHOUT any API keys.
  *
- * By default `spawn` is await-only: the instance runs like a background process and you
- * collect its [org.koaks.framework.loop.AgentResult] via `handle.await()`. To stream the
- * output while it runs, spawn with `observe = true` and drain `handle.events` — the
- * instance's "stdout". This does not change `await()`, which still returns the terminal
- * result.
+ * `run` is the foreground result path, `stream` is the foreground stdout path, and `spawn`
+ * is the background process path returning an AgentHandle. The streaming flow is cold: each
+ * collection creates one runtime-managed instance, and stopping collection cancels it.
  *
- * Contract: observed events are retained losslessly and may be collected once, either while
- * the run is active or after `await()`. Runtime-boundary stops (quota / timeout / cancel) always
- * end the stream with a terminal event. If that collection stops early, its buffered tail and
- * subsequent events are discarded without interrupting the run. Consume the stream when
- * observation is enabled so retained events do not occupy memory longer than necessary.
+ * Events are delivered with downstream backpressure and are not retained for late collection.
  */
 private class SlowEchoModel(private val chunks: List<String>) : LanguageModel {
     override val capabilities: ModelCapabilities = ModelCapabilities()
     override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
         for (chunk in chunks) {
-            delay(60) // pretend tokens arrive over time
+            delay(1000) // pretend tokens arrive over time
             emit(ModelEvent.TextDelta(chunk))
         }
         emit(ModelEvent.Completed(Usage(promptTokens = 8, completionTokens = chunks.size, totalTokens = 8 + chunks.size)))
@@ -52,38 +44,35 @@ fun main() = runBlocking {
 
     runtime.use { rt ->
         // ------------------------------------------------------------------
-        // 1) Streaming via Runtime: spawn(observe = true) + collect handle.events.
-        //    Collect concurrently with the run so text prints as it is produced.
+        // 1) Foreground streaming: collecting starts one runtime-managed instance.
         // ------------------------------------------------------------------
-        println("== 1) spawn(observe = true): stream tokens as they arrive ==")
-        val handle = rt.spawn(poemAgent(), "write a two-line poem", observe = true)
-
-        coroutineScope {
-            val streamed = async {
-                buildString {
-                    handle.events.collect { event ->
-                        if (event is AgentEvent.TextDelta) {
-                            print(event.text) // live output
-                            append(event.text)
-                        }
-                    }
-                    println()
-                }
+        println("== 1) runtime.stream: stream tokens as they arrive ==")
+        val streamed = StringBuilder()
+        rt.stream(poemAgent(), "write a two-line poem").collect { event ->
+            if (event is AgentEvent.TextDelta) {
+                print(event.text) // live output
+                streamed.append(event.text)
             }
-            // await() still returns the terminal result, independently of the stream.
-            val result = handle.await()
-            val collected = streamed.await()
-            println("  await().text   = ${result.text}")
-            println("  streamed text  = $collected")
-            println("  match          = ${result.text == collected}")
+            if (event is AgentEvent.Completed) {
+                println()
+                println("  terminal text  = ${event.message.text}")
+                println("  streamed text  = $streamed")
+                println("  match          = ${event.message.text == streamed.toString()}")
+            }
         }
 
         // ------------------------------------------------------------------
-        // 2) Default path is unchanged: observe defaults to false, events is empty,
-        //    await() is all you need. Zero streaming overhead.
+        // 2) Foreground result path: run waits for the terminal AgentResult.
         // ------------------------------------------------------------------
-        println("\n== 2) default spawn: await-only, no streaming overhead ==")
-        val plain = rt.spawn(poemAgent(), "same task, no streaming")
-        println("  result: ${plain.await().text}")
+        println("\n== 2) runtime.run: await the final result ==")
+        val result = rt.run(poemAgent(), "same task, final result only")
+        println("  result: ${result.text}")
+
+        // ------------------------------------------------------------------
+        // 3) Background path: spawn returns a controllable handle.
+        // ------------------------------------------------------------------
+        println("\n== 3) runtime.spawn: background handle ==")
+        val handle = rt.spawn(poemAgent(), "same task, background")
+        println("  result: ${handle.await().text}")
     }
 }

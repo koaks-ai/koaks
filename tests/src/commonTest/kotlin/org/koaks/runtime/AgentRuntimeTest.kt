@@ -4,20 +4,31 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filterIsInstance
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.Serializable
 import org.koaks.framework.loop.Agent
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.AgentResult
 import org.koaks.framework.loop.FakeLanguageModel
 import org.koaks.framework.loop.agent
+import org.koaks.framework.loop.tool
+import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.ModelEvent
+import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
-import org.koaks.framework.policy.TerminationReason
+import org.koaks.runtime.acb.AgentHandle
 import org.koaks.runtime.acb.LifecycleState
+import org.koaks.runtime.context.ContextRef
+import org.koaks.runtime.resource.spawnChild
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -25,6 +36,9 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AgentRuntimeTest {
+
+    @Serializable
+    private data object NoArgs
 
     private fun sayAgent(name: String, answer: String): Agent = agent {
         this.name = name
@@ -96,6 +110,21 @@ class AgentRuntimeTest {
     }
 
     @Test
+    fun run_and_stream_extensions_target_the_given_runtime() = runTest {
+        withAgentRuntime {
+            val runResult = sayAgent("run-ext", "via-run").runIn(this, "hi")
+            val streamed = streamingAgent("stream-ext", listOf("via-", "stream"))
+                .streamIn(this, "hi")
+                .filterIsInstance<AgentEvent.TextDelta>()
+                .toList()
+                .joinToString("") { it.text }
+
+            assertEquals("via-run", runResult.text)
+            assertEquals("via-stream", streamed)
+        }
+    }
+
+    @Test
     fun cancel_moves_instance_to_cancelled() = runTest {
         val gate = CompletableDeferred<Unit>()
         val blocked = agent {
@@ -129,150 +158,95 @@ class AgentRuntimeTest {
     }
 
     @Test
-    fun observe_true_streams_text_deltas_matching_await_text() = runTest {
-        withAgentRuntime {
-            val h = spawn(streamingAgent("streamer", listOf("Hello, ", "world", "!")), "hi", observe = true)
-            val streamed = async {
-                h.events.filterIsInstance<AgentEvent.TextDelta>()
-                    .toList().joinToString("") { it.text }
-            }
-            val result = h.await()
-            assertTrue(result is AgentResult.Completed)
-            assertEquals("Hello, world!", result.text)
-            assertEquals(result.text, streamed.await())
+    fun unexpected_instance_failure_marks_the_acb_failed() = runTest {
+        val runtime = AgentRuntime()
+        runtime.use {
+            val h = it.spawn(
+                sayAgent("bad-context", "never"),
+                "hi",
+                contextRefs = listOf(ContextRef("missing")),
+            )
+
+            assertFailsWith<IllegalStateException> { h.await() }
+            assertEquals(LifecycleState.FAILED, h.state)
+            assertTrue(h.snapshot.error is AgentError.ModelError)
         }
     }
 
     @Test
-    fun observe_false_yields_empty_event_stream() = runTest {
+    fun close_cancels_unstarted_handles_and_rejects_new_instances() = runTest {
+        val runtime = AgentRuntime { dispatcher = StandardTestDispatcher(testScheduler) }
+        val h = runtime.spawn(sayAgent("never-started", "never"), "hi")
+
+        runtime.close()
+
+        assertFailsWith<CancellationException> { h.await() }
+        assertEquals(LifecycleState.CANCELLED, h.state)
+        assertFailsWith<IllegalStateException> {
+            runtime.spawn(sayAgent("after-close", "never"), "hi")
+        }
+        assertTrue(runtime.agents.isEmpty())
+    }
+
+    @Test
+    fun run_returns_the_same_result_shape_as_spawn_await() = runTest {
         withAgentRuntime {
-            // observe defaults to false: await-only, events is an empty flow.
-            val h = spawn(streamingAgent("silent", listOf("a", "b")), "hi")
-            val result = h.await()
-            assertTrue(result is AgentResult.Completed)
-            assertEquals("ab", result.text)
-            assertEquals(LifecycleState.FINISHED, h.state)
-            assertTrue(h.events.toList().isEmpty())
+            val runResult = run(sayAgent("foreground", "done"), "hi")
+            val spawnResult = spawn(sayAgent("background", "done"), "hi").await()
+
+            assertTrue(runResult is AgentResult.Completed)
+            assertTrue(spawnResult is AgentResult.Completed)
+            assertEquals(spawnResult.text, runResult.text)
+            assertEquals(spawnResult.usage, runResult.usage)
         }
     }
 
     @Test
-    fun late_collection_loses_no_events() = runTest {
+    fun stream_forwards_agent_events_and_finishes_the_acb() = runTest {
         withAgentRuntime {
-            // More events than Channel.BUFFERED used to hold: await-first must neither
-            // deadlock nor lose events now that observation retains the complete stream.
-            val chunks = (0 until 256).map { "$it," }
-            val h = spawn(streamingAgent("late", chunks), "hi", observe = true)
-            h.await()
-            val streamed = h.events.filterIsInstance<AgentEvent.TextDelta>()
-                .toList().joinToString("") { it.text }
-            assertEquals(chunks.joinToString(""), streamed)
+            val events = stream(streamingAgent("streamer", listOf("Hello, ", "world", "!")), "hi").toList()
+            val text = events.filterIsInstance<AgentEvent.TextDelta>().joinToString("") { it.text }
+
+            assertEquals("Hello, world!", text)
+            assertTrue(events.last() is AgentEvent.Completed)
+            assertEquals(LifecycleState.FINISHED, agents.single().state)
         }
     }
 
     @Test
-    fun events_reject_a_second_collector_instead_of_splitting_output() = runTest {
-        withAgentRuntime {
-            val h = spawn(streamingAgent("single-consumer", listOf("one", "two")), "hi", observe = true)
-            h.await()
-            assertTrue(h.events.toList().isNotEmpty())
-            assertFailsWith<IllegalStateException> { h.events.toList() }
-        }
-    }
-
-    @Test
-    fun stopping_event_collection_early_does_not_interrupt_the_agent() = runTest {
-        withAgentRuntime {
-            val chunks = (0 until 256).map { "$it," }
-            val h = spawn(streamingAgent("partial-consumer", chunks), "hi", observe = true)
-
-            assertEquals("0,", h.events.filterIsInstance<AgentEvent.TextDelta>().first().text)
-
-            val result = h.await()
-            assertTrue(result is AgentResult.Completed)
-            assertEquals(chunks.joinToString(""), result.text)
-            assertFailsWith<IllegalStateException> { h.events.toList() }
-        }
-    }
-
-    @Test
-    fun cancelling_while_waiting_for_scheduler_emits_terminated() = runTest {
-        val firstStarted = CompletableDeferred<Unit>()
-        val releaseFirst = CompletableDeferred<Unit>()
-        val occupyingAgent = agent {
-            name = "occupying"
-            model {
-                custom(
-                    FakeLanguageModel(
-                        ArrayDeque(listOf(listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)))),
-                        beforeEmit = {
-                            firstStarted.complete(Unit)
-                            releaseFirst.await()
-                        },
-                    ),
-                )
-            }
+    fun stream_is_cold_and_each_collection_creates_a_new_instance() = runTest {
+        val script = listOf(ModelEvent.TextDelta("again"), ModelEvent.Completed(Usage(1, 1, 2)))
+        val repeatable = agent {
+            name = "repeatable"
+            model { custom(FakeLanguageModel(script, script)) }
             terminateAfter(maxSteps = 5)
         }
-
-        val runtime = AgentRuntime { maxConcurrency = 1 }
+        val runtime = AgentRuntime()
         runtime.use {
-            val occupying = it.spawn(occupyingAgent, "hold the only slot")
-            firstStarted.await()
+            val output = it.stream(repeatable, "hi")
+            assertTrue(it.agents.isEmpty())
 
-            val queued = it.spawn(sayAgent("queued", "never starts"), "wait", observe = true)
-            val collected = async { queued.events.toList() }
-            queued.cancel("cancel while queued")
-
-            assertFailsWith<CancellationException> { queued.await() }
-            val events = collected.await()
-            val terminal = events.single()
-            assertTrue(terminal is AgentEvent.Terminated)
-            val reason = terminal.reason
-            assertTrue(reason is TerminationReason.Custom)
-            assertEquals("cancel while queued", reason.message)
-
-            releaseFirst.complete(Unit)
-            assertEquals("done", occupying.await().text)
+            repeat(2) {
+                val text = output.filterIsInstance<AgentEvent.TextDelta>()
+                    .toList().joinToString("") { event -> event.text }
+                assertEquals("again", text)
+            }
+            assertEquals(2, it.agents.size)
+            assertTrue(it.agents.all { snapshot -> snapshot.state == LifecycleState.FINISHED })
         }
     }
 
     @Test
-    fun cancelling_before_the_coroutine_body_starts_emits_terminated() = runTest {
-        val queuedDispatcher = StandardTestDispatcher(testScheduler)
-        val runtime = AgentRuntime { dispatcher = queuedDispatcher }
-
-        runtime.use {
-            val h = it.spawn(sayAgent("never-started", "never runs"), "hi", observe = true)
-            h.cancel("cancel before start")
-
-            assertFailsWith<CancellationException> { h.await() }
-            assertEquals(LifecycleState.CANCELLED, h.state)
-            val events = h.events.toList()
-            val terminal = events.single()
-            assertTrue(terminal is AgentEvent.Terminated)
-            val reason = terminal.reason
-            assertTrue(reason is TerminationReason.Custom)
-            assertEquals("cancel before start", reason.message)
-        }
-    }
-
-    @Test
-    fun cancelling_a_running_instance_ends_events_with_terminated() = runTest {
+    fun cancelling_run_cancels_the_foreground_instance() = runTest {
         val enteredModel = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val blocked = agent {
-            name = "running-then-cancel"
+            name = "run-cancelled"
             model {
                 custom(
                     FakeLanguageModel(
                         ArrayDeque(
-                            listOf(
-                                listOf(
-                                    ModelEvent.TextDelta("partial"),
-                                    ModelEvent.Completed(Usage(1, 1, 2)),
-                                ),
-                            ),
+                            listOf(listOf(ModelEvent.TextDelta("never"), ModelEvent.Completed(Usage.ZERO))),
                         ),
                         beforeEmit = {
                             enteredModel.complete(Unit)
@@ -284,21 +258,170 @@ class AgentRuntimeTest {
             terminateAfter(maxSteps = 5)
         }
 
-        withAgentRuntime {
-            val h = spawn(blocked, "hi", observe = true)
-            val collected = async { h.events.toList() }
+        val runtime = AgentRuntime { dispatcher = StandardTestDispatcher(testScheduler) }
+        runtime.use {
+            val foreground = async { it.run(blocked, "hi") }
+            advanceUntilIdle()
             enteredModel.await()
-            h.cancel("operator stop")
+            foreground.cancelAndJoin()
+            advanceUntilIdle()
 
-            assertFailsWith<CancellationException> { h.await() }
-            val events = collected.await()
-            assertEquals(LifecycleState.CANCELLED, h.state)
-            val terminal = events.last()
-            assertTrue(terminal is AgentEvent.Terminated)
-            val reason = terminal.reason
-            assertTrue(reason is TerminationReason.Custom)
-            assertEquals("operator stop", reason.message)
-            release.complete(Unit)
+            assertEquals(LifecycleState.CANCELLED, it.agents.single().state)
         }
+    }
+
+    @Test
+    fun cancelling_run_cancels_its_descendants() = runTest {
+        val childStarted = CompletableDeferred<Unit>()
+        val releaseChild = CompletableDeferred<Unit>()
+        val child = agent {
+            name = "run-child"
+            model {
+                custom(
+                    FakeLanguageModel(
+                        ArrayDeque(
+                            listOf(listOf(ModelEvent.TextDelta("child"), ModelEvent.Completed(Usage.ZERO))),
+                        ),
+                        beforeEmit = {
+                            childStarted.complete(Unit)
+                            releaseChild.await()
+                        },
+                    ),
+                )
+            }
+            terminateAfter(maxSteps = 5)
+        }
+        var childHandle: AgentHandle? = null
+        val parent = agent {
+            name = "run-parent"
+            model {
+                custom(
+                    FakeLanguageModel(
+                        listOf(ModelEvent.ToolCallCompleted(ToolCall("c1", "fork", "{}")), ModelEvent.Completed(Usage.ZERO)),
+                    ),
+                )
+            }
+            tools {
+                tool<NoArgs>(name = "fork", description = "spawn a blocked child") {
+                    spawnChild(child, "go").also { childHandle = it }.await().text
+                }
+            }
+            terminateAfter(maxSteps = 5)
+        }
+
+        val runtime = AgentRuntime { dispatcher = StandardTestDispatcher(testScheduler) }
+        runtime.use {
+            val foreground = async { it.run(parent, "hi") }
+            advanceUntilIdle()
+            childStarted.await()
+            foreground.cancelAndJoin()
+            advanceUntilIdle()
+
+            assertTrue(it.agents.all { snapshot -> snapshot.state == LifecycleState.CANCELLED })
+            assertEquals(LifecycleState.CANCELLED, childHandle?.state)
+        }
+    }
+
+    @Test
+    fun taking_only_the_first_stream_event_cancels_the_instance() = runTest {
+        val runtime = AgentRuntime { dispatcher = StandardTestDispatcher(testScheduler) }
+        runtime.use {
+            val collection = async {
+                it.stream(streamingAgent("take-one", listOf("one", "two")), "hi")
+                    .take(1).toList()
+            }
+            advanceUntilIdle()
+            val events = collection.await()
+
+            assertEquals(1, events.size)
+            assertEquals(LifecycleState.CANCELLED, it.agents.single().state)
+        }
+    }
+
+    @Test
+    fun collector_failure_cancels_the_stream_instance() = runTest {
+        class CollectorFailure : RuntimeException()
+
+        // Unconfined execution makes the downstream failure race the producer send directly;
+        // the instance must still normalize that failure to cancellation.
+        val runtime = AgentRuntime { dispatcher = UnconfinedTestDispatcher(testScheduler) }
+        runtime.use {
+            val collection = async {
+                assertFailsWith<CollectorFailure> {
+                    it.stream(streamingAgent("collector-failure", listOf("one", "two")), "hi")
+                        .collect { throw CollectorFailure() }
+                }
+            }
+            advanceUntilIdle()
+            collection.await()
+
+            assertEquals(LifecycleState.CANCELLED, it.agents.single().state)
+        }
+    }
+
+    @Test
+    fun cancelling_the_stream_collector_cancels_the_instance() = runTest {
+        val enteredModel = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val blocked = agent {
+            name = "collector-cancelled"
+            model {
+                custom(
+                    FakeLanguageModel(
+                        ArrayDeque(
+                            listOf(listOf(ModelEvent.TextDelta("never"), ModelEvent.Completed(Usage.ZERO))),
+                        ),
+                        beforeEmit = {
+                            enteredModel.complete(Unit)
+                            release.await()
+                        },
+                    ),
+                )
+            }
+            terminateAfter(maxSteps = 5)
+        }
+
+        val runtime = AgentRuntime { dispatcher = StandardTestDispatcher(testScheduler) }
+        runtime.use {
+            val collection = launch { it.stream(blocked, "hi").collect {} }
+            advanceUntilIdle()
+            enteredModel.await()
+            collection.cancelAndJoin()
+            advanceUntilIdle()
+
+            assertEquals(LifecycleState.CANCELLED, it.agents.single().state)
+        }
+    }
+
+    @Test
+    fun closing_the_runtime_propagates_cancellation_to_stream() = runTest {
+        val enteredModel = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val blocked = agent {
+            name = "runtime-closed"
+            model {
+                custom(
+                    FakeLanguageModel(
+                        ArrayDeque(
+                            listOf(listOf(ModelEvent.TextDelta("never"), ModelEvent.Completed(Usage.ZERO))),
+                        ),
+                        beforeEmit = {
+                            enteredModel.complete(Unit)
+                            release.await()
+                        },
+                    ),
+                )
+            }
+            terminateAfter(maxSteps = 5)
+        }
+
+        val runtime = AgentRuntime { dispatcher = StandardTestDispatcher(testScheduler) }
+        val collection = async { runtime.stream(blocked, "hi").toList() }
+        advanceUntilIdle()
+        enteredModel.await()
+        runtime.close()
+        advanceUntilIdle()
+
+        assertFailsWith<CancellationException> { collection.await() }
     }
 }
