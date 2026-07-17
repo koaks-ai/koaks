@@ -22,7 +22,7 @@ internal class AgentSession(
 
     fun stream(input: String): Flow<AgentEvent> {
         val activeAgent = assistant ?: AgentFactory.build(config, trace).also { assistant = it }
-        return activeAgent.thread(config.threadId).stream(input)
+        return activeAgent.stream(input, thread = config.threadId)
     }
 
     private fun resetAgent() {

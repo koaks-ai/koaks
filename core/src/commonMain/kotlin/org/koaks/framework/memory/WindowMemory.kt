@@ -4,6 +4,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koaks.framework.model.Message
 import org.koaks.framework.model.Role
+import org.koaks.framework.model.Usage
 
 /**
  * Sliding-window memory (core default). Persists every committed message faithfully;
@@ -25,7 +26,7 @@ class WindowMemory(private val maxMessages: Int) : Memory {
         dropTurnsToFit(all, maxMessages)
     }
 
-    override suspend fun commit(thread: ThreadId, messages: List<Message>): Unit = mutex.withLock {
+    override suspend fun commit(thread: ThreadId, messages: List<Message>, usage: Usage): Unit = mutex.withLock {
         store.getOrPut(thread.value) { mutableListOf() }.addAll(messages)
     }
 

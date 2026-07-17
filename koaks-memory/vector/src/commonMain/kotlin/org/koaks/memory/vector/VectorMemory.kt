@@ -4,6 +4,7 @@ import org.koaks.framework.memory.Memory
 import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.model.Message
 import org.koaks.framework.model.Role
+import org.koaks.framework.model.Usage
 
 /**
  * Memory backed by semantic recall over a [VectorStore]. Lives in its own module
@@ -26,7 +27,7 @@ class VectorMemory(
     // Tracks the last query per thread so load() has something to recall against.
     private val lastQuery = HashMap<String, String>()
 
-    override suspend fun commit(thread: ThreadId, messages: List<Message>) {
+    override suspend fun commit(thread: ThreadId, messages: List<Message>, usage: Usage) {
         messages.lastOrNull { it.role == Role.USER }?.let { lastQuery[thread.value] = it.text }
         store.add(thread.value, messages)
     }

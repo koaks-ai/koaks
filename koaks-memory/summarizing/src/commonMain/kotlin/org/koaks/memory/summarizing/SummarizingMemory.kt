@@ -10,18 +10,26 @@ import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.model.Message
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Role
+import org.koaks.framework.model.Usage
 
 /**
- * Memory that summarizes older history once it exceeds [maxMessages], using a
- * [LanguageModel] to compress the oldest turns into a single system "summary so far"
- * message. Lives in its own module (`koaks-memory:summarizing`) since it depends on a
- * model — the core stays dependency-free.
+ * Memory that compacts older history once a run's API-measured prompt tokens exceed
+ * [maxTokens], using a [LanguageModel] to compress the oldest turns into a single system
+ * "summary so far" message. Lives in its own module (`koaks-memory:summarizing`) since it
+ * depends on a model — the core stays dependency-free.
  *
- * Trimming/summarizing happens on [load] only; [commit] faithfully appends.
+ * Compression is **persistent and lossy**: the summarized turns REPLACE the original
+ * messages in the store (the raw text is not kept), keeping the store compact and
+ * restorable. It happens on [commit], AFTER the response has already been emitted, so it
+ * never sits on the run's critical path — but it does block commit's return (the compacted
+ * history must be durable before the next run loads it).
+ *
+ * The token check uses [usage.promptTokens] — the real size of the history+input the model
+ * just saw — so the trigger reflects actual context pressure rather than a message count.
  * Turn boundaries are respected so assistant↔toolResult pairings are never split.
  */
 class SummarizingMemory(
-    private val maxMessages: Int,
+    private val maxTokens: Int,
     private val model: LanguageModel,
     private val keepRecentTurns: Int = 2,
 ) : Memory {
@@ -29,25 +37,34 @@ class SummarizingMemory(
     private val mutex = Mutex()
     private val store = HashMap<String, MutableList<Message>>()
 
-    override suspend fun commit(thread: ThreadId, messages: List<Message>): Unit = mutex.withLock {
-        store.getOrPut(thread.value) { mutableListOf() }.addAll(messages)
-    }
+    override suspend fun commit(thread: ThreadId, messages: List<Message>, usage: Usage) {
+        // 1. Faithfully append this run's messages.
+        val snapshot = mutex.withLock {
+            store.getOrPut(thread.value) { mutableListOf() }.addAll(messages)
+            store[thread.value]!!.toList()
+        }
 
-    override suspend fun load(thread: ThreadId): List<Message> {
-        val all = mutex.withLock { store[thread.value]?.toList() } ?: return emptyList()
-        if (all.size <= maxMessages) return all
+        // 2. Only compact when the last run actually exceeded the token budget.
+        if (usage.promptTokens <= maxTokens) return
 
-        val system = all.takeWhile { it.role == Role.SYSTEM }
-        val rest = all.drop(system.size)
+        val system = snapshot.takeWhile { it.role == Role.SYSTEM }
+        val rest = snapshot.drop(system.size)
         val turns = groupIntoTurns(rest)
-        if (turns.size <= keepRecentTurns) return all
+        if (turns.size <= keepRecentTurns) return
 
+        // 3. Summarize the older turns OUTSIDE the lock (model call may be a network hop).
         val toSummarize = turns.dropLast(keepRecentTurns).flatten()
         val recent = turns.takeLast(keepRecentTurns).flatten()
         val summary = summarize(toSummarize)
+        val compacted = system + Message.system("Summary of earlier conversation:\n$summary") + recent
 
-        return system + Message.system("Summary of earlier conversation:\n$summary") + recent
+        // 4. Replace the persisted history with the compacted view (lossy, in place).
+        mutex.withLock { store[thread.value] = compacted.toMutableList() }
     }
+
+    /** Faithful snapshot of the persisted history; compaction already happened on commit. */
+    override suspend fun load(thread: ThreadId): List<Message> =
+        mutex.withLock { store[thread.value]?.toList() } ?: emptyList()
 
     private suspend fun summarize(messages: List<Message>): String {
         val transcript = messages.joinToString("\n") { "${it.role}: ${it.text}" }
