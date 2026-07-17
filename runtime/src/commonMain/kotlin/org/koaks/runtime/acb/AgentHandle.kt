@@ -2,7 +2,9 @@ package org.koaks.runtime.acb
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.StateFlow
+import org.koaks.framework.loop.AgentExecutionContext
 import org.koaks.framework.loop.AgentResult
 
 /**
@@ -29,11 +31,27 @@ class AgentHandle internal constructor(
     /** Whether the underlying coroutine is still active. */
     val isActive: Boolean get() = deferred.isActive
 
-    /** Awaits the terminal [AgentResult]. Rethrows cancellation. */
-    suspend fun await(): AgentResult = deferred.await()
+    /**
+     * Awaits the terminal [AgentResult]. Rethrows cancellation.
+     *
+     * When awaited from inside another runtime instance (a tool spawning and awaiting a
+     * child), the awaiting branch is marked waiting via the ambient [AgentExecutionContext]
+     * — releasing the instance's scheduler slot if no other branch is runnable — and
+     * restored before this returns, so a parent awaiting a child never deadlocks the
+     * scheduler, even at `maxConcurrency = 1`. Outside a runtime the wait simply blocks.
+     */
+    suspend fun await(): AgentResult {
+        if (deferred.isCompleted) return deferred.await()
+        val exec = currentCoroutineContext()[AgentExecutionContext]
+        return if (exec != null) exec.waiting { deferred.await() } else deferred.await()
+    }
 
     /** Joins without retrieving the result (never throws the instance's failure). */
-    suspend fun join() = deferred.join()
+    suspend fun join() {
+        if (deferred.isCompleted) return
+        val exec = currentCoroutineContext()[AgentExecutionContext]
+        if (exec != null) exec.waiting { deferred.join() } else deferred.join()
+    }
 
     /** Cooperatively cancels the instance. The ACB moves to CANCELLED immediately. */
     fun cancel(reason: String? = null) {

@@ -5,6 +5,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -159,59 +160,73 @@ class AgentRunner(private val agent: Agent) {
             }
 
             // tool step — parallel; failures travel the explicit channel (isError tool message).
+            // Each tool runs as its own execution branch so a runtime can track per-branch
+            // activity (a tool that spawns and awaits a child marks only its own branch
+            // waiting). Branches are forked synchronously, before the root awaits them.
+            val exec = currentCoroutineContext()[AgentExecutionContext]
             val outcomes: List<ToolOutcome> = coroutineScope {
-                calls.map { call ->
+                // Fork all branches first, on this (root) coroutine, before awaiting any —
+                // so the instance never looks fully-waiting mid-registration.
+                val branches = if (exec != null) calls.map { exec.forkBranch() } else null
+                val deferreds = calls.mapIndexed { i, call ->
+                    val branch = branches?.get(i)
                     async {
-                        var current = call
-                        var denied: ToolOutcome? = null
-                        // Count of hooks whose onToolCall ran. Only these unwind via
-                        // onToolResult, in reverse (onion): a hook skipped past a Deny
-                        // never entered, so its result side must not run either.
-                        var entered = 0
+                        val body: suspend () -> ToolOutcome = {
+                            var current = call
+                            var denied: ToolOutcome? = null
+                            // Count of hooks whose onToolCall ran. Only these unwind via
+                            // onToolResult, in reverse (onion): a hook skipped past a Deny
+                            // never entered, so its result side must not run either.
+                            var entered = 0
 
-                        try {
-                            hookLoop@ for (hook in agent.hooks) {
-                                entered++
-                                when (val decision = hook.onToolCall(ToolContext(current, state))) {
-                                    ToolDecision.Proceed -> {}
-                                    is ToolDecision.ProceedWith -> {
-                                        current = decision.call.copy(id = call.id)
-                                    }
+                            try {
+                                hookLoop@ for (hook in agent.hooks) {
+                                    entered++
+                                    when (val decision = hook.onToolCall(ToolContext(current, state))) {
+                                        ToolDecision.Proceed -> {}
+                                        is ToolDecision.ProceedWith -> {
+                                            current = decision.call.copy(id = call.id)
+                                        }
 
-                                    is ToolDecision.Deny -> {
-                                        denied = ToolOutcome.Failure(
-                                            AgentError.ToolError(
-                                                toolName = current.name,
-                                                message = decision.reason,
-                                                retriable = false,
+                                        is ToolDecision.Deny -> {
+                                            denied = ToolOutcome.Failure(
+                                                AgentError.ToolError(
+                                                    toolName = current.name,
+                                                    message = decision.reason,
+                                                    retriable = false,
+                                                )
                                             )
-                                        )
-                                        break@hookLoop
+                                            break@hookLoop
+                                        }
                                     }
                                 }
-                            }
 
-                            var outcome = denied ?: agent.tools.call(current.name, current.arguments)
-                            for (hook in agent.hooks.take(entered).asReversed()) {
-                                outcome = hook.onToolResult(ToolContext(current, state), outcome)
-                            }
-                            outcome
-                        } catch (c: CancellationException) {
-                            throw c
-                        } catch (t: Throwable) {
-                            // A hook (onToolCall/onToolResult) threw — route it through the
-                            // explicit tool failure channel instead of crashing the run.
-                            ToolOutcome.Failure(
-                                AgentError.ToolError(
-                                    toolName = current.name,
-                                    message = t.message ?: "tool hook failed",
-                                    retriable = false,
-                                    cause = t,
+                                var outcome = denied ?: agent.tools.call(current.name, current.arguments)
+                                for (hook in agent.hooks.take(entered).asReversed()) {
+                                    outcome = hook.onToolResult(ToolContext(current, state), outcome)
+                                }
+                                outcome
+                            } catch (c: CancellationException) {
+                                throw c
+                            } catch (t: Throwable) {
+                                // A hook (onToolCall/onToolResult) threw — route it through the
+                                // explicit tool failure channel instead of crashing the run.
+                                ToolOutcome.Failure(
+                                    AgentError.ToolError(
+                                        toolName = current.name,
+                                        message = t.message ?: "tool hook failed",
+                                        retriable = false,
+                                        cause = t,
+                                    )
                                 )
-                            )
+                            }
                         }
+                        if (branch != null) branch.run { body() } else body()
                     }
-                }.awaitAll()
+                }
+                // The root branch is waiting while its tool branches run; a runtime keeps
+                // the slot as long as any tool branch is still runnable.
+                if (exec != null) exec.waiting { deferreds.awaitAll() } else deferreds.awaitAll()
             }
             outcomes.forEachIndexed { i, o ->
                 val ev = o.toEvent(calls[i].id)

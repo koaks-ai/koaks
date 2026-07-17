@@ -2,14 +2,12 @@ package org.koaks.runtime.resource
 
 import kotlinx.coroutines.currentCoroutineContext
 import org.koaks.framework.loop.Agent
-import org.koaks.runtime.acb.Acb
+import org.koaks.framework.loop.AgentExecutionContext
 import org.koaks.runtime.acb.AgentHandle
 import org.koaks.runtime.acb.AgentId
-import org.koaks.runtime.acb.LifecycleState
 import org.koaks.runtime.context.ContextRef
 import org.koaks.runtime.context.ContextStore
 import org.koaks.runtime.ipc.IpcHub
-import org.koaks.runtime.observe.RuntimeEvent
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 
@@ -32,15 +30,18 @@ fun interface AgentSpawner {
  * A [CoroutineContext] element the runtime attaches to every spawned instance's coroutine.
  * Tools reach [ResourceRegistry], [IpcHub], [ContextStore], and a restricted [spawn] via
  * [coroutineContext] — no globals, and the direct `agent.run()` path stays runtime-free.
+ *
+ * Slot admission and the RUNNING/WAITING transitions live in the instance's
+ * [AgentExecutionContext] (the activity gate), not here: an instance has multiple
+ * execution branches (root loop + parallel tool calls), so slot ownership tracks
+ * per-branch activity rather than a single flag.
  */
 class RuntimeContext internal constructor(
     val resources: ResourceRegistry,
     val agentId: AgentId,
     val ipc: IpcHub,
     val context: ContextStore,
-    private val acb: Acb,
     private val spawner: AgentSpawner,
-    private val emit: (RuntimeEvent) -> Unit,
 ) : AbstractCoroutineContextElement(Key) {
     companion object Key : CoroutineContext.Key<RuntimeContext>
 
@@ -55,34 +56,6 @@ class RuntimeContext internal constructor(
         quota: Quota? = null,
         contextRefs: List<ContextRef> = emptyList(),
     ): AgentHandle = spawner.spawn(agent, input, priority, quota, contextRefs)
-
-    /**
-     * Marks this instance [LifecycleState.WAITING] while [block] suspends (mailbox,
-     * IPC reply, resource lock acquire), then returns to [LifecycleState.RUNNING]
-     * unless the instance already reached a terminal state.
-     */
-    suspend fun <T> whileWaiting(block: suspend () -> T): T {
-        enterWaiting()
-        try {
-            return block()
-        } finally {
-            leaveWaiting()
-        }
-    }
-
-    internal fun enterWaiting() {
-        if (acb.snapshot.state == LifecycleState.RUNNING) {
-            acb.setState(LifecycleState.WAITING)
-            emit(RuntimeEvent.Waiting(agentId))
-        }
-    }
-
-    internal fun leaveWaiting() {
-        if (acb.snapshot.state == LifecycleState.WAITING) {
-            acb.markRunning()
-            emit(RuntimeEvent.Running(agentId, acb.snapshot.agentName))
-        }
-    }
 }
 
 /** The current runtime context, or `null` when running outside a runtime (direct path). */
@@ -109,8 +82,9 @@ suspend fun spawnChild(
  * runtime in scope (the direct `agent.run()` path), it runs [block] directly — private,
  * uncontended IO is never forced through the mediator.
  *
- * Under a runtime, the instance enters [LifecycleState.WAITING] while acquiring the
- * lock, then returns to RUNNING for [block].
+ * Under a runtime, the current execution branch is marked waiting while acquiring the
+ * lock (releasing the instance's slot if no other branch is runnable), then returns to
+ * running for [block].
  */
 suspend fun <T> withRuntimeResource(
     id: String,
@@ -118,14 +92,16 @@ suspend fun <T> withRuntimeResource(
     block: suspend () -> T,
 ): T {
     val ctx = currentRuntimeContext() ?: return block()
-    ctx.enterWaiting()
+    val exec = currentCoroutineContext()[AgentExecutionContext] ?: return ctx.resources.withResource(id, mode, block)
+    exec.enterWaiting()
     try {
         return ctx.resources.withResource(id, mode) {
-            ctx.leaveWaiting()
+            exec.leaveWaiting()
             block()
         }
-    } catch (t: Throwable) {
-        ctx.leaveWaiting()
-        throw t
+    } finally {
+        // If acquire was cancelled (still waiting) or block threw after leaveWaiting, this
+        // restores runnable state; leaveWaiting is idempotent so the success path is a no-op.
+        exec.leaveWaiting()
     }
 }

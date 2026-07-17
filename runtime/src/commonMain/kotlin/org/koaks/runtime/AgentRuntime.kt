@@ -49,6 +49,7 @@ import org.koaks.runtime.ipc.IpcHub
 import org.koaks.runtime.observe.RuntimeEvent
 import org.koaks.runtime.observe.RuntimeMetrics
 import org.koaks.runtime.resource.AgentSpawner
+import org.koaks.runtime.resource.InstanceActivityGate
 import org.koaks.runtime.resource.Quota
 import org.koaks.runtime.resource.ResourceRegistry
 import org.koaks.runtime.resource.RuntimeContext
@@ -276,12 +277,18 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             spawn(childAgent, childInput, childPriority, childQuota, parent = id, contextRefs = childRefs)
         }
 
-        val deferred: Deferred<AgentResult> = scope.async(
-            RuntimeContext(resources, id, ipc, context, acb, childSpawner, ::emit),
-        ) {
+        val runtimeContext = RuntimeContext(resources, id, ipc, context, childSpawner)
+        // Bridges the instance's parallel execution branches (root loop + one per parallel
+        // tool call) to its single scheduler slot: the slot is held while any branch is
+        // runnable and parked once all branches wait. Installed as the core-neutral
+        // AgentExecutionContext so AgentRunner and AgentHandle.await reach it without the
+        // runtime leaking into core.
+        val gate = InstanceActivityGate(id, acb, ::emit)
+
+        val deferred: Deferred<AgentResult> = scope.async(runtimeContext + gate) {
             try {
                 val prefix = resolveContextPrefix(contextRefs, requester = parent ?: id)
-                runInstance(agent, input, prefix, acb, control, priority, effectiveQuota, sink, thread)
+                runInstance(gate, agent, input, prefix, acb, control, priority, effectiveQuota, sink, thread)
             } catch (c: CancellationException) {
                 throw c
             } catch (t: Throwable) {
@@ -386,6 +393,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
     }
 
     private suspend fun runInstance(
+        gate: InstanceActivityGate,
         agent: Agent,
         input: String,
         contextPrefix: List<Message>,
@@ -398,7 +406,10 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
     ): AgentResult {
         acb.markReady()
         return try {
-            scheduler.withSlot(priority) {
+            scheduler.withSlot(priority) { lease ->
+                // Bind the admission slot so the activity gate can park it once every
+                // branch of this instance is waiting.
+                gate.attachLease(lease)
                 acb.markRunning()
                 emit(RuntimeEvent.Running(acb.id, agent.name))
                 runWithQuota(agent, input, contextPrefix, acb, control, quota, sink, thread)

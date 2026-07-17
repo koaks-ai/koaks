@@ -2,6 +2,7 @@ package org.koaks.runtime.ipc
 
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
+import org.koaks.framework.loop.AgentExecutionContext
 import org.koaks.runtime.acb.AgentId
 import org.koaks.runtime.context.ContextRef
 import org.koaks.runtime.resource.RuntimeContext
@@ -13,6 +14,12 @@ private suspend fun runtimeCtx(): RuntimeContext =
 private suspend fun hub(): IpcHub = runtimeCtx().ipc
 
 private suspend fun self(): AgentId = runtimeCtx().agentId
+
+/** Marks the current execution branch waiting (releasing the slot if idle) while [block] blocks. */
+private suspend fun <T> waiting(block: suspend () -> T): T {
+    val exec = currentCoroutineContext()[AgentExecutionContext] ?: return block()
+    return exec.waiting(block)
+}
 
 /** Sends a fire-and-forget message from the current instance to [to]. */
 suspend fun sendMessage(
@@ -40,16 +47,16 @@ suspend fun sendMessage(
 
 /**
  * Receives the next message addressed to the current instance.
- * Marks the instance [org.koaks.runtime.acb.LifecycleState.WAITING] while blocked.
+ * Marks the current execution branch [org.koaks.runtime.acb.LifecycleState.WAITING] while blocked.
  */
 suspend fun receiveMessage(): RuntimeMessage {
     val ctx = runtimeCtx()
-    return ctx.whileWaiting { ctx.ipc.mailbox(ctx.agentId).receive() }
+    return waiting { ctx.ipc.mailbox(ctx.agentId).receive() }
 }
 
 /**
  * Sends a request and awaits the peer's reply.
- * Marks the instance [org.koaks.runtime.acb.LifecycleState.WAITING] while blocked.
+ * Marks the current execution branch [org.koaks.runtime.acb.LifecycleState.WAITING] while blocked.
  */
 suspend fun requestMessage(
     to: AgentId,
@@ -59,7 +66,7 @@ suspend fun requestMessage(
 ): RuntimeMessage {
     val ctx = runtimeCtx()
     val hub = ctx.ipc
-    return ctx.whileWaiting {
+    return waiting {
         hub.request(
             RuntimeMessage(
                 id = hub.nextId(),
