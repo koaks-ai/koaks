@@ -179,8 +179,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota? = null,
         parent: AgentId? = null,
         contextRefs: List<ContextRef> = emptyList(),
+        thread: String? = null,
     ): AgentResult {
-        val handle = spawn(agent, input, priority, quota, parent, contextRefs)
+        val handle = spawn(agent, input, priority, quota, parent, contextRefs, thread)
         return try {
             handle.await()
         } catch (c: CancellationException) {
@@ -205,6 +206,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota? = null,
         parent: AgentId? = null,
         contextRefs: List<ContextRef> = emptyList(),
+        thread: String? = null,
     ): Flow<AgentEvent> = channelFlow {
         val handle = spawnInternal(
             agent = agent,
@@ -214,6 +216,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             parent = parent,
             contextRefs = contextRefs,
             sink = ChannelEventSink(channel),
+            thread = thread,
         )
         try {
             handle.join()
@@ -244,7 +247,8 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota? = null,
         parent: AgentId? = null,
         contextRefs: List<ContextRef> = emptyList(),
-    ): AgentHandle = spawnInternal(agent, input, priority, quota, parent, contextRefs, EventSink.NONE)
+        thread: String? = null,
+    ): AgentHandle = spawnInternal(agent, input, priority, quota, parent, contextRefs, EventSink.NONE, thread)
 
     private fun spawnInternal(
         agent: Agent,
@@ -254,6 +258,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         parent: AgentId?,
         contextRefs: List<ContextRef>,
         sink: EventSink,
+        thread: String? = null,
     ): AgentHandle {
         check(!closed.value) { "AgentRuntime is closed" }
 
@@ -276,7 +281,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         ) {
             try {
                 val prefix = resolveContextPrefix(contextRefs, requester = parent ?: id)
-                runInstance(agent, input, prefix, acb, control, priority, effectiveQuota, sink)
+                runInstance(agent, input, prefix, acb, control, priority, effectiveQuota, sink, thread)
             } catch (c: CancellationException) {
                 throw c
             } catch (t: Throwable) {
@@ -342,11 +347,12 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota? = null,
         parent: AgentId? = null,
         contextRefs: List<ContextRef> = emptyList(),
+        thread: String? = null,
     ): SupervisedHandle {
         val latest = MutableStateFlow<AgentHandle?>(null)
         val deferred: Deferred<AgentResult> = scope.async {
             supervisor.run(agent.name, input, policy, ::emit) { attemptInput ->
-                val handle = spawn(agent, attemptInput, priority, quota, parent, contextRefs)
+                val handle = spawn(agent, attemptInput, priority, quota, parent, contextRefs, thread)
                 latest.value = handle
                 handle.await()
             }
@@ -388,13 +394,14 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         priority: Int,
         quota: Quota,
         sink: EventSink,
+        thread: String? = null,
     ): AgentResult {
         acb.markReady()
         return try {
             scheduler.withSlot(priority) {
                 acb.markRunning()
                 emit(RuntimeEvent.Running(acb.id, agent.name))
-                runWithQuota(agent, input, contextPrefix, acb, control, quota, sink)
+                runWithQuota(agent, input, contextPrefix, acb, control, quota, sink, thread)
             }
         } catch (c: CancellationException) {
             acb.markCancelled()
@@ -413,11 +420,12 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         control: InstanceControl,
         quota: Quota,
         sink: EventSink,
+        thread: String? = null,
     ): AgentResult {
         val wall = quota.wallClockMillis
-            ?: return collectStream(agent, input, contextPrefix, acb, control, quota, sink)
+            ?: return collectStream(agent, input, contextPrefix, acb, control, quota, sink, thread)
         return try {
-            withTimeout(wall.milliseconds) { collectStream(agent, input, contextPrefix, acb, control, quota, sink) }
+            withTimeout(wall.milliseconds) { collectStream(agent, input, contextPrefix, acb, control, quota, sink, thread) }
         } catch (_: TimeoutCancellationException) {
             val error = AgentError.Timeout("agent wall-clock", wall)
             val usage = acb.snapshot.usage
@@ -438,6 +446,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         control: InstanceControl,
         quota: Quota,
         sink: EventSink,
+        thread: String? = null,
     ): AgentResult {
         var terminal: AgentEvent.Terminal? = null
         var lastFailure: AgentError? = null
@@ -448,7 +457,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         var lastAssistant = ""
 
         try {
-            agent.stream(input, contextPrefix).collect { event ->
+            agent.stream(input, thread = thread, context = contextPrefix).collect { event ->
                 if (control.isPaused) {
                     acb.setState(LifecycleState.SUSPENDED)
                     emit(RuntimeEvent.Suspended(acb.id))

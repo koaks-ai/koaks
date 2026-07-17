@@ -43,7 +43,8 @@ suspend fun Agent.runIn(
     priority: Int = 0,
     quota: Quota? = null,
     contextRefs: List<ContextRef> = emptyList(),
-): AgentResult = runtime.run(this, input, priority, quota, contextRefs = contextRefs)
+    thread: String? = null,
+): AgentResult = runtime.run(this, input, priority, quota, contextRefs = contextRefs, thread = thread)
 
 fun Agent.streamIn(
     runtime: AgentRuntime,
@@ -51,7 +52,8 @@ fun Agent.streamIn(
     priority: Int = 0,
     quota: Quota? = null,
     contextRefs: List<ContextRef> = emptyList(),
-): Flow<AgentEvent> = runtime.stream(this, input, priority, quota, contextRefs = contextRefs)
+    thread: String? = null,
+): Flow<AgentEvent> = runtime.stream(this, input, priority, quota, contextRefs = contextRefs, thread = thread)
 
 fun Agent.spawnIn(
     runtime: AgentRuntime,
@@ -59,7 +61,8 @@ fun Agent.spawnIn(
     priority: Int = 0,
     quota: Quota? = null,
     contextRefs: List<ContextRef> = emptyList(),
-): AgentHandle = runtime.spawn(this, input, priority, quota, contextRefs = contextRefs)
+    thread: String? = null,
+): AgentHandle = runtime.spawn(this, input, priority, quota, contextRefs = contextRefs, thread = thread)
 
 /** Awaits every handle's terminal result, preserving order. */
 suspend fun awaitAll(vararg handles: AgentHandle): List<AgentResult> = handles.map { it.await() }
