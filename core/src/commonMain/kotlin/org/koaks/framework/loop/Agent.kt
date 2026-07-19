@@ -1,11 +1,13 @@
 package org.koaks.framework.loop
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.koaks.framework.memory.Memory
 import org.koaks.framework.memory.NoMemory
 import org.koaks.framework.memory.ThreadId
@@ -87,13 +89,19 @@ class Agent internal constructor(
         val buffer = TurnCommitBuffer(userMessage)
         var terminalUsage = Usage.ZERO
 
-        runner.stream(initial).collect { event ->
-            buffer.observe(event)
-            if (event is AgentEvent.Terminal) terminalUsage = event.usage
-            emit(event)
+        try {
+            runner.stream(initial).collect { event ->
+                buffer.observe(event)
+                if (event is AgentEvent.Terminal) terminalUsage = event.usage
+                emit(event)
+            }
+        } finally {
+            // Resolve the turn even if the collector was cancelled (a runtime quota preemption
+            // or the caller stopping collection): commit on a clean finish, otherwise warn about
+            // any discarded side effects. The cancellation that discards the turn must not skip
+            // this — hence NonCancellable around the suspending commit/warn.
+            withContext(NonCancellable) { commitOrWarn(threadId, buffer, terminalUsage) }
         }
-
-        commitOrWarn(threadId, buffer, terminalUsage)
     }
 
     /** Runs to terminal state and returns the result, loading/committing memory for [thread]. */
@@ -111,13 +119,16 @@ class Agent internal constructor(
         val buffer = TurnCommitBuffer(userMessage)
 
         val events = mutableListOf<AgentEvent>()
-        runner.stream(initial).collect { event ->
-            buffer.observe(event)
-            events += event
+        try {
+            runner.stream(initial).collect { event ->
+                buffer.observe(event)
+                events += event
+            }
+        } finally {
+            // See stream(): resolve the turn (commit-or-warn) even under cancellation.
+            val terminalUsage = events.filterIsInstance<AgentEvent.Terminal>().lastOrNull()?.usage ?: Usage.ZERO
+            withContext(NonCancellable) { commitOrWarn(threadId, buffer, terminalUsage) }
         }
-
-        val terminalUsage = events.filterIsInstance<AgentEvent.Terminal>().lastOrNull()?.usage ?: Usage.ZERO
-        commitOrWarn(threadId, buffer, terminalUsage)
 
         return events.toAgentResult()
     }

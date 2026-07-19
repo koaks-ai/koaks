@@ -2,6 +2,7 @@ package org.koaks.framework.memory
 
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.model.Message
+import org.koaks.framework.model.Role
 import org.koaks.framework.model.ToolCall
 
 /**
@@ -37,7 +38,25 @@ class TurnCommitBuffer(userMessage: Message) {
             }
 
             is AgentEvent.StepCompleted -> flushStep()
-            is AgentEvent.Terminal -> sawTerminal = true
+            is AgentEvent.Terminal -> {
+                // Flush any half-assembled step BEFORE marking terminal: a terminal can
+                // arrive without a trailing StepCompleted (a `returnDirectly` tool step, or a
+                // quota preemption mid-step), and its pending assistant/tool-result messages
+                // must not be silently dropped — otherwise we could commit an assistant
+                // tool-call with no matching tool result (providers reject that).
+                flushStep()
+                // `returnDirectly` finishes by emitting a synthetic assistant message that
+                // never appeared as text deltas or a StepCompleted, so it is not yet in
+                // `committed`. Every normal/policy terminal is preceded by a model step whose
+                // assistant was just flushed (last message is ASSISTANT); only a returnDirectly
+                // terminal lands right after its tool results (last message is TOOL). Append the
+                // terminal's message in exactly that case, so the final answer is not lost.
+                val message = event.message
+                if (message.text.isNotEmpty() && committed.lastOrNull()?.role != Role.ASSISTANT) {
+                    committed += message
+                }
+                sawTerminal = true
+            }
             is AgentEvent.Failed -> {} // non-terminal failures may still be followed by a terminal event
         }
     }
