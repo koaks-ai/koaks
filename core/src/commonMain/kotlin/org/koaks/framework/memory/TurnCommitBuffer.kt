@@ -62,10 +62,14 @@ class TurnCommitBuffer(userMessage: Message) {
     /** Closes out the current model step into an assistant message + its tool results. */
     private fun flushStep() {
         val text = pendingText.toString()
+        // Tool results arrive after the tool-calling step has already emitted
+        // StepCompleted, so they belong before the assistant message assembled for the
+        // next model step. Keeping this order is required by OpenAI-compatible APIs:
+        // every assistant tool_call must be followed immediately by its tool result.
+        committed += pendingToolResults
         if (text.isNotEmpty() || pendingCalls.isNotEmpty()) {
             committed += Message.assistant(text, pendingCalls.toList())
         }
-        committed += pendingToolResults
         pendingText.clear()
         pendingCalls.clear()
         pendingToolResults.clear()

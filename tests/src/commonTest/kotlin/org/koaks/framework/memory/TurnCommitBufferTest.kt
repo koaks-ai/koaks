@@ -51,6 +51,32 @@ class TurnCommitBufferTest {
     }
 
     @Test
+    fun normal_tool_loop_commits_tool_result_before_final_assistant() {
+        val call = ToolCall(id = "c1", name = "write", arguments = "{}")
+        val buffer = TurnCommitBuffer(Message.user("create a file"))
+
+        buffer.observe(AgentEvent.ToolCallRequested(call))
+        buffer.observe(AgentEvent.StepCompleted(1))
+        buffer.observe(AgentEvent.ToolResult("c1", "created", isError = false))
+        buffer.observe(AgentEvent.TextDelta("Done."))
+        buffer.observe(AgentEvent.StepCompleted(2))
+        buffer.observe(AgentEvent.Completed(Message.assistant("Done."), Usage.ZERO))
+
+        assertTrue(buffer.shouldCommit())
+        val messages = buffer.messagesInOrder()
+        assertEquals(
+            listOf(Role.USER, Role.ASSISTANT, Role.TOOL, Role.ASSISTANT),
+            messages.map { it.role },
+        )
+        assertTrue(messages[1].toolCalls.any { it.id == "c1" })
+        assertEquals(
+            "created",
+            (messages[2].parts.first() as org.koaks.framework.model.ContentPart.ToolResultPart).output,
+        )
+        assertEquals("Done.", messages[3].text)
+    }
+
+    @Test
     fun terminal_flushes_a_half_assembled_step() {
         // A terminal arriving mid-step (e.g. a quota preemption) must still flush what was
         // assembled so far rather than dropping it.
