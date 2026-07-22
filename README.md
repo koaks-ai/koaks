@@ -77,6 +77,7 @@ import org.koaks.provider.qwen.qwen
 
 fun main() = runBlocking {
     val agent = agent {
+        id = "assistant"
         name = "assistant"
         instructions = "You are a concise, helpful assistant."
         model {
@@ -107,6 +108,7 @@ segments are joined with a blank line into the single system prompt.
 
 ```kotlin
 agent {
+    id = "dynamic-assistant"
     instructions {
         +"You are a concise, helpful assistant."     // static
         text("Always answer in English.")            // static (explicit form)
@@ -168,6 +170,7 @@ data class WeatherInput(val city: String)
 
 fun main() = kotlinx.coroutines.runBlocking {
     val agent = agent {
+        id = "weather-agent"
         name = "weather-agent"
         instructions = "Answer the user's questions, using tools when needed."
         model {
@@ -210,24 +213,43 @@ tools {
 
 ### 6. Memory (Multi-Turn Conversations)
 
-Attach memory to the agent, then talk through a `thread(id)`. History is loaded on each
-turn and committed atomically only when the turn finishes — a failure or cancellation
-leaves persisted history untouched.
+Attach memory to the agent, then pass the same `thread` to each run. `ThreadId` is owned
+by the Runtime, so different Agents can join the same conversation. History is loaded on
+each turn and committed atomically only when the whole turn finishes — a failure or
+cancellation leaves persisted history untouched.
 
 ```kotlin
 val agent = agent {
+    id = "memory-assistant"
     model { qwen(baseUrl = "base-url", apiKey = "api-key", modelName = "qwen3-235b-a22b-instruct-2507") }
     memory {
-        window(40)   // sliding-window; or none() / custom(summarizingOrVectorMemory)
+        window(40)   // sliding-window; or none() / custom("provider-id", provider)
     }
 }
 
 agent.use {
-    val chat = it.thread("user-1001")
-    println(chat.run("My name is Ada.").text)
-    println(chat.run("What's my name?").text)   // remembers across turns
+    println(it.run("My name is Ada.", thread = "user-1001").text)
+    println(it.run("What's my name?", thread = "user-1001").text)   // remembers across turns
 }
 ```
+
+All execution goes through an `AgentRuntime`. The convenient `Agent.run`, `stream`, and
+`spawn` methods share a lazily-created process-wide default Runtime. Create an explicit
+Runtime when you need a bounded lifecycle, scheduling, quotas, cancellation, or global
+observation:
+
+```kotlin
+AgentRuntime { maxConcurrency = 8 }.use { runtime ->
+    val result = runtime.run(agent, "Continue", thread = "user-1001")
+    val events = runtime.stream(agent, "Explain that", thread = "user-1001")
+    val handle = runtime.spawn(agent, "Background task", thread = "user-1001")
+}
+```
+
+`AgentId` identifies the immutable Agent definition, `ThreadId` identifies a long-lived
+conversation, `TurnId` identifies one atomic top-level turn, and `RunId` identifies one
+execution instance. Top-level turns on the same Thread run FIFO; different Threads remain
+concurrent.
 
 ### 7. Structured Output
 
@@ -250,6 +272,7 @@ agent.use {
 
 ```kotlin
 agent {
+    id = "resilient-assistant"
     model {
         // try Qwen first; fall back to Ollama only if the primary fails before any output
         qwen(baseUrl = "...", apiKey = "...", modelName = "qwen3-235b-a22b-instruct-2507")
@@ -265,6 +288,7 @@ Typed **hooks** can transform model requests/streams and tool calls/results. Pus
 
 ```kotlin
 agent {
+    id = "guarded-assistant"
     hook {
         onModelCall {
             before { ctx -> ctx.request }

@@ -17,21 +17,19 @@ class WindowMemoryTest {
     @Test
     fun keeps_all_when_under_limit() = runTest {
         val mem = WindowMemory(maxMessages = 10)
-        val id = ThreadId("t1")
-        mem.commit(id, listOf(user("hi"), Message.assistant("hello")))
-        assertEquals(2, mem.load(id).size)
+        mem.commit(listOf(user("hi"), Message.assistant("hello")))
+        assertEquals(2, mem.load(user("")).size)
     }
 
     @Test
     fun drops_oldest_whole_turns_preserving_tool_pairing() = runTest {
         val mem = WindowMemory(maxMessages = 4)
-        val id = ThreadId("t1")
         // Turn 1: user + assistant(call) + tool result (3 msgs)
-        mem.commit(id, listOf(user("q1"), assistantCall("c1"), toolResult("c1")))
+        mem.commit(listOf(user("q1"), assistantCall("c1"), toolResult("c1")))
         // Turn 2: user + assistant (2 msgs)
-        mem.commit(id, listOf(user("q2"), Message.assistant("a2")))
+        mem.commit(listOf(user("q2"), Message.assistant("a2")))
 
-        val loaded = mem.load(id)
+        val loaded = mem.load(user(""))
         // Budget 4 can't fit both turns (3+2=5); the oldest whole turn is dropped.
         assertEquals(listOf("q2"), loaded.filter { it.role == Role.USER }.map { it.text })
 
@@ -47,12 +45,11 @@ class WindowMemoryTest {
     @Test
     fun preserves_leading_system_message() = runTest {
         val mem = WindowMemory(maxMessages = 3)
-        val id = ThreadId("t1")
-        mem.commit(id, listOf(Message.system("sys")))
-        mem.commit(id, listOf(user("q1"), Message.assistant("a1")))
-        mem.commit(id, listOf(user("q2"), Message.assistant("a2")))
+        mem.commit(listOf(Message.system("sys")))
+        mem.commit(listOf(user("q1"), Message.assistant("a1")))
+        mem.commit(listOf(user("q2"), Message.assistant("a2")))
 
-        val loaded = mem.load(id)
+        val loaded = mem.load(user(""))
         assertEquals(Role.SYSTEM, loaded.first().role, "system message must be preserved at the head")
         assertEquals("sys", loaded.first().text)
     }
@@ -60,10 +57,9 @@ class WindowMemoryTest {
     @Test
     fun never_splits_a_single_oversized_turn() = runTest {
         val mem = WindowMemory(maxMessages = 2)
-        val id = ThreadId("t1")
         // A single turn of 3 messages, larger than the cap.
-        mem.commit(id, listOf(user("q1"), assistantCall("c1"), toolResult("c1")))
-        val loaded = mem.load(id)
+        mem.commit(listOf(user("q1"), assistantCall("c1"), toolResult("c1")))
+        val loaded = mem.load(user(""))
         // Kept intact rather than orphaning the tool result.
         assertEquals(3, loaded.size)
     }

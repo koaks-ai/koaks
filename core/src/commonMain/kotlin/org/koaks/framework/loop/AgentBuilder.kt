@@ -2,9 +2,13 @@ package org.koaks.framework.loop
 
 import org.koaks.framework.middleware.AgentListener
 import org.koaks.framework.middleware.Hook
-import org.koaks.framework.memory.Memory
-import org.koaks.framework.memory.NoMemory
-import org.koaks.framework.memory.WindowMemory
+import org.koaks.framework.memory.FixedMemoryProvider
+import org.koaks.framework.memory.MemoryProvider
+import org.koaks.framework.memory.MemoryProviderId
+import org.koaks.framework.memory.NoMemoryProvider
+import org.koaks.framework.memory.ThreadId
+import org.koaks.framework.memory.ThreadMemory
+import org.koaks.framework.memory.WindowMemoryProvider
 import org.koaks.framework.policy.ErrorPolicy
 import org.koaks.framework.policy.RunBudget
 import org.koaks.framework.policy.TerminationPolicy
@@ -16,6 +20,9 @@ import org.koaks.framework.tool.ToolRegistry
  */
 @AgentDSL
 class AgentBuilder {
+    /** Stable runtime identity. Every agent definition must declare one, e.g. `id = "assistant"`. */
+    var id: String? = null
+
     var name: String = "agent"
 
     /** Single-segment shorthand: `instructions = "..."`. Overridden by an `instructions { }` block. */
@@ -44,7 +51,7 @@ class AgentBuilder {
     private val listeners = mutableListOf<AgentListener>()
     private var termination: TerminationPolicy = TerminationPolicy.maxSteps(10)
     private var errorPolicy: ErrorPolicy = ErrorPolicy.PROPAGATE
-    private var memory: Memory = NoMemory
+    private var memoryProvider: MemoryProvider? = null
     private var runBudget: RunBudget = RunBudget.UNLIMITED
 
     fun model(block: ModelScope.() -> ModelSelection) {
@@ -59,7 +66,7 @@ class AgentBuilder {
 
     /** Configures conversation memory: `memory { window(40) }` / `none()` / `custom(...)`. */
     fun memory(block: MemoryScope.() -> Unit) {
-        memory = MemoryScope().apply(block).build()
+        memoryProvider = MemoryScope().apply(block).build()
     }
 
     /** Installs a typed interception hook. */
@@ -95,6 +102,7 @@ class AgentBuilder {
     }
 
     internal fun build(): Agent {
+        val agentId = AgentId(requireNotNull(id) { "agent id is required (e.g. id = \"assistant\")" })
         val scope = requireNotNull(modelScope) { "model { } block is required" }
         val model = requireNotNull(selection) {
             "a model is required (e.g. model { qwen(...) })"
@@ -104,6 +112,7 @@ class AgentBuilder {
             ?: instructions?.let { Instructions.of(it) }
             ?: Instructions.EMPTY
         return Agent(
+            id = agentId,
             name = name,
             instructions = resolvedInstructions,
             model = model,
@@ -113,7 +122,7 @@ class AgentBuilder {
             termination = termination,
             errorPolicy = errorPolicy,
             runBudget = runBudget,
-            memory = memory,
+            memoryProvider = memoryProvider,
             transport = transportInfo.transport,
             ownsTransport = transportInfo.ownsTransport,
         )
@@ -129,22 +138,34 @@ fun createAgent(block: AgentBuilder.() -> Unit): Agent = agent(block)
 /** DSL scope for selecting conversation memory. */
 @AgentDSL
 class MemoryScope {
-    private var memory: Memory = NoMemory
+    private var provider: MemoryProvider? = null
 
     /** Sliding-window memory with turn-atomic trimming (load-side). */
     fun window(maxMessages: Int) {
-        memory = WindowMemory(maxMessages)
+        provider = WindowMemoryProvider(maxMessages)
     }
 
-    /** No persistence (the default). */
+    /** Explicitly disables persistence for Threads first bound by this Agent. */
     fun none() {
-        memory = NoMemory
+        provider = NoMemoryProvider
     }
 
-    /** Plug in a custom [Memory] implementation (e.g. summarizing / vector). */
-    fun custom(memory: Memory) {
-        this.memory = memory
+    /** Uses an application-defined provider with an explicit stable compatibility id. */
+    fun custom(id: MemoryProviderId, provider: MemoryProvider) {
+        require(provider.id == id) {
+            "custom provider id '${provider.id.value}' does not match declared id '${id.value}'"
+        }
+        this.provider = provider
     }
 
-    internal fun build(): Memory = memory
+    fun custom(id: String, provider: MemoryProvider) = custom(MemoryProviderId(id), provider)
+
+    /** Factory shorthand for opening one isolated [ThreadMemory] per Runtime Thread. */
+    fun custom(id: MemoryProviderId, open: suspend (ThreadId) -> ThreadMemory) {
+        provider = FixedMemoryProvider(id, open)
+    }
+
+    fun custom(id: String, open: suspend (ThreadId) -> ThreadMemory) = custom(MemoryProviderId(id), open)
+
+    internal fun build(): MemoryProvider? = provider
 }

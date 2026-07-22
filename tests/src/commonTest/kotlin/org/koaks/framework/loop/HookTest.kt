@@ -39,6 +39,7 @@ class HookTest {
             listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-11"
             name = "t"
             model { custom(model) }
             tools { tool<NoArgs>(name = "noop", description = "noop") { "ok" } }
@@ -63,6 +64,7 @@ class HookTest {
             listOf(ModelEvent.TextDelta("hello"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-12"
             name = "t"
             model { custom(model) }
             hook {
@@ -89,6 +91,7 @@ class HookTest {
             listOf(ModelEvent.TextDelta("{\"city\":\"NYC\",\"tempC\":21}"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-13"
             name = "t"
             model { custom(model) }
             hook {
@@ -118,6 +121,7 @@ class HookTest {
             listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-14"
             name = "t"
             model { custom(model) }
             tools {
@@ -150,6 +154,7 @@ class HookTest {
             listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-15"
             name = "t"
             model { custom(model) }
             tools { tool<ValueInput>(name = "echo", description = "echo") { it.value } }
@@ -183,6 +188,7 @@ class HookTest {
             listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-16"
             name = "t"
             model { custom(model) }
             tools {
@@ -219,6 +225,7 @@ class HookTest {
             listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-17"
             name = "t"
             model { custom(model) }
             tools { tool<NoArgs>(name = "noisy", description = "noisy") { "abcdef" } }
@@ -263,6 +270,7 @@ class HookTest {
             }
         }
         val a = agent {
+            id = "agent-18"
             name = "t"
             model { custom(model) }
             tools { tool<NoArgs>(name = "danger", description = "danger") { "executed" } }
@@ -287,6 +295,7 @@ class HookTest {
             listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-19"
             name = "t"
             model { custom(model) }
             tools { tool<NoArgs>(name = "noop", description = "noop") { "ok" } }
@@ -310,6 +319,7 @@ class HookTest {
             listOf(ModelEvent.TextDelta("never"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-20"
             name = "t"
             model { custom(model) }
             hook {

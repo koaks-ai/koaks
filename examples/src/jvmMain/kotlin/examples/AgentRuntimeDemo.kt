@@ -17,7 +17,7 @@ import org.koaks.runtime.resource.quota
 import org.koaks.runtime.sched.taskGraph
 
 /**
- * A self-contained tour of `koaks-runtime` that runs WITHOUT any API keys: it uses a
+ * A self-contained tour of the Runtime built into `koaks-core` that runs WITHOUT any API keys: it uses a
  * trivial [EchoModel] so you can see the kernel's behavior (concurrent spawn, priority,
  * a task DAG, the context store, metrics) deterministically.
  *
@@ -36,6 +36,7 @@ private class EchoModel(private val reply: String) : LanguageModel {
 }
 
 private fun echoAgent(name: String, reply: String) = agent {
+    id = name
     this.name = name
     model { custom(EchoModel(reply)) }
     terminateAfter(maxSteps = 3)

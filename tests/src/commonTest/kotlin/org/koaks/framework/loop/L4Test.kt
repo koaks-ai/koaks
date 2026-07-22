@@ -24,6 +24,7 @@ class L4Test {
             listOf(ModelEvent.TextDelta("recovered"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-21"
             name = "t"
             model { custom(model) }
             onError(ErrorPolicy.retryRetriable(maxRetries = 2, delayMs = 0))
@@ -40,6 +41,7 @@ class L4Test {
             listOf(ModelEvent.TextDelta("after substitute"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-22"
             name = "t"
             model { custom(model) }
             onError(ErrorPolicy.substituteOnError(org.koaks.framework.model.Message.user("try again")))
@@ -59,6 +61,7 @@ class L4Test {
         })
         val model = FakeLanguageModel(scripts)
         val a = agent {
+            id = "agent-23"
             name = "t"
             model { custom(model) }
             tools { tool<NoArgs>(name = "noop", description = "noop") { "ok" } }
@@ -82,6 +85,7 @@ class L4Test {
             listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-24"
             name = "t"
             model { custom(model) }
             tools { tool<NoArgs>(name = "danger", description = "danger") { "executed!" } }

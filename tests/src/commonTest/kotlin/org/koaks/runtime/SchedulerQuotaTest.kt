@@ -11,10 +11,13 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.koaks.framework.loop.Agent
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.AgentResult
 import org.koaks.framework.loop.FakeLanguageModel
+import org.koaks.framework.loop.OutputSpec
 import org.koaks.framework.loop.agent
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.ModelEvent
@@ -32,6 +35,7 @@ import kotlin.test.assertTrue
 class SchedulerQuotaTest {
 
     private fun sayAgent(name: String, answer: String): Agent = agent {
+        id = name
         this.name = name
         model {
             custom(FakeLanguageModel(listOf(ModelEvent.TextDelta(answer), ModelEvent.Completed(Usage(1, 1, 2)))))
@@ -41,6 +45,7 @@ class SchedulerQuotaTest {
 
     /** An agent that runs [onEnter] once (at its first text delta) then completes. */
     private fun probeAgent(name: String, onEnter: suspend () -> Unit): Agent = agent {
+        id = name
         this.name = name
         model {
             custom(
@@ -126,6 +131,7 @@ class SchedulerQuotaTest {
             listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-57"
             name = "greedy"
             model { custom(model) }
             terminateAfter(maxSteps = 10)
@@ -138,7 +144,7 @@ class SchedulerQuotaTest {
             val reason = terminal.reason
             assertTrue(reason is TerminationReason.Custom && reason.message.contains("maxToolCalls"))
             assertEquals("current-step", terminal.message.text)
-            assertEquals(LifecycleState.CANCELLED, it.agents.single().state)
+            assertEquals(LifecycleState.CANCELLED, it.runs.single().state)
         }
     }
 
@@ -156,7 +162,32 @@ class SchedulerQuotaTest {
             val terminal = collection.await().last()
             assertTrue(terminal is AgentEvent.Failed)
             assertTrue(terminal.error is AgentError.Timeout)
-            assertEquals(LifecycleState.FAILED, it.agents.single().state)
+            assertEquals(LifecycleState.FAILED, it.runs.single().state)
+        }
+    }
+
+    @Test
+    fun structured_run_exposes_base_steps_to_runtime_quota() = runTest {
+        val model = FakeLanguageModel(
+            listOf(ModelEvent.TextDelta("draft"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("{\"value\":1}"), ModelEvent.Completed(Usage.ZERO)),
+        )
+        val agent = agent {
+            id = "structured-quota"
+            model { custom(model) }
+        }
+        val spec = OutputSpec(buildJsonObject { put("type", "object") }, "Result")
+
+        AgentRuntime().use { runtime ->
+            val result = runtime.runStructured(
+                agent,
+                "go",
+                spec,
+                quota = quota { maxSteps = 1 },
+            )
+            assertTrue(result is AgentResult.Terminated)
+            assertEquals(1, model.calls, "quota must stop before structured finalization")
+            assertEquals(1, runtime.runs.single().stepsCompleted)
         }
     }
 
@@ -203,7 +234,7 @@ class SchedulerQuotaTest {
             submission.cancelAndJoin()
             advanceUntilIdle()
 
-            assertEquals(LifecycleState.CANCELLED, it.agents.single().state)
+            assertEquals(LifecycleState.CANCELLED, it.runs.single().state)
         }
     }
 }

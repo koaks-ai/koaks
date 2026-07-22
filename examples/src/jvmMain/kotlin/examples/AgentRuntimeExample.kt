@@ -17,11 +17,11 @@ import org.koaks.runtime.spawnIn
 import org.koaks.runtime.withAgentRuntime
 
 /**
- * `koaks-runtime` 推荐用法（真实模型）。
+ * Koaks Runtime 推荐用法（真实模型）。Runtime 已内置于 `koaks-core`。
  *
  * 怎么选：
- * - 单个 Agent、简单对话 → 继续用 `agent.run()` / `agent.stream()`，不必碰 Runtime
- * - 多个 Agent 要并发、共享上下文、配额、DAG → 显式创建 [AgentRuntime]
+ * - 单个 Agent、简单对话 → `agent.run()` / `agent.stream()` 使用进程级默认 Runtime
+ * - 需要显式生命周期、并发、共享上下文、配额、DAG → 显式创建 [AgentRuntime]
  *
  * 本示例一条流水线：
  * 1. 共享背景进 ContextStore（后面只传 ContextRef）
@@ -39,9 +39,9 @@ fun main() = runBlocking {
     val apiKey = EnvTools.loadValue("OPENAI_API_KEY")
     val modelName = "gpt-5.6-luna"
 
-    // Agent 定义与不用 Runtime 时完全一样：Runtime 不注册、不拥有 Agent，
-    // 只在 spawn 时把 Agent 当参数传入（同一 Agent 可反复 spawn）。
+    // AgentId 标识稳定的 Agent 定义；同一 Agent 可反复运行，每次执行都有独立 RunId。
     fun chatAgent(name: String, instructions: String) = agent {
+        id = name
         this.name = name
         this.instructions = instructions
         model {
@@ -65,7 +65,7 @@ fun main() = runBlocking {
         instructions = "你是后端工程师。根据项目背景和调研结论，列出 API 端点与数据模型。简洁，不要寒暄。",
     )
 
-    // 显式作用域实例：用完 close（或 .use {}）。没有隐式全局 Runtime。
+    // 显式作用域实例：用完 close（或 .use {}）。直接 Agent API 使用懒加载的默认 Runtime。
     AgentRuntime {
         maxConcurrency = 4
         defaultQuota = quota {
@@ -78,11 +78,11 @@ fun main() = runBlocking {
             rt.events.collect { event ->
                 when (event) {
                     is RuntimeEvent.Spawned ->
-                        println("  [event] spawned ${event.id} name=${event.agentName}")
+                        println("  [event] spawned ${event.runId} name=${event.agentName}")
                     is RuntimeEvent.Finished ->
-                        println("  [event] finished ${event.id} tokens=${event.usage.totalTokens}")
+                        println("  [event] finished ${event.runId} tokens=${event.usage.totalTokens}")
                     is RuntimeEvent.Failed ->
-                        println("  [event] failed ${event.id}: ${event.error.message}")
+                        println("  [event] failed ${event.runId}: ${event.error.message}")
                     else -> Unit
                 }
             }
@@ -158,9 +158,9 @@ fun main() = runBlocking {
             "  total=${m.total} finished=${m.finished} failed=${m.failed} " +
                 "cancelled=${m.cancelled} tokens=${m.totalTokens}",
         )
-        rt.agents.forEach { snap ->
+        rt.runs.forEach { snap ->
             println(
-                "  ${snap.id} name=${snap.agentName} state=${snap.state} " +
+                "  ${snap.runId} name=${snap.agentName} state=${snap.state} " +
                     "steps=${snap.stepsCompleted} tokens=${snap.usage.totalTokens}",
             )
         }

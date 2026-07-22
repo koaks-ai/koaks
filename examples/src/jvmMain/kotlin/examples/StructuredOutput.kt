@@ -13,6 +13,7 @@ import java.time.format.DateTimeFormatter
 
 fun main() = runBlocking {
     val agent = agent {
+        id = "weather-structured-output"
         name = "personalized-assistant"
         instructions {
             +"你是一个简洁、乐于助人的助手。"

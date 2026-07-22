@@ -23,7 +23,8 @@ class ResourceRegistryTest {
         var counter = 0
     }
 
-    private fun incrementingAgent(): Agent = agent {
+    private fun incrementingAgent(id: String): Agent = agent {
+        this.id = id
         name = "writer"
         model {
             custom(
@@ -52,17 +53,21 @@ class ResourceRegistryTest {
         val n = 50
         val runtime = AgentRuntime()
         runtime.use {
-            val handles = (0 until n).map { _ -> it.spawn(incrementingAgent(), "go") }
+            val handles = (0 until n).map { index ->
+                it.spawn(incrementingAgent("resource-writer-$index"), "go")
+            }
             handles.awaitAll()
         }
         assertEquals(n, Shared.counter)
     }
 
     @Test
-    fun direct_path_runs_block_without_a_runtime() = runTest {
-        // No runtime in scope: withRuntimeResource must still run the block (private IO).
+    fun standalone_resource_helper_runs_without_a_runtime_context() = runTest {
+        // No runtime context: the helper still executes private, uncontended IO.
         Shared.counter = 0
-        incrementingAgent().run("go")
+        org.koaks.runtime.resource.withRuntimeResource("standalone") {
+            Shared.counter++
+        }
         assertEquals(1, Shared.counter)
     }
 }

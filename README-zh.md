@@ -76,6 +76,7 @@ import org.koaks.provider.qwen.qwen
 
 fun main() = runBlocking {
     val agent = agent {
+        id = "assistant"
         name = "assistant"
         instructions = "你是一个简洁、乐于助人的助手。"
         model {
@@ -104,6 +105,7 @@ fun main() = runBlocking {
 
 ```kotlin
 agent {
+    id = "dynamic-assistant"
     instructions {
         +"你是一个简洁、乐于助人的助手。"               // 静态
         text("始终用中文回答。")                       // 静态（显式写法）
@@ -163,6 +165,7 @@ data class WeatherInput(val city: String)
 
 fun main() = kotlinx.coroutines.runBlocking {
     val agent = agent {
+        id = "weather-agent"
         name = "weather-agent"
         instructions = "回答用户的问题，必要时调用工具。"
         model {
@@ -205,23 +208,38 @@ tools {
 
 ### 6. 记忆（多轮对话）
 
-为 Agent 配置记忆，然后通过 `thread(id)` 进行对话。每一轮都会加载历史，并仅在该轮成功结束
-时原子提交——运行失败或被取消都不会影响已持久化的历史。
+为 Agent 配置记忆，然后在每次运行时传入相同的 `thread`。`ThreadId` 由 Runtime 全局管理，
+因此不同 Agent 也可以加入同一个会话。每一轮都会加载历史，并仅在整个 Turn 成功结束时原子
+提交——运行失败或被取消都不会影响已持久化的历史。
 
 ```kotlin
 val agent = agent {
+    id = "memory-assistant"
     model { qwen(baseUrl = "base-url", apiKey = "api-key", modelName = "qwen3-235b-a22b-instruct-2507") }
     memory {
-        window(40)   // 滑动窗口；也可用 none() / custom(摘要式或向量式记忆)
+        window(40)   // 滑动窗口；也可用 none() / custom("provider-id", provider)
     }
 }
 
 agent.use {
-    val chat = it.thread("user-1001")
-    println(chat.run("我叫 Ada。").text)
-    println(chat.run("我叫什么名字?").text)   // 跨轮次记住
+    println(it.run("我叫 Ada。", thread = "user-1001").text)
+    println(it.run("我叫什么名字?", thread = "user-1001").text)   // 跨轮次记住
 }
 ```
+
+所有执行都统一经过 `AgentRuntime`。便捷的 `Agent.run`、`stream`、`spawn` 会共享一个懒加载的
+进程级默认 Runtime；当你需要明确生命周期、调度、配额、取消或全局观测时，显式创建 Runtime：
+
+```kotlin
+AgentRuntime { maxConcurrency = 8 }.use { runtime ->
+    val result = runtime.run(agent, "继续", thread = "user-1001")
+    val events = runtime.stream(agent, "解释一下", thread = "user-1001")
+    val handle = runtime.spawn(agent, "后台任务", thread = "user-1001")
+}
+```
+
+`AgentId` 标识不可变的 Agent 定义，`ThreadId` 标识长生命周期会话，`TurnId` 标识一次原子的
+顶层回合，`RunId` 标识一次执行实例。同一 Thread 的顶层 Turn 按 FIFO 串行，不同 Thread 仍可并发。
 
 ### 7. 结构化输出
 
@@ -244,6 +262,7 @@ agent.use {
 
 ```kotlin
 agent {
+    id = "resilient-assistant"
     model {
         // 先尝试 Qwen；仅当主模型在产出任何输出之前失败时，才回退到 Ollama
         qwen(baseUrl = "...", apiKey = "...", modelName = "qwen3-235b-a22b-instruct-2507")
@@ -259,6 +278,7 @@ agent {
 
 ```kotlin
 agent {
+    id = "guarded-assistant"
     hook {
         onModelCall {
             before { ctx -> ctx.request }

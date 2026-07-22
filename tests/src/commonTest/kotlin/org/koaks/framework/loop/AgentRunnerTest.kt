@@ -13,8 +13,13 @@ import kotlin.test.assertTrue
 
 class AgentRunnerTest {
 
-    private fun agentWith(model: FakeLanguageModel, toolsBlock: ToolScope.() -> Unit = {}): Agent =
+    private fun agentWith(
+        id: String,
+        model: FakeLanguageModel,
+        toolsBlock: ToolScope.() -> Unit = {},
+    ): Agent =
         agent {
+            this.id = id
             name = "test"
             model { custom(model) }
             tools(toolsBlock)
@@ -31,7 +36,7 @@ class AgentRunnerTest {
                 ModelEvent.Completed(Usage(1, 1, 2)),
             ),
         )
-        val a = agentWith(model)
+        val a = agentWith("runner-reasoning", model)
         val events = a.stream("hi").toList()
 
         // Surfaced on the event stream, distinct from assistant text.
@@ -56,7 +61,7 @@ class AgentRunnerTest {
             // second step: no tool calls -> finish
             listOf(ModelEvent.TextDelta("Done."), ModelEvent.Completed(Usage(1, 1, 2))),
         )
-        val a = agentWith(model) {
+        val a = agentWith("runner-tee", model) {
             tool<NoArgs>(name = "noop", description = "no-op") { "ok" }
         }
 
@@ -79,7 +84,7 @@ class AgentRunnerTest {
             ),
             listOf(ModelEvent.TextDelta("recovered"), ModelEvent.Completed(Usage.ZERO)),
         )
-        val a = agentWith(model) // no tools registered
+        val a = agentWith("runner-tool-not-found", model) // no tools registered
 
         val events = a.stream("hi").toList()
 
@@ -105,7 +110,7 @@ class AgentRunnerTest {
             ),
             listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
         )
-        val a = agentWith(model) {
+        val a = agentWith("runner-phantom-tool", model) {
             tool<NoArgs>(name = "noop", description = "no-op") { "ok" }
         }
 
@@ -125,7 +130,7 @@ class AgentRunnerTest {
         val model = FakeLanguageModel(
             listOf(ModelEvent.TextDelta("hello"), ModelEvent.Completed(Usage(2, 3, 5))),
         )
-        val a = agentWith(model)
+        val a = agentWith("runner-no-tools", model)
         val result = a.run("hi")
         assertEquals("hello", result.text)
         assertEquals(5, result.usage.totalTokens)
@@ -141,7 +146,7 @@ class AgentRunnerTest {
                 ModelEvent.Completed(Usage.ZERO),
             ),
         )
-        val a = agentWith(model) {
+        val a = agentWith("runner-return-directly", model) {
             tool<NoArgs>(name = "answer", description = "final", returnDirectly = true) { "the answer" }
         }
         val result = a.run("hi")
@@ -161,6 +166,7 @@ class AgentRunnerTest {
             listOf(ModelEvent.TextDelta("should not run"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-2"
             name = "test"
             model { custom(model) }
             tools { tool<NoArgs>(name = "noop", description = "no-op") { "ok" } }
@@ -183,6 +189,7 @@ class AgentRunnerTest {
             ),
         )
         val a = agent {
+            id = "agent-3"
             name = "test"
             model { custom(model) }
             tools { tool<NoArgs>(name = "noop", description = "no-op") { "ok" } }
@@ -207,6 +214,7 @@ class AgentRunnerTest {
             listOf(ModelEvent.Failed(org.koaks.framework.model.AgentError.ModelError("boom", retriable = false))),
         )
         val a = agent {
+            id = "agent-4"
             name = "test"
             model { custom(model) }
             tools { tool<NoArgs>(name = "noop", description = "no-op") { "ok" } }

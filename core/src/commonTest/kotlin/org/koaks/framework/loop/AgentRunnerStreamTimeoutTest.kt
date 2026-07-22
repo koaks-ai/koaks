@@ -27,6 +27,7 @@ class AgentRunnerStreamTimeoutTest {
             }
         }
         val agent = agent {
+            id = "agent-70"
             model { custom(model) }
         }
 

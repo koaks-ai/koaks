@@ -37,14 +37,14 @@ import kotlin.time.Duration.Companion.milliseconds
  *  - **single AgentError decision point**: provider failures arrive as [ModelFailure]
  *    carrying the original [AgentError]; real exceptions are mapped once.
  */
-class AgentRunner(private val agent: Agent) {
+internal class AgentRunner(private val agent: Agent) {
 
     private val logger = KotlinLogging.logger {}
 
     private data class LoopRun(val state: AgentState)
 
     fun stream(initial: List<Message>): Flow<AgentEvent> = flow {
-        runLoop(initial) { emitEvent(it) }
+        runLoop(initial) { emit(it) }
     }
 
     /**
@@ -201,7 +201,9 @@ class AgentRunner(private val agent: Agent) {
                                     }
                                 }
 
-                                var outcome = denied ?: agent.tools.call(current.name, current.arguments)
+                                var outcome = denied ?: agent.tools.call(current.name, current.arguments) {
+                                    exec?.markSideEffect()
+                                }
                                 for (hook in agent.hooks.take(entered).asReversed()) {
                                     outcome = hook.onToolResult(ToolContext(current, state), outcome)
                                 }
@@ -283,9 +285,32 @@ class AgentRunner(private val agent: Agent) {
     suspend fun runStructured(
         initial: List<Message>,
         spec: OutputSpec,
+    ): AgentResult = runStructured(initial, spec) {}
+
+    /** Runtime-facing structured execution with observable intermediate steps. */
+    fun streamStructured(initial: List<Message>, spec: OutputSpec): Flow<AgentEvent> = flow {
+        runStructured(initial, spec) { emit(it) }
+    }
+
+    private suspend fun runStructured(
+        initial: List<Message>,
+        spec: OutputSpec,
+        emit: suspend (AgentEvent) -> Unit,
     ): AgentResult {
         val events = mutableListOf<AgentEvent>()
-        val loop = runLoop(initial) { events += it }
+        val loop = runLoop(initial) { event ->
+            events += event
+            // The successful base answer is an internal draft. Runtime still observes
+            // tool calls/results and StepCompleted for quotas/metrics, but Memory should
+            // retain only the final structured answer, not this draft's text.
+            when (event) {
+                is AgentEvent.TextDelta,
+                is AgentEvent.ReasoningDelta,
+                is AgentEvent.Completed,
+                -> Unit
+                else -> emit(event)
+            }
+        }
         val base = resultFrom(events)
         if (base !is AgentResult.Completed) return base
 
@@ -312,26 +337,41 @@ class AgentRunner(private val agent: Agent) {
         val acc = TurnAccumulator()
         try {
             modelSource(finalizationState, request, ModelCallPhase.StructuredFinalization)
-                .collect { acc.observe(it) }
+                .collect { event ->
+                    acc.observe(event)
+                    agent.listeners.forEach { it.onModelEvent(event) }
+                    when (event) {
+                        is ModelEvent.TextDelta -> emitStructuredEvent(AgentEvent.TextDelta(event.text), emit)
+                        is ModelEvent.ReasoningDelta -> emitStructuredEvent(AgentEvent.ReasoningDelta(event.text), emit)
+                        is ModelEvent.Failed -> throw ModelFailure(event.error)
+                        else -> Unit
+                    }
+                }
         } catch (c: CancellationException) {
             throw c
         } catch (t: Throwable) {
             // A finalization hook (or the model) failed — surface it on the unified
             // result channel instead of throwing raw out of run<T>.
             val error = if (t is ModelFailure) t.error else t.toAgentError()
-            return AgentResult.Failed(error, base.usage + acc.usage())
+            val usage = base.usage + acc.usage()
+            emitStructuredEvent(AgentEvent.Failed(error, usage), emit)
+            return AgentResult.Failed(error, usage)
         }
         val text = acc.assistantMessage().text
+        val usage = base.usage + acc.usage()
+        emitStructuredEvent(AgentEvent.StepCompleted(loop.state.step + 1), emit)
+        val completed = AgentEvent.Completed(Message.assistant(text), usage)
+        emitStructuredEvent(completed, emit)
         return AgentResult.Completed(
             message = Message.assistant(text),
-            usage = base.usage + acc.usage(),
+            usage = usage,
         )
     }
 
-    /** Helper to also notify listeners on each outgoing AgentEvent (single tee point). */
-    private suspend fun kotlinx.coroutines.flow.FlowCollector<AgentEvent>.emitEvent(event: AgentEvent) {
+    /** Finalization events do not pass through [runLoop], so notify listeners here. */
+    private suspend fun emitStructuredEvent(event: AgentEvent, emit: suspend (AgentEvent) -> Unit) {
         agent.listeners.forEach { it.onAgentEvent(event) }
-        emit(event)
+        emit.invoke(event)
     }
 
     private suspend fun modelSource(

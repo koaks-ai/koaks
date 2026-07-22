@@ -16,7 +16,7 @@ import org.koaks.framework.model.Message
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
-import org.koaks.runtime.acb.AgentId
+import org.koaks.runtime.acb.RunId
 import org.koaks.runtime.acb.LifecycleState
 import org.koaks.runtime.context.ContextScope
 import org.koaks.runtime.ipc.RuntimeMessage
@@ -32,6 +32,7 @@ import kotlin.test.assertTrue
 class RuntimeKernelHardeningTest {
 
     private fun sayAgent(name: String, answer: String): Agent = agent {
+        id = name
         this.name = name
         model {
             custom(FakeLanguageModel(listOf(ModelEvent.TextDelta(answer), ModelEvent.Completed(Usage(1, 1, 2)))))
@@ -45,6 +46,7 @@ class RuntimeKernelHardeningTest {
             listOf(ModelEvent.TextDelta("ok"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-46"
             name = "with-ctx"
             model { custom(model) }
             terminateAfter(maxSteps = 5)
@@ -72,12 +74,12 @@ class RuntimeKernelHardeningTest {
         runtime.use {
             val h = it.spawn(sayAgent("solo", "done"), "hi")
             h.await()
-            assertEquals(1, it.agents.size)
+            assertEquals(1, it.runs.size)
             assertEquals(1, it.metrics().finished)
 
             assertEquals(1, it.reap())
-            assertEquals(0, it.agents.size)
-            assertNull(it.snapshot(h.id))
+            assertEquals(0, it.runs.size)
+            assertNull(it.snapshot(h.runId))
             assertEquals(0, it.metrics().total)
 
             assertEquals(LifecycleState.FINISHED, h.state)
@@ -87,8 +89,9 @@ class RuntimeKernelHardeningTest {
 
     @Test
     fun tool_can_spawn_child_with_parent_link() = runTest {
-        var childId: AgentId? = null
+        var childId: RunId? = null
         val parent = agent {
+            id = "agent-47"
             name = "parent"
             model {
                 custom(
@@ -101,7 +104,7 @@ class RuntimeKernelHardeningTest {
             tools {
                 tool<NoArgs>(name = "fork", description = "spawn a child") {
                     val child = spawnChild(sayAgent("child", "from-child"), "go")
-                    childId = child.id
+                    childId = child.runId
                     child.await().text
                 }
             }
@@ -114,7 +117,7 @@ class RuntimeKernelHardeningTest {
             assertEquals("parent-done", h.await().text)
             val id = childId!!
             val childSnap = rt.snapshot(id)
-            assertEquals(h.id, childSnap?.parent)
+            assertEquals(h.runId, childSnap?.parent)
             assertTrue(h.snapshot.children.contains(id))
         }
     }
@@ -122,6 +125,7 @@ class RuntimeKernelHardeningTest {
     @Test
     fun receive_message_marks_waiting() = runTest {
         val waiter = agent {
+            id = "agent-48"
             name = "waiter"
             model {
                 custom(
@@ -146,8 +150,8 @@ class RuntimeKernelHardeningTest {
             rt.ipc.send(
                 RuntimeMessage(
                     id = rt.ipc.nextId(),
-                    sender = AgentId(0),
-                    receiver = h.id,
+                    sender = RunId(0),
+                    receiver = h.runId,
                     type = "ping",
                     payload = "hello",
                 ),
@@ -161,14 +165,14 @@ class RuntimeKernelHardeningTest {
     fun cancelled_request_still_allows_later_round_trip() = runTest {
         val runtime = AgentRuntime()
         runtime.use { rt ->
-            val silent = AgentId(1)
+            val silent = RunId(1)
             rt.ipc.mailbox(silent)
             repeat(10) {
                 val job = async {
                     rt.ipc.request(
                         RuntimeMessage(
                             id = rt.ipc.nextId(),
-                            sender = AgentId(2),
+                            sender = RunId(2),
                             receiver = silent,
                             type = "ask",
                             payload = "x",
@@ -179,14 +183,14 @@ class RuntimeKernelHardeningTest {
                 assertFailsWith<CancellationException> { job.await() }
             }
 
-            val server = AgentId(99)
+            val server = RunId(99)
             val box = rt.ipc.mailbox(server)
             val responder = launch {
                 val req = box.receive()
                 rt.ipc.reply(req, "pong")
             }
             val response = rt.ipc.request(
-                RuntimeMessage(id = rt.ipc.nextId(), sender = AgentId(3), receiver = server, type = "ask", payload = "y"),
+                RuntimeMessage(id = rt.ipc.nextId(), sender = RunId(3), receiver = server, type = "ask", payload = "y"),
             )
             assertEquals("pong", response.payload)
             responder.join()

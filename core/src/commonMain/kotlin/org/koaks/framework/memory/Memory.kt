@@ -10,32 +10,65 @@ import org.koaks.framework.model.Usage
  */
 @JvmInline
 value class ThreadId(val value: String) {
-    companion object {
-        /** Used when a memory-backed run does not name a thread. */
-        val DEFAULT = ThreadId("default")
+    init {
+        require(value.isNotBlank()) { "ThreadId must not be blank" }
+    }
+}
+
+@JvmInline
+value class MemoryProviderId(val value: String) {
+    init {
+        require(value.isNotBlank()) { "MemoryProviderId must not be blank" }
     }
 }
 
 /**
- * Pluggable conversation memory.
+ * The memory partition bound to exactly one Runtime [ThreadId]. Runtime opens it once,
+ * then owns its lifecycle until the Runtime closes.
  *
  * Strict data-flow contract:
- *  - [load] returns the "view fed to the model" — any recall/filtering happens HERE.
- *  - [commit] faithfully appends this run's successful messages. It receives [usage],
- *    the API-measured token counts for the run that just reached a terminal state
- *    ([usage.promptTokens] is the real size of the history+input the model saw), so a
- *    compressing implementation can decide — AFTER the response is already emitted —
- *    whether to compact the persisted history for the next run.
- *  - The agent loop never touches Memory; only `Agent.run`/`stream` call load/commit at
- *    the run boundary.
+ *  - [load] returns the view fed to the model; recall/filtering happens here.
+ *  - [commit] faithfully appends one successful atomic Turn.
+ *  - The agent loop never touches memory; Runtime alone calls load/commit.
  */
-interface Memory {
-    suspend fun load(thread: ThreadId): List<Message>
-    suspend fun commit(thread: ThreadId, messages: List<Message>, usage: Usage = Usage.ZERO)
+interface ThreadMemory : AutoCloseable {
+    suspend fun load(query: Message): List<Message>
+    suspend fun commit(messages: List<Message>, usage: Usage = Usage.ZERO)
+    override fun close() {}
 }
 
-/** No persistence — every run starts empty. The core default. */
-object NoMemory : Memory {
-    override suspend fun load(thread: ThreadId): List<Message> = emptyList()
-    override suspend fun commit(thread: ThreadId, messages: List<Message>, usage: Usage) {}
+/** Stable memory policy carried by an Agent and bound by Runtime when a Thread is created. */
+interface MemoryProvider {
+    val id: MemoryProviderId
+    suspend fun open(thread: ThreadId): ThreadMemory
+}
+
+/** Factory-backed provider for application-defined ThreadMemory implementations. */
+class FixedMemoryProvider(
+    override val id: MemoryProviderId,
+    private val opener: suspend (ThreadId) -> ThreadMemory,
+) : MemoryProvider {
+    override suspend fun open(thread: ThreadId): ThreadMemory = opener(thread)
+}
+
+fun memoryProvider(
+    id: MemoryProviderId,
+    open: suspend (ThreadId) -> ThreadMemory,
+): MemoryProvider = FixedMemoryProvider(id, open)
+
+fun memoryProvider(
+    id: String,
+    open: suspend (ThreadId) -> ThreadMemory,
+): MemoryProvider = memoryProvider(MemoryProviderId(id), open)
+
+/** No persistence — every run starts empty. */
+object NoMemory : ThreadMemory {
+    override suspend fun load(query: Message): List<Message> = emptyList()
+    override suspend fun commit(messages: List<Message>, usage: Usage) {}
+}
+
+/** Explicit opt-out provider for `memory { none() }`; distinct from using the Runtime default. */
+object NoMemoryProvider : MemoryProvider {
+    override val id: MemoryProviderId = MemoryProviderId("none")
+    override suspend fun open(thread: ThreadId): ThreadMemory = NoMemory
 }

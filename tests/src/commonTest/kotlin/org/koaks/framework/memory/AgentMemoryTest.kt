@@ -11,14 +11,15 @@ import org.koaks.framework.model.Role
 import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.ErrorPolicy
 import org.koaks.framework.policy.Recovery
+import org.koaks.runtime.AgentRuntime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Memory is now exercised directly through `agent.run`/`stream` (the old `AgentThread`
- * entry point is gone). A run with memory configured loads history, replays it, and
- * commits on success — keyed by an explicit `thread`.
+ * Memory is exercised through Runtime turn boundaries (the old `AgentThread` entry point
+ * is gone). A run with memory configured loads history, replays it, and commits on
+ * success — keyed by an explicit `thread`.
  */
 class AgentMemoryTest {
 
@@ -30,19 +31,22 @@ class AgentMemoryTest {
         )
         val mem = WindowMemory(maxMessages = 50)
         val a = agent {
+            id = "agent-30"
             name = "t"
             model { custom(model) }
-            memory { custom(mem) }
+            memory { custom("test-memory") { mem } }
         }
 
-        a.run("q1", thread = "user-1")
-        val afterFirst = mem.load(ThreadId("user-1"))
-        assertEquals(listOf("q1"), afterFirst.filter { it.role == Role.USER }.map { it.text })
-        assertTrue(afterFirst.any { it.role == Role.ASSISTANT && it.text == "first answer" })
+        AgentRuntime().use { runtime ->
+            runtime.run(a, "q1", thread = "user-1")
+            val afterFirst = mem.load(org.koaks.framework.model.Message.user(""))
+            assertEquals(listOf("q1"), afterFirst.filter { it.role == Role.USER }.map { it.text })
+            assertTrue(afterFirst.any { it.role == Role.ASSISTANT && it.text == "first answer" })
 
-        a.run("q2", thread = "user-1")
-        val afterSecond = mem.load(ThreadId("user-1"))
-        assertEquals(listOf("q1", "q2"), afterSecond.filter { it.role == Role.USER }.map { it.text })
+            runtime.run(a, "q2", thread = "user-1")
+            val afterSecond = mem.load(org.koaks.framework.model.Message.user(""))
+            assertEquals(listOf("q1", "q2"), afterSecond.filter { it.role == Role.USER }.map { it.text })
+        }
     }
 
     @Test
@@ -52,17 +56,20 @@ class AgentMemoryTest {
         )
         val mem = WindowMemory(maxMessages = 50)
         val a = agent {
+            id = "agent-31"
             name = "t"
             model { custom(model) }
-            memory { custom(mem) }
+            memory { custom("test-memory") { mem } }
             onError(ErrorPolicy { _, _ -> Recovery.Propagate })
         }
 
-        val events = a.stream("q1", thread = "user-1").toList()
-        assertTrue(events.any { it is AgentEvent.Failed })
-        assertTrue(events.none { it is AgentEvent.Terminal })
+        AgentRuntime().use { runtime ->
+            val events = runtime.stream(a, "q1", thread = "user-1").toList()
+            assertTrue(events.any { it is AgentEvent.Failed })
+            assertTrue(events.none { it is AgentEvent.Terminal })
 
-        assertEquals(0, mem.load(ThreadId("user-1")).size)
+            assertEquals(0, mem.load(org.koaks.framework.model.Message.user("")).size)
+        }
     }
 
     @Test
@@ -73,17 +80,20 @@ class AgentMemoryTest {
         )
         val mem = WindowMemory(maxMessages = 50)
         val a = agent {
+            id = "agent-32"
             name = "t"
             instructions = "be helpful"
             model { custom(model) }
-            memory { custom(mem) }
+            memory { custom("test-memory") { mem } }
         }
-        a.run("q1", thread = "u")
-        a.run("q2", thread = "u")
+        AgentRuntime().use { runtime ->
+            runtime.run(a, "q1", thread = "u")
+            runtime.run(a, "q2", thread = "u")
 
-        val loaded = mem.load(ThreadId("u"))
-        assertEquals(2, loaded.count { it.role == Role.USER })
-        assertEquals(2, loaded.count { it.role == Role.ASSISTANT })
+            val loaded = mem.load(org.koaks.framework.model.Message.user(""))
+            assertEquals(2, loaded.count { it.role == Role.USER })
+            assertEquals(2, loaded.count { it.role == Role.ASSISTANT })
+        }
     }
 
     @Test
@@ -92,32 +102,40 @@ class AgentMemoryTest {
             listOf(ModelEvent.TextDelta("a1"), ModelEvent.Completed(Usage.ZERO)),
             listOf(ModelEvent.TextDelta("a2"), ModelEvent.Completed(Usage.ZERO)),
         )
-        val mem = WindowMemory(maxMessages = 50)
+        val memories = mutableMapOf<ThreadId, WindowMemory>()
         val a = agent {
+            id = "agent-33"
             name = "t"
             model { custom(model) }
-            memory { custom(mem) }
+            memory {
+                custom("test-memory") { thread ->
+                    WindowMemory(maxMessages = 50).also { memories[thread] = it }
+                }
+            }
         }
-        a.run("hello from alice", thread = "alice")
-        a.run("hello from bob", thread = "bob")
+        AgentRuntime().use { runtime ->
+            runtime.run(a, "hello from alice", thread = "alice")
+            runtime.run(a, "hello from bob", thread = "bob")
 
-        assertEquals(listOf("hello from alice"), mem.load(ThreadId("alice")).filter { it.role == Role.USER }.map { it.text })
-        assertEquals(listOf("hello from bob"), mem.load(ThreadId("bob")).filter { it.role == Role.USER }.map { it.text })
+            assertEquals(listOf("hello from alice"), memories.getValue(ThreadId("alice")).load(org.koaks.framework.model.Message.user("")).filter { it.role == Role.USER }.map { it.text })
+            assertEquals(listOf("hello from bob"), memories.getValue(ThreadId("bob")).load(org.koaks.framework.model.Message.user("")).filter { it.role == Role.USER }.map { it.text })
+        }
     }
 
     @Test
-    fun default_thread_is_used_when_none_given() = runTest {
+    fun no_thread_means_ephemeral_runtime_run() = runTest {
         val model = FakeLanguageModel(
             listOf(ModelEvent.TextDelta("a1"), ModelEvent.Completed(Usage.ZERO)),
         )
-        val mem = WindowMemory(maxMessages = 50)
+        var opens = 0
         val a = agent {
+            id = "agent-34"
             name = "t"
             model { custom(model) }
-            memory { custom(mem) }
+            memory { custom("test-memory") { opens++; WindowMemory(maxMessages = 50) } }
         }
-        a.run("q1") // no thread → ThreadId.DEFAULT (warns once)
+        AgentRuntime().use { runtime -> runtime.run(a, "q1") }
 
-        assertEquals(listOf("q1"), mem.load(ThreadId.DEFAULT).filter { it.role == Role.USER }.map { it.text })
+        assertEquals(0, opens)
     }
 }

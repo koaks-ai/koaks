@@ -33,6 +33,7 @@ class AnnotatedToolTest {
             listOf(ModelEvent.TextDelta("It's sunny in NYC"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-61"
             name = "t"
             model { custom(model) }
             tools {

@@ -20,6 +20,7 @@ import org.koaks.cli.tui.StdoutOutput
 import org.koaks.cli.tui.Terminal
 import org.koaks.cli.tui.TerminalLayout
 import org.koaks.cli.tui.Theme
+import org.koaks.runtime.AgentRuntime
 
 internal class AgentApp(
     initialConfig: AgentConfig,
@@ -29,7 +30,8 @@ internal class AgentApp(
     private val commands: CommandRegistry = CommandRegistry.builtins(),
 ) {
     private val trace = CliTrace.open(environment)
-    private val session = AgentSession(initialConfig, trace.takeIf { it.enabled })
+    private val runtime = AgentRuntime()
+    private val session = CliChatSession(initialConfig, runtime, trace.takeIf { it.enabled })
 
     suspend fun run() {
         val theme = Theme(ansiEnabled(environment))
@@ -144,6 +146,7 @@ internal class AgentApp(
             closedNormally = true
         } finally {
             session.close()
+            runtime.close()
             trace.close()
             if (layout.fixedInput) InputBox.leaveFixedLayout(output, layout)
             if (closedNormally) {

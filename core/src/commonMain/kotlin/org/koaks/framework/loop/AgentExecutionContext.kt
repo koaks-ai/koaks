@@ -10,9 +10,6 @@ import kotlin.coroutines.CoroutineContext
  * a runtime can use this to admit/park a concurrency slot so that "waiting" means "off
  * the CPU" without core ever depending on the runtime.
  *
- * On the direct `agent.run` / `agent.stream` path there is no runtime and no element, so
- * every wait below is a plain suspend and behavior is unchanged.
- *
  * The concrete implementation (e.g. a per-instance activity gate) is supplied by the
  * runtime. All methods must be safe to call from multiple branches concurrently.
  */
@@ -52,6 +49,9 @@ abstract class AgentExecutionContext protected constructor() :
      * registered" — which would thrash a concurrency slot.
      */
     abstract suspend fun forkBranch(): ExecutionBranch
+
+    /** Records that this run actually entered a tool execution declaring external side effects. */
+    abstract fun markSideEffect()
 }
 
 /** A reserved execution branch. [run] executes [block] under this branch, completing it on exit. */

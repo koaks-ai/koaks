@@ -40,10 +40,11 @@ class StructuredOutputTest {
             ),
         )
         val a = agent {
+            id = "agent-25"
             name = "t"
             model { custom(model) }
         }
-        val weather: CityWeather = a.run<CityWeather>("weather in NYC?")
+        val weather: CityWeather = a.run<CityWeather>("weather in NYC?", thread = "structured-nyc")
         assertEquals("NYC", weather.city)
         assertEquals(21, weather.tempC)
         // One loop step + one finalization step.
@@ -62,6 +63,7 @@ class StructuredOutputTest {
             capabilities = ModelCapabilities(jsonMode = true),
         )
         val a = agent {
+            id = "agent-26"
             name = "t"
             model { custom(model) }
         }

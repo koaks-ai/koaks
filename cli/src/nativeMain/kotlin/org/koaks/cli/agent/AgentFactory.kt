@@ -18,6 +18,7 @@ internal object AgentFactory {
     fun build(config: AgentConfig, listener: AgentListener? = null): Agent {
         val apiKey = config.apiKey ?: missingApiKey(config.provider)
         return agent {
+            id = "koaks-cli"
             name = "koaks-cli"
             instructions = config.instructions
             memory {

@@ -3,8 +3,7 @@ package org.koaks.memory.summarizing
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.koaks.framework.memory.Memory
-import org.koaks.framework.memory.ThreadId
+import org.koaks.framework.memory.ThreadMemory
 import org.koaks.framework.model.ChatRequest
 import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.model.Message
@@ -32,16 +31,18 @@ class SummarizingMemory(
     private val maxTokens: Int,
     private val model: LanguageModel,
     private val keepRecentTurns: Int = 2,
-) : Memory {
+) : ThreadMemory {
 
     private val mutex = Mutex()
-    private val store = HashMap<String, MutableList<Message>>()
+    private var version: Long = 0
+    private var messages: MutableList<Message> = mutableListOf()
 
-    override suspend fun commit(thread: ThreadId, messages: List<Message>, usage: Usage) {
+    override suspend fun commit(messages: List<Message>, usage: Usage) {
         // 1. Faithfully append this run's messages.
-        val snapshot = mutex.withLock {
-            store.getOrPut(thread.value) { mutableListOf() }.addAll(messages)
-            store[thread.value]!!.toList()
+        val (snapshotVersion, snapshot) = mutex.withLock {
+            this.messages.addAll(messages)
+            version++
+            version to this.messages.toList()
         }
 
         // 2. Only compact when the last run actually exceeded the token budget.
@@ -59,12 +60,18 @@ class SummarizingMemory(
         val compacted = system + Message.system("Summary of earlier conversation:\n$summary") + recent
 
         // 4. Replace the persisted history with the compacted view (lossy, in place).
-        mutex.withLock { store[thread.value] = compacted.toMutableList() }
+        mutex.withLock {
+            // The summarizer ran outside the lock. Never replace a newer snapshot and
+            // thereby lose turns committed while that model call was in flight.
+            if (version == snapshotVersion) {
+                this.messages = compacted.toMutableList()
+                version++
+            }
+        }
     }
 
     /** Faithful snapshot of the persisted history; compaction already happened on commit. */
-    override suspend fun load(thread: ThreadId): List<Message> =
-        mutex.withLock { store[thread.value]?.toList() } ?: emptyList()
+    override suspend fun load(query: Message): List<Message> = mutex.withLock { messages.toList() }
 
     private suspend fun summarize(messages: List<Message>): String {
         val transcript = messages.joinToString("\n") { "${it.role}: ${it.text}" }

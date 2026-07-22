@@ -68,16 +68,21 @@ class ToolRegistry {
      * result. Argument-decode failures become [AgentError.ParseError]; thrown
      * exceptions become [AgentError.ToolError].
      */
-    suspend fun call(name: String, argsJson: String): ToolOutcome {
+    suspend fun call(
+        name: String,
+        argsJson: String,
+        onSideEffect: () -> Unit = {},
+    ): ToolOutcome {
         val tool = tools[name] ?: return ToolOutcome.Failure(AgentError.ToolNotFound(name))
-        return invoke(tool, argsJson)
+        return invoke(tool, argsJson, onSideEffect)
     }
 
     @Suppress("UNCHECKED_CAST")
-    private suspend fun <In> invoke(tool: Tool<In>, argsJson: String): ToolOutcome {
+    private suspend fun <In> invoke(tool: Tool<In>, argsJson: String, onSideEffect: () -> Unit): ToolOutcome {
         // Passthrough tools (e.g. MCP adapters) receive the raw arguments string directly.
         if (tool.acceptsRawJson) {
             return try {
+                if (tool.hasSideEffects) onSideEffect()
                 ToolOutcome.Success((tool as Tool<String>).execute(argsJson), tool.returnDirectly)
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                 throw e
@@ -107,6 +112,7 @@ class ToolRegistry {
         }
 
         return try {
+            if (tool.hasSideEffects) onSideEffect()
             ToolOutcome.Success(tool.execute(input), tool.returnDirectly)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e

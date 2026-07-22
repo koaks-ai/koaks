@@ -39,6 +39,7 @@ fun main() = runBlocking {
     val streamedChars = AtomicInteger(0)
 
     val agent = agent {
+        id = "hooked-assistant"
         name = "hook-demo-agent"
         model {
             openai(

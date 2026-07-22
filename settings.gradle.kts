@@ -21,7 +21,6 @@ dependencyResolutionManagement {
 rootProject.name = "koaks"
 
 include("core")
-include("runtime")
 include("koaks-model:qwen")
 include("koaks-model:ollama")
 include("koaks-model:openai")

@@ -28,9 +28,10 @@ class AgentMemoryCancelTest {
         )
         val mem = WindowMemory(50)
         val a = agent {
+            id = "agent-29"
             name = "mem-cancel"
             model { custom(model) }
-            memory { custom(mem) }
+            memory { custom("test-memory") { mem } }
             terminateAfter(maxSteps = 5)
         }
 
@@ -39,6 +40,6 @@ class AgentMemoryCancelTest {
         job.cancel()
         job.join()
 
-        assertEquals(0, mem.load(ThreadId("u")).size, "a cancelled turn must leave history untouched")
+        assertEquals(0, mem.load(org.koaks.framework.model.Message.user("")).size, "a cancelled turn must leave history untouched")
     }
 }

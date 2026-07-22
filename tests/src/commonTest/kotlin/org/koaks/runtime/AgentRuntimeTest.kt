@@ -41,6 +41,7 @@ class AgentRuntimeTest {
     private data object NoArgs
 
     private fun sayAgent(name: String, answer: String): Agent = agent {
+        id = name
         this.name = name
         model {
             custom(
@@ -53,6 +54,7 @@ class AgentRuntimeTest {
     }
 
     private fun streamingAgent(name: String, chunks: List<String>): Agent = agent {
+        id = name
         this.name = name
         model {
             custom(
@@ -84,8 +86,8 @@ class AgentRuntimeTest {
                 assertEquals(2, h.snapshot.usage.totalTokens)
             }
             // Distinct pids.
-            assertEquals(5, handles.map { h -> h.id }.toSet().size)
-            assertEquals(5, it.agents.size)
+            assertEquals(5, handles.map { h -> h.runId }.toSet().size)
+            assertEquals(5, it.runs.size)
         }
     }
 
@@ -128,6 +130,7 @@ class AgentRuntimeTest {
     fun cancel_moves_instance_to_cancelled() = runTest {
         val gate = CompletableDeferred<Unit>()
         val blocked = agent {
+            id = "agent-37"
             name = "blocked"
             model {
                 custom(
@@ -185,7 +188,7 @@ class AgentRuntimeTest {
         assertFailsWith<IllegalStateException> {
             runtime.spawn(sayAgent("after-close", "never"), "hi")
         }
-        assertTrue(runtime.agents.isEmpty())
+        assertTrue(runtime.runs.isEmpty())
     }
 
     @Test
@@ -209,7 +212,7 @@ class AgentRuntimeTest {
 
             assertEquals("Hello, world!", text)
             assertTrue(events.last() is AgentEvent.Completed)
-            assertEquals(LifecycleState.FINISHED, agents.single().state)
+            assertEquals(LifecycleState.FINISHED, runs.single().state)
         }
     }
 
@@ -217,6 +220,7 @@ class AgentRuntimeTest {
     fun stream_is_cold_and_each_collection_creates_a_new_instance() = runTest {
         val script = listOf(ModelEvent.TextDelta("again"), ModelEvent.Completed(Usage(1, 1, 2)))
         val repeatable = agent {
+            id = "agent-38"
             name = "repeatable"
             model { custom(FakeLanguageModel(script, script)) }
             terminateAfter(maxSteps = 5)
@@ -224,15 +228,15 @@ class AgentRuntimeTest {
         val runtime = AgentRuntime()
         runtime.use {
             val output = it.stream(repeatable, "hi")
-            assertTrue(it.agents.isEmpty())
+            assertTrue(it.runs.isEmpty())
 
             repeat(2) {
                 val text = output.filterIsInstance<AgentEvent.TextDelta>()
                     .toList().joinToString("") { event -> event.text }
                 assertEquals("again", text)
             }
-            assertEquals(2, it.agents.size)
-            assertTrue(it.agents.all { snapshot -> snapshot.state == LifecycleState.FINISHED })
+            assertEquals(2, it.runs.size)
+            assertTrue(it.runs.all { snapshot -> snapshot.state == LifecycleState.FINISHED })
         }
     }
 
@@ -241,6 +245,7 @@ class AgentRuntimeTest {
         val enteredModel = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val blocked = agent {
+            id = "agent-39"
             name = "run-cancelled"
             model {
                 custom(
@@ -266,7 +271,7 @@ class AgentRuntimeTest {
             foreground.cancelAndJoin()
             advanceUntilIdle()
 
-            assertEquals(LifecycleState.CANCELLED, it.agents.single().state)
+            assertEquals(LifecycleState.CANCELLED, it.runs.single().state)
         }
     }
 
@@ -275,6 +280,7 @@ class AgentRuntimeTest {
         val childStarted = CompletableDeferred<Unit>()
         val releaseChild = CompletableDeferred<Unit>()
         val child = agent {
+            id = "agent-40"
             name = "run-child"
             model {
                 custom(
@@ -293,6 +299,7 @@ class AgentRuntimeTest {
         }
         var childHandle: AgentHandle? = null
         val parent = agent {
+            id = "agent-41"
             name = "run-parent"
             model {
                 custom(
@@ -317,7 +324,7 @@ class AgentRuntimeTest {
             foreground.cancelAndJoin()
             advanceUntilIdle()
 
-            assertTrue(it.agents.all { snapshot -> snapshot.state == LifecycleState.CANCELLED })
+            assertTrue(it.runs.all { snapshot -> snapshot.state == LifecycleState.CANCELLED })
             assertEquals(LifecycleState.CANCELLED, childHandle?.state)
         }
     }
@@ -334,7 +341,7 @@ class AgentRuntimeTest {
             val events = collection.await()
 
             assertEquals(1, events.size)
-            assertEquals(LifecycleState.CANCELLED, it.agents.single().state)
+            assertEquals(LifecycleState.CANCELLED, it.runs.single().state)
         }
     }
 
@@ -355,7 +362,7 @@ class AgentRuntimeTest {
             advanceUntilIdle()
             collection.await()
 
-            assertEquals(LifecycleState.CANCELLED, it.agents.single().state)
+            assertEquals(LifecycleState.CANCELLED, it.runs.single().state)
         }
     }
 
@@ -364,6 +371,7 @@ class AgentRuntimeTest {
         val enteredModel = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val blocked = agent {
+            id = "agent-42"
             name = "collector-cancelled"
             model {
                 custom(
@@ -389,7 +397,7 @@ class AgentRuntimeTest {
             collection.cancelAndJoin()
             advanceUntilIdle()
 
-            assertEquals(LifecycleState.CANCELLED, it.agents.single().state)
+            assertEquals(LifecycleState.CANCELLED, it.runs.single().state)
         }
     }
 
@@ -398,6 +406,7 @@ class AgentRuntimeTest {
         val enteredModel = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val blocked = agent {
+            id = "agent-43"
             name = "runtime-closed"
             model {
                 custom(

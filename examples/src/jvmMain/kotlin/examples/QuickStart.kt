@@ -15,6 +15,7 @@ import java.time.format.DateTimeFormatter
 
 fun main() = runBlocking {
     val agent = agent {
+        id = "quick-start-assistant"
         name = "local-time-weather-agent"
         instructions = """
             你是一个简洁的本地助手。当用户询问当地时间或天气时，除非用户给出不同的城市，否则优先使用配置的本地城市/时区。

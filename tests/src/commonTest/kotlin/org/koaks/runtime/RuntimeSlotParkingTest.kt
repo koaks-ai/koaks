@@ -37,6 +37,7 @@ import kotlin.test.assertTrue
 class RuntimeSlotParkingTest {
 
     private fun sayAgent(name: String, answer: String): Agent = agent {
+        id = name
         this.name = name
         model {
             custom(FakeLanguageModel(listOf(ModelEvent.TextDelta(answer), ModelEvent.Completed(Usage(1, 1, 2)))))
@@ -46,6 +47,7 @@ class RuntimeSlotParkingTest {
 
     /** An agent that runs [onEnter] once (at its first text delta) then completes. */
     private fun probeAgent(name: String, onEnter: suspend () -> Unit): Agent = agent {
+        id = name
         this.name = name
         model {
             custom(
@@ -81,7 +83,7 @@ class RuntimeSlotParkingTest {
             assertEquals("child-answer", childText)
             assertEquals(LifecycleState.RUNNING, parentStateWhileAwaiting)
             // Both instances finished; nothing left stuck WAITING.
-            assertTrue(it.agents.all { a -> a.state == LifecycleState.FINISHED })
+            assertTrue(it.runs.all { a -> a.state == LifecycleState.FINISHED })
         }
     }
 
@@ -119,8 +121,8 @@ class RuntimeSlotParkingTest {
             release.complete(Unit)
             val result = parentHandle.await()
             assertTrue(result is AgentResult.Completed)
-            assertEquals(4, it.agents.size)
-            assertTrue(it.agents.all { a -> a.state == LifecycleState.FINISHED })
+            assertEquals(4, it.runs.size)
+            assertTrue(it.runs.all { a -> a.state == LifecycleState.FINISHED })
         }
     }
 
@@ -134,6 +136,7 @@ class RuntimeSlotParkingTest {
     @Test
     fun two_parallel_tools_each_awaiting_a_child_do_not_deadlock_at_concurrency_one() = runTest {
         val parent = agent {
+            id = "agent-53"
             name = "parent"
             model {
                 custom(
@@ -168,8 +171,8 @@ class RuntimeSlotParkingTest {
             val result = it.run(parent, "go")
             assertTrue(result is AgentResult.Completed)
             assertEquals("parent-done", result.text)
-            assertEquals(3, it.agents.size) // parent + 2 children
-            assertTrue(it.agents.all { a -> a.state == LifecycleState.FINISHED })
+            assertEquals(3, it.runs.size) // parent + 2 children
+            assertTrue(it.runs.all { a -> a.state == LifecycleState.FINISHED })
         }
     }
 
@@ -190,7 +193,7 @@ class RuntimeSlotParkingTest {
             val result = it.run(parent, "go")
             assertTrue(result is AgentResult.Completed)
             assertTrue(joined)
-            assertTrue(it.agents.all { a -> a.state == LifecycleState.FINISHED })
+            assertTrue(it.runs.all { a -> a.state == LifecycleState.FINISHED })
         }
     }
 
@@ -206,6 +209,7 @@ class RuntimeSlotParkingTest {
         val bWaiting = CompletableDeferred<Unit>()
 
         val parent = agent {
+            id = "agent-54"
             name = "parent"
             model {
                 custom(
@@ -321,7 +325,7 @@ class RuntimeSlotParkingTest {
             // The parent unwinds promptly, propagates cancellation to the child, and both
             // release/close their leases without external help.
             assertFalse(h.isActive)
-            assertEquals(0, it.metrics().running, "agents=${it.agents.map { a -> a.agentName to a.state }}")
+            assertEquals(0, it.metrics().running, "runs=${it.runs.map { a -> a.agentName to a.state }}")
 
             // And the reclaimed permit admits a fresh instance.
             val fresh = it.run(sayAgent("fresh", "ok"), "go")

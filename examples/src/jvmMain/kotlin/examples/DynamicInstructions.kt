@@ -31,6 +31,7 @@ fun main() = runBlocking {
     val userId = "user-1001"
 
     val agent = agent {
+        id = "dynamic-instructions-assistant"
         name = "personalized-assistant"
         instructions {
             +"你是一个简洁、乐于助人的助手。"

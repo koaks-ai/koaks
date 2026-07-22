@@ -52,6 +52,7 @@ class McpToolSourceTest {
             listOf(ModelEvent.TextDelta("the sum is 42"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-27"
             name = "t"
             model { custom(model) }
             tools { mcp(gateway) }
@@ -75,6 +76,7 @@ class McpToolSourceTest {
             listOf(ModelEvent.TextDelta("ok2"), ModelEvent.Completed(Usage.ZERO)),
         )
         val a = agent {
+            id = "agent-28"
             name = "t"
             model { custom(model) }
             tools { mcp(gateway) }

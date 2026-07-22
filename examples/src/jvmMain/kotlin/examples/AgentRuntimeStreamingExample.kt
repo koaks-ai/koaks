@@ -34,6 +34,7 @@ private class SlowEchoModel(private val chunks: List<String>) : LanguageModel {
 }
 
 private fun poemAgent() = agent {
+    id = "poem-writer"
     name = "poet"
     model { custom(SlowEchoModel(listOf("Roses ", "are ", "red, ", "koaks ", "streams ", "ahead."))) }
     terminateAfter(maxSteps = 3)

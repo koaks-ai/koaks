@@ -1,9 +1,10 @@
 package org.koaks.memory.vector
 
-import org.koaks.framework.memory.Memory
+import org.koaks.framework.memory.MemoryProvider
+import org.koaks.framework.memory.MemoryProviderId
 import org.koaks.framework.memory.ThreadId
+import org.koaks.framework.memory.ThreadMemory
 import org.koaks.framework.model.Message
-import org.koaks.framework.model.Role
 import org.koaks.framework.model.Usage
 
 /**
@@ -15,25 +16,31 @@ import org.koaks.framework.model.Usage
  * messages for the latest user query (no fixed window). As with all memories,
  * filtering/recall happens on the load side; commit faithfully appends.
  *
- * Recall is keyed off the most recent USER message in the working set. Because a
- * Thread loads BEFORE appending the new user message, this memory is most useful
- * when given the query directly; here it falls back to recently committed user text.
+ * Recall is keyed directly by the current user [query], which Runtime supplies before
+ * constructing the model request.
  */
 class VectorMemory(
     private val store: VectorStore,
+    private val thread: ThreadId,
     private val topK: Int = 8,
-) : Memory {
+) : ThreadMemory {
 
-    // Tracks the last query per thread so load() has something to recall against.
-    private val lastQuery = HashMap<String, String>()
-
-    override suspend fun commit(thread: ThreadId, messages: List<Message>, usage: Usage) {
-        messages.lastOrNull { it.role == Role.USER }?.let { lastQuery[thread.value] = it.text }
+    override suspend fun commit(messages: List<Message>, usage: Usage) {
         store.add(thread.value, messages)
     }
 
-    override suspend fun load(thread: ThreadId): List<Message> {
-        val query = lastQuery[thread.value] ?: return emptyList()
-        return store.search(thread.value, query, topK)
-    }
+    override suspend fun load(query: Message): List<Message> =
+        store.search(thread.value, query.text, topK)
 }
+
+/** Opens one vector-backed memory partition per Runtime Thread. */
+class VectorMemoryProvider(
+    override val id: MemoryProviderId,
+    private val store: VectorStore,
+    private val topK: Int = 8,
+) : MemoryProvider {
+    override suspend fun open(thread: ThreadId): ThreadMemory = VectorMemory(store, thread, topK)
+}
+
+fun vectorMemoryProvider(id: String, store: VectorStore, topK: Int = 8): MemoryProvider =
+    VectorMemoryProvider(MemoryProviderId(id), store, topK)

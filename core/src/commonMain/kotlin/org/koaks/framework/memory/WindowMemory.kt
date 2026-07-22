@@ -16,18 +16,17 @@ import org.koaks.framework.model.Usage
  * orphan a `tool` result from its `assistant` tool-call (which providers reject).
  * Leading system messages are always preserved.
  */
-class WindowMemory(private val maxMessages: Int) : Memory {
+class WindowMemory(private val maxMessages: Int) : ThreadMemory {
 
     private val mutex = Mutex()
-    private val store = HashMap<String, MutableList<Message>>()
+    private val messages = mutableListOf<Message>()
 
-    override suspend fun load(thread: ThreadId): List<Message> = mutex.withLock {
-        val all = store[thread.value] ?: return emptyList()
-        dropTurnsToFit(all, maxMessages)
+    override suspend fun load(query: Message): List<Message> = mutex.withLock {
+        dropTurnsToFit(messages, maxMessages)
     }
 
-    override suspend fun commit(thread: ThreadId, messages: List<Message>, usage: Usage): Unit = mutex.withLock {
-        store.getOrPut(thread.value) { mutableListOf() }.addAll(messages)
+    override suspend fun commit(messages: List<Message>, usage: Usage): Unit = mutex.withLock {
+        this.messages.addAll(messages)
     }
 
     internal companion object {
@@ -68,4 +67,10 @@ class WindowMemory(private val maxMessages: Int) : Memory {
             return turns
         }
     }
+}
+
+/** Built-in provider used by Agent and Runtime DSLs. */
+class WindowMemoryProvider(val maxMessages: Int) : MemoryProvider {
+    override val id: MemoryProviderId = MemoryProviderId("window:$maxMessages")
+    override suspend fun open(thread: ThreadId): ThreadMemory = WindowMemory(maxMessages)
 }

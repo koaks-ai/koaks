@@ -7,7 +7,7 @@ import org.koaks.framework.model.ToolCall
 
 /**
  * Accumulates the messages produced during a single run by observing the outward
- * [AgentEvent] stream, so the loop itself never has to know about [Memory].
+ * [AgentEvent] stream, so the loop itself never has to know about [ThreadMemory].
  *
  * The buffer reconstructs, in order: the user message (seeded), then for each model
  * step an assistant message (text + any requested tool calls) followed by its tool
@@ -24,7 +24,6 @@ class TurnCommitBuffer(userMessage: Message) {
     private val pendingCalls = mutableListOf<ToolCall>()
     private val pendingToolResults = mutableListOf<Message>()
     private var sawTerminal = false
-    private var anyToolResult = false
 
     fun observe(event: AgentEvent) {
         when (event) {
@@ -33,7 +32,6 @@ class TurnCommitBuffer(userMessage: Message) {
             is AgentEvent.ReasoningDelta -> {}
             is AgentEvent.ToolCallRequested -> pendingCalls += event.call
             is AgentEvent.ToolResult -> {
-                anyToolResult = true
                 pendingToolResults += Message.tool(event.callId, event.output, event.isError)
             }
 
@@ -79,6 +77,4 @@ class TurnCommitBuffer(userMessage: Message) {
     /** The full ordered set of new messages for this run (user + assistant + tool). */
     fun messagesInOrder(): List<Message> = committed.toList()
 
-    /** True if any tool produced a result during this run (for the side-effect rollback warning). */
-    fun producedToolResults(): Boolean = anyToolResult
 }

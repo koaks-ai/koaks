@@ -42,6 +42,7 @@ class FallbackModelTest {
     @Test
     fun falls_back_when_primary_fails_before_output() = runTest {
         val a = agent {
+            id = "agent-6"
             name = "t"
             model {
                 custom(
@@ -61,6 +62,7 @@ class FallbackModelTest {
     @Test
     fun falls_back_when_primary_throws_before_output() = runTest {
         val a = agent {
+            id = "agent-7"
             name = "t"
             model {
                 custom(
@@ -91,6 +93,7 @@ class FallbackModelTest {
             }
         }
         val a = agent {
+            id = "agent-8"
             name = "t"
             model { custom(primary).fallback(custom(secondary)) }
         }
@@ -105,6 +108,7 @@ class FallbackModelTest {
     @Test
     fun surfaces_failure_when_all_models_fail() = runTest {
         val a = agent {
+            id = "agent-9"
             name = "t"
             model {
                 custom(failsImmediately(AgentError.ModelError("first-down", true))).fallback(
@@ -123,6 +127,7 @@ class FallbackModelTest {
     @Test
     fun three_way_chain_uses_first_healthy() = runTest {
         val a = agent {
+            id = "agent-10"
             name = "t"
             model {
                 custom(

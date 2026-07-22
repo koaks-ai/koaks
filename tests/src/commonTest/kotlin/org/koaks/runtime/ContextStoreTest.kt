@@ -1,7 +1,7 @@
 package org.koaks.runtime
 
 import org.koaks.framework.model.Message
-import org.koaks.runtime.acb.AgentId
+import org.koaks.runtime.acb.RunId
 import org.koaks.runtime.context.ContextAccessException
 import org.koaks.runtime.context.ContextScope
 import org.koaks.runtime.context.ContextStore
@@ -12,7 +12,7 @@ import kotlin.test.assertNotEquals
 
 class ContextStoreTest {
 
-    private val anyone = AgentId(999)
+    private val anyone = RunId(999)
 
     @Test
     fun identical_content_is_deduplicated() {
@@ -46,8 +46,8 @@ class ContextStoreTest {
     @Test
     fun private_blocks_are_readable_only_by_owner() {
         val store = ContextStore()
-        val owner = AgentId(1)
-        val other = AgentId(2)
+        val owner = RunId(1)
+        val other = RunId(2)
         val secret = store.put(listOf(Message.user("classified")), scope = ContextScope.PRIVATE, owner = owner)
 
         assertEquals(listOf("classified"), store.resolve(secret, owner).map { it.text })

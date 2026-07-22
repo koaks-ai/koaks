@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
-import org.koaks.runtime.acb.AgentId
+import org.koaks.runtime.acb.RunId
 import org.koaks.runtime.context.ContextRef
 import org.koaks.runtime.ipc.RuntimeMessage
 import kotlin.test.Test
@@ -20,9 +20,9 @@ class IpcTest {
     fun mailbox_delivers_point_to_point() = runTest {
         val runtime = AgentRuntime()
         runtime.use {
-            val to = AgentId(42)
+            val to = RunId(42)
             val box = it.ipc.mailbox(to)
-            it.ipc.send(RuntimeMessage(id = it.ipc.nextId(), sender = AgentId(1), receiver = to, type = "ping", payload = "hello"))
+            it.ipc.send(RuntimeMessage(id = it.ipc.nextId(), sender = RunId(1), receiver = to, type = "ping", payload = "hello"))
             val got = box.receive()
             assertEquals("hello", got.payload)
             assertEquals("ping", got.type)
@@ -34,7 +34,7 @@ class IpcTest {
         val runtime = AgentRuntime()
         runtime.use {
             val hub = it.ipc
-            val server = AgentId(100)
+            val server = RunId(100)
             val serverBox = hub.mailbox(server)
 
             val responder = launch {
@@ -43,7 +43,7 @@ class IpcTest {
             }
 
             val response = hub.request(
-                RuntimeMessage(id = hub.nextId(), sender = AgentId(101), receiver = server, type = "ask", payload = "x"),
+                RuntimeMessage(id = hub.nextId(), sender = RunId(101), receiver = server, type = "ask", payload = "x"),
             )
             assertEquals("pong:x", response.payload)
             assertEquals("ask.reply", response.type)
@@ -72,13 +72,13 @@ class IpcTest {
         // Large context is referenced, not embedded in the payload.
         val runtime = AgentRuntime()
         runtime.use {
-            val to = AgentId(7)
+            val to = RunId(7)
             val box = it.ipc.mailbox(to)
             val ref = ContextRef("ctx-123")
             it.ipc.send(
                 RuntimeMessage(
                     id = it.ipc.nextId(),
-                    sender = AgentId(1),
+                    sender = RunId(1),
                     receiver = to,
                     type = "handoff",
                     payload = "see attached",

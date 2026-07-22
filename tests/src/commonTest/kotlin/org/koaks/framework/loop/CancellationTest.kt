@@ -30,6 +30,7 @@ class CancellationTest {
             },
         )
         val a = agent {
+            id = "agent-5"
             model { custom(model) }
             // An ErrorPolicy that WOULD retry — to prove cancellation is not treated as an error.
             onError { _, _ -> org.koaks.framework.policy.Recovery.Retry(0, 5) }

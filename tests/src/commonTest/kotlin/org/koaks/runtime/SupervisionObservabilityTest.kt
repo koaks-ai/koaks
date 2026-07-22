@@ -26,6 +26,7 @@ import kotlin.test.assertTrue
 class SupervisionObservabilityTest {
 
     private fun sayAgent(name: String, answer: String): Agent = agent {
+        id = name
         this.name = name
         model {
             custom(FakeLanguageModel(listOf(ModelEvent.TextDelta(answer), ModelEvent.Completed(Usage(1, 1, 2)))))
@@ -65,6 +66,7 @@ class SupervisionObservabilityTest {
             listOf(ModelEvent.TextDelta("ok"), ModelEvent.Completed(Usage.ZERO)),
         )
         val flaky = agent {
+            id = "agent-59"
             name = "flaky"
             model { custom(model) }
             terminateAfter(maxSteps = 5)
@@ -72,12 +74,27 @@ class SupervisionObservabilityTest {
 
         val runtime = AgentRuntime { dispatcher = StandardTestDispatcher(testScheduler) }
         runtime.use {
-            val h = it.spawnSupervised(flaky, "go", SupervisionPolicy(maxRetries = 2, initialBackoffMillis = 10))
+            val seen = mutableListOf<RuntimeEvent>()
+            val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                it.events.collect { event -> seen += event }
+            }
+            val h = it.spawnSupervised(
+                flaky,
+                "go",
+                SupervisionPolicy(maxRetries = 2, initialBackoffMillis = 10),
+                thread = org.koaks.framework.memory.ThreadId("supervised-thread"),
+            )
             advanceUntilIdle()
             val result = h.await()
             assertTrue(result is AgentResult.Completed)
             assertEquals("ok", result.text)
             assertEquals(2, model.calls)
+            val retry = seen.filterIsInstance<RuntimeEvent.Retrying>().single()
+            assertEquals(flaky.id, retry.agentId)
+            assertEquals(org.koaks.framework.memory.ThreadId("supervised-thread"), retry.threadId)
+            assertTrue(retry.runId != null)
+            assertTrue(retry.turnId != null)
+            collector.cancel()
         }
     }
 
@@ -88,6 +105,7 @@ class SupervisionObservabilityTest {
             listOf(ModelEvent.Failed(AgentError.ModelError("boom-2", retriable = false))),
         )
         val broken = agent {
+            id = "agent-60"
             name = "broken"
             model { custom(model) }
             terminateAfter(maxSteps = 5)
