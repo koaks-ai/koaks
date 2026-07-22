@@ -49,7 +49,7 @@ class AgentBuilder {
     private val tools = ToolRegistry()
     private val hooks = mutableListOf<Hook>()
     private val listeners = mutableListOf<AgentListener>()
-    private var termination: TerminationPolicy = TerminationPolicy.maxSteps(10)
+    private var termination: TerminationPolicy = TerminationPolicy.maxSteps(Int.MAX_VALUE)
     private var errorPolicy: ErrorPolicy = ErrorPolicy.PROPAGATE
     private var memoryProvider: MemoryProvider? = null
     private var runBudget: RunBudget = RunBudget.UNLIMITED
