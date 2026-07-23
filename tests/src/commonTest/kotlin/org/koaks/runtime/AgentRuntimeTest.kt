@@ -28,9 +28,14 @@ import org.koaks.framework.model.Usage
 import org.koaks.runtime.acb.AgentHandle
 import org.koaks.runtime.acb.LifecycleState
 import org.koaks.runtime.context.ContextRef
+import org.koaks.runtime.observe.RuntimeEvent
+import org.koaks.runtime.resource.ChildConversation
+import org.koaks.runtime.resource.ChildFailurePolicy
 import org.koaks.runtime.resource.spawnChild
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
@@ -310,7 +315,12 @@ class AgentRuntimeTest {
             }
             tools {
                 tool<NoArgs>(name = "fork", description = "spawn a blocked child") {
-                    spawnChild(child, "go").also { childHandle = it }.await().text
+                    spawnChild(
+                        child,
+                        "go",
+                        failurePolicy = ChildFailurePolicy.CAPTURE,
+                        conversation = ChildConversation.Ephemeral,
+                    ).also { childHandle = it }.await().text
                 }
             }
             terminateAfter(maxSteps = 5)
@@ -432,5 +442,241 @@ class AgentRuntimeTest {
         advanceUntilIdle()
 
         assertFailsWith<CancellationException> { collection.await() }
+    }
+
+    @Test
+    fun captured_child_failure_does_not_fail_the_parent() = runTest {
+        val child = agent {
+            id = "isolated-fail-child"
+            model {
+                custom(
+                    FakeLanguageModel(
+                        listOf(ModelEvent.Failed(AgentError.ModelError("child boom", false))),
+                    ),
+                )
+            }
+        }
+        val parent = agent {
+            id = "isolated-fail-parent"
+            model {
+                custom(
+                    FakeLanguageModel(
+                        listOf(
+                            ModelEvent.ToolCallCompleted(ToolCall("c1", "delegate", "{}")),
+                            ModelEvent.Completed(Usage.ZERO),
+                        ),
+                        listOf(ModelEvent.TextDelta("parent-ok"), ModelEvent.Completed(Usage.ZERO)),
+                    ),
+                )
+            }
+            tools {
+                tool<NoArgs>("delegate", "delegate with isolated failure") {
+                    val result = spawnChild(
+                        child,
+                        "fail",
+                        failurePolicy = ChildFailurePolicy.CAPTURE,
+                        conversation = ChildConversation.Ephemeral,
+                    ).await()
+                    "child-status=${result is AgentResult.Failed}"
+                }
+            }
+        }
+
+        val seen = mutableListOf<RuntimeEvent>()
+        AgentRuntime { dispatcher = UnconfinedTestDispatcher(testScheduler) }.use { runtime ->
+            val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                runtime.events.collect { seen += it }
+            }
+            val result = runtime.run(parent, "root", thread = "isolated-parent-thread")
+            assertTrue(result is AgentResult.Completed)
+            assertEquals("parent-ok", result.text)
+            assertFalse(seen.any { it is RuntimeEvent.UnhandledChildFailure })
+            collector.cancel()
+        }
+    }
+
+    @Test
+    fun unobserved_captured_child_failure_emits_runtime_event() = runTest {
+        val child = agent {
+            id = "unobserved-fail-child"
+            model {
+                custom(FakeLanguageModel(listOf(ModelEvent.Failed(AgentError.ModelError("unobserved boom", false)))))
+            }
+        }
+        val parent = agent {
+            id = "unobserved-fail-parent"
+            model {
+                custom(
+                    FakeLanguageModel(
+                        listOf(
+                            ModelEvent.ToolCallCompleted(ToolCall("c1", "delegate", "{}")),
+                            ModelEvent.Completed(Usage.ZERO),
+                        ),
+                        listOf(ModelEvent.TextDelta("parent-ok"), ModelEvent.Completed(Usage.ZERO)),
+                    ),
+                )
+            }
+            tools {
+                tool<NoArgs>("delegate", "spawn without consuming the result") {
+                    spawnChild(
+                        child,
+                        "fail",
+                        failurePolicy = ChildFailurePolicy.CAPTURE,
+                        conversation = ChildConversation.Ephemeral,
+                    )
+                    "spawned"
+                }
+            }
+        }
+        val seen = mutableListOf<RuntimeEvent>()
+
+        AgentRuntime { dispatcher = UnconfinedTestDispatcher(testScheduler) }.use { runtime ->
+            val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                runtime.events.collect { seen += it }
+            }
+            val result = runtime.run(parent, "root")
+
+            assertTrue(result is AgentResult.Completed)
+            val event = seen.filterIsInstance<RuntimeEvent.UnhandledChildFailure>().single()
+            assertEquals("unobserved-fail-child", event.childAgentId.value)
+            assertEquals("unobserved boom", event.error.message)
+            collector.cancel()
+        }
+    }
+
+    @Test
+    fun ephemeral_child_has_no_thread_binding_and_parks_at_concurrency_one() = runTest {
+        var childHandle: AgentHandle? = null
+        val child = sayAgent("ephemeral-child", "child-ok")
+        val parent = agent {
+            id = "ephemeral-parent"
+            model {
+                custom(
+                    FakeLanguageModel(
+                        listOf(
+                            ModelEvent.ToolCallCompleted(ToolCall("c1", "delegate", "{}")),
+                            ModelEvent.Completed(Usage.ZERO),
+                        ),
+                        listOf(ModelEvent.TextDelta("parent-ok"), ModelEvent.Completed(Usage.ZERO)),
+                    ),
+                )
+            }
+            tools {
+                tool<NoArgs>("delegate", "run an ephemeral child") {
+                    spawnChild(
+                        child,
+                        "go",
+                        failurePolicy = ChildFailurePolicy.CAPTURE,
+                        conversation = ChildConversation.Ephemeral,
+                    ).also { childHandle = it }.await().text
+                }
+            }
+        }
+
+        AgentRuntime {
+            maxConcurrency = 1
+            dispatcher = UnconfinedTestDispatcher(testScheduler)
+        }.use { runtime ->
+            val result = runtime.run(parent, "root", thread = "parent-thread")
+
+            assertTrue(result is AgentResult.Completed)
+            assertEquals(null, childHandle?.threadId)
+            assertEquals(null, childHandle?.turnId)
+            assertEquals(null, childHandle?.snapshot?.threadId)
+        }
+    }
+
+    @Test
+    fun independently_cancelled_capture_child_returns_failed_result_without_cancelling_parent() = runTest {
+        val child = agent {
+            id = "self-cancelled-capture-child"
+            model {
+                custom(
+                    FakeLanguageModel(
+                        ArrayDeque(listOf(listOf(ModelEvent.TextDelta("never"), ModelEvent.Completed(Usage.ZERO)))),
+                        beforeEmit = { throw CancellationException("child stopped") },
+                    ),
+                )
+            }
+        }
+        val parent = agent {
+            id = "self-cancelled-capture-parent"
+            model {
+                custom(
+                    FakeLanguageModel(
+                        listOf(
+                            ModelEvent.ToolCallCompleted(ToolCall("c1", "delegate", "{}")),
+                            ModelEvent.Completed(Usage.ZERO),
+                        ),
+                        listOf(ModelEvent.TextDelta("parent-ok"), ModelEvent.Completed(Usage.ZERO)),
+                    ),
+                )
+            }
+            tools {
+                tool<NoArgs>("delegate", "await a self-cancelled child") {
+                    val result = spawnChild(
+                        child,
+                        "go",
+                        failurePolicy = ChildFailurePolicy.CAPTURE,
+                        conversation = ChildConversation.Ephemeral,
+                    ).await()
+                    "captured=${result is AgentResult.Failed}"
+                }
+            }
+        }
+
+        AgentRuntime { dispatcher = UnconfinedTestDispatcher(testScheduler) }.use { runtime ->
+            val result = runtime.run(parent, "root")
+            assertTrue(result is AgentResult.Completed)
+            assertEquals("parent-ok", result.text)
+        }
+    }
+
+    @Test
+    fun mixed_child_failure_policies_only_propagate_the_propagating_failure() = runTest {
+        fun failingChild(id: String, message: String) = agent {
+            this.id = id
+            model { custom(FakeLanguageModel(listOf(ModelEvent.Failed(AgentError.ModelError(message, false))))) }
+        }
+        val captured = failingChild("mixed-captured-child", "captured boom")
+        val propagating = failingChild("mixed-propagating-child", "propagating boom")
+        val parent = agent {
+            id = "mixed-policy-parent"
+            model {
+                custom(
+                    FakeLanguageModel(
+                        listOf(
+                            ModelEvent.ToolCallCompleted(ToolCall("c1", "delegate", "{}")),
+                            ModelEvent.Completed(Usage.ZERO),
+                        ),
+                        listOf(ModelEvent.TextDelta("parent-finished-model"), ModelEvent.Completed(Usage.ZERO)),
+                    ),
+                )
+            }
+            tools {
+                tool<NoArgs>("delegate", "spawn mixed-policy children") {
+                    spawnChild(
+                        captured,
+                        "go",
+                        failurePolicy = ChildFailurePolicy.CAPTURE,
+                        conversation = ChildConversation.Ephemeral,
+                    ).await()
+                    spawnChild(
+                        propagating,
+                        "go",
+                        failurePolicy = ChildFailurePolicy.PROPAGATE,
+                        conversation = ChildConversation.Ephemeral,
+                    )
+                    "spawned"
+                }
+            }
+        }
+
+        AgentRuntime { dispatcher = UnconfinedTestDispatcher(testScheduler) }.use { runtime ->
+            val result = runtime.run(parent, "root")
+            assertTrue(result is AgentResult.Failed)
+            assertContains(result.error.message, "propagating boom")
+            assertFalse(result.error.message.contains("captured boom"))
+        }
     }
 }

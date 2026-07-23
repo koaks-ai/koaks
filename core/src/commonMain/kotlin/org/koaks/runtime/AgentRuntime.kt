@@ -61,6 +61,8 @@ import org.koaks.runtime.ipc.IpcHub
 import org.koaks.runtime.observe.RuntimeEvent
 import org.koaks.runtime.observe.RuntimeMetrics
 import org.koaks.runtime.resource.AgentSpawner
+import org.koaks.runtime.resource.ChildConversation
+import org.koaks.runtime.resource.ChildFailurePolicy
 import org.koaks.runtime.resource.InstanceActivityGate
 import org.koaks.runtime.resource.Quota
 import org.koaks.runtime.resource.ResourceRegistry
@@ -357,6 +359,8 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         thread: ThreadId?,
         structuredSpec: OutputSpec?,
         inheritedTurnContext: TurnContext? = null,
+        childConversation: ChildConversation? = null,
+        failurePolicy: ChildFailurePolicy = ChildFailurePolicy.PROPAGATE,
     ): AgentHandle {
         check(!closed.value) { "AgentRuntime is closed" }
 
@@ -372,10 +376,19 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         }
         val effectiveThread = when {
             parentSnapshot == null -> thread
-            thread == null -> parentSnapshot.threadId
-            else -> thread
+            childConversation == ChildConversation.Inherit -> parentSnapshot.threadId
+            childConversation == ChildConversation.Ephemeral -> null
+            childConversation is ChildConversation.Thread -> {
+                require(childConversation.id != parentSnapshot.threadId) {
+                    "child conversation thread '${childConversation.id.value}' is the parent's active thread; " +
+                        "use ChildConversation.Inherit"
+                }
+                childConversation.id
+            }
+            else -> error("child spawn requires an explicit ChildConversation")
         }
         val inheritsParentTurn = parentSnapshot != null &&
+            childConversation == ChildConversation.Inherit &&
             effectiveThread != null &&
             effectiveThread == parentSnapshot.threadId &&
             parentSnapshot.turnId != null
@@ -413,7 +426,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                 turnContextRegistered = true
             }
             if (parentAcb != null) {
-                check(parentAcb.tryAddChild(runId)) {
+                check(parentAcb.tryAddChild(runId, failurePolicy)) {
                     "parent run '${parentAcb.runId.value}' is no longer accepting children"
                 }
                 childLinked = true
@@ -427,7 +440,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             val control = InstanceControl()
             ipc.mailbox(runId)
 
-            val childSpawner = AgentSpawner { childAgent, childInput, childPriority, childQuota, childRefs, childThread ->
+            val childSpawner = AgentSpawner {
+                    childAgent, childInput, childPriority, childQuota, childRefs,
+                    childFailurePolicy, conversation ->
                 spawnInternal(
                     agent = childAgent,
                     input = childInput,
@@ -436,9 +451,11 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                     parent = runId,
                     contextRefs = childRefs,
                     sink = EventSink.NONE,
-                    thread = childThread,
+                    thread = null,
                     structuredSpec = null,
                     inheritedTurnContext = turnContext,
+                    childConversation = conversation,
+                    failurePolicy = childFailurePolicy,
                 )
             }
             val runtimeContext = RuntimeContext(resources, runId, agent.id, effectiveThread, turnId, ipc, context, childSpawner)
@@ -494,7 +511,16 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                 sink.close(cause)
             }
             completionOwnsRegistration = true
-            val handle = AgentHandle(runId, agent.id, effectiveThread, turnId, acb, control, deferred)
+            val handle = AgentHandle(
+                runId,
+                agent.id,
+                effectiveThread,
+                turnId,
+                acb,
+                control,
+                deferred,
+                failurePolicy,
+            )
             handles.update { it + (runId to handle) }
 
             if (closed.value) {
@@ -567,7 +593,11 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                 acb.setState(LifecycleState.WAITING)
                 emit(RuntimeEvent.Waiting(acb.runId, agent.id, thread, turnId))
             }
-            val childFailure = awaitChildren(acb.runId)
+            val childFailure = awaitChildren(
+                acb.runId,
+                reportCapturedFailures = true,
+                reportCapturedCancellations = result is AgentResult.Completed,
+            )
             if (result !is AgentResult.Failed && childFailure != null) {
                 val error = AgentError.ModelError(
                     message = "child run '${childFailure.runId.value}' failed: ${childFailure.error.message}",
@@ -614,12 +644,24 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                 emit(RuntimeEvent.Cancelled(acb.runId, agent.id, thread, turnId))
             }
             cancelDescendants(acb.runId, "parent ${acb.runId} cancelled")
-            withContext(NonCancellable) { awaitChildren(acb.runId) }
+            withContext(NonCancellable) {
+                awaitChildren(
+                    acb.runId,
+                    reportCapturedFailures = false,
+                    reportCapturedCancellations = false,
+                )
+            }
             throw cancelled
         } catch (failure: Throwable) {
             acb.sealChildren()
             cancelDescendants(acb.runId, "parent ${acb.runId} failed")
-            withContext(NonCancellable) { awaitChildren(acb.runId) }
+            withContext(NonCancellable) {
+                awaitChildren(
+                    acb.runId,
+                    reportCapturedFailures = false,
+                    reportCapturedCancellations = false,
+                )
+            }
             throw failure
         } finally {
             withContext(NonCancellable) {
@@ -852,42 +894,70 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         }
     }
 
-    private suspend fun awaitChildren(id: RunId): ChildFailure? {
-        val children = acbs.value[id]?.snapshot?.children.orEmpty()
+    private suspend fun awaitChildren(
+        id: RunId,
+        reportCapturedFailures: Boolean = true,
+        reportCapturedCancellations: Boolean = true,
+    ): ChildFailure? {
+        val parentAcb = acbs.value[id] ?: return null
+        val children = parentAcb.snapshot.children
         var firstFailure: ChildFailure? = null
         children.forEach { child ->
             val handle = handles.value[child] ?: return@forEach
-            try {
-                val result = handle.await()
-                if (result is AgentResult.Failed && firstFailure == null) {
-                    firstFailure = ChildFailure(child, result.error)
+            val failurePolicy = parentAcb.childFailurePolicy(child)
+
+            fun recordFailure(error: AgentError, cancellation: Boolean = false) {
+                when (failurePolicy) {
+                    ChildFailurePolicy.PROPAGATE -> if (firstFailure == null) {
+                        firstFailure = ChildFailure(child, error)
+                    }
+                    ChildFailurePolicy.CAPTURE -> if (
+                        reportCapturedFailures && (!cancellation || reportCapturedCancellations)
+                    ) {
+                        reportUnhandledChildFailure(id, handle, error)
+                    }
                 }
+            }
+
+            try {
+                val result = handle.awaitForParent()
+                if (result is AgentResult.Failed) recordFailure(result.error)
             } catch (cancelled: CancellationException) {
                 currentCoroutineContext().ensureActive()
-                if (firstFailure == null) {
-                    firstFailure = ChildFailure(
-                        child,
-                        AgentError.ModelError(
-                            message = cancelled.message ?: "child run was cancelled",
-                            retriable = false,
-                            cause = cancelled,
-                        ),
-                    )
-                }
+                recordFailure(
+                    AgentError.ModelError(
+                        message = cancelled.message ?: "child run was cancelled",
+                        retriable = false,
+                        cause = cancelled,
+                    ),
+                    cancellation = true,
+                )
             } catch (failure: Throwable) {
-                if (firstFailure == null) {
-                    firstFailure = ChildFailure(
-                        child,
-                        handle.snapshot.error ?: AgentError.ModelError(
-                            message = failure.message ?: "child run failed unexpectedly",
-                            retriable = false,
-                            cause = failure,
-                        ),
-                    )
-                }
+                recordFailure(
+                    handle.snapshot.error ?: AgentError.ModelError(
+                        message = failure.message ?: "child run failed unexpectedly",
+                        retriable = false,
+                        cause = failure,
+                    ),
+                )
             }
         }
         return firstFailure
+    }
+
+    private fun reportUnhandledChildFailure(parent: RunId, handle: AgentHandle, error: AgentError) {
+        if (handle.isFailureObserved || !handle.claimUnhandledFailure()) return
+        logger.warn {
+            "captured child run '${handle.runId.value}' failed without its result being consumed: ${error.message}"
+        }
+        emit(
+            RuntimeEvent.UnhandledChildFailure(
+                parentRunId = parent,
+                childRunId = handle.runId,
+                childAgentId = handle.agentId,
+                error = error,
+            ),
+        )
     }
 
     private fun hasActiveChildren(id: RunId): Boolean =

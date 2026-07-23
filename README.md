@@ -310,6 +310,19 @@ conversation, `TurnId` identifies one atomic top-level turn, and `RunId` identif
 execution instance. Top-level turns on the same Thread run FIFO; different Threads remain
 concurrent.
 
+Tools and agent coroutines can create structured child runs with `spawnChild`. Failure
+propagates by default; supervised work can capture its own result, and ephemeral children
+run concurrently without creating persistent Thread bindings:
+
+```kotlin
+val result = spawnChild(
+    worker,
+    input = "Inspect the parser",
+    failurePolicy = ChildFailurePolicy.CAPTURE,
+    conversation = ChildConversation.Ephemeral,
+).await()
+```
+
 ### 8. Structured Output
 
 Ask for a typed result and Koaks constrains the final step to valid JSON (native JSON

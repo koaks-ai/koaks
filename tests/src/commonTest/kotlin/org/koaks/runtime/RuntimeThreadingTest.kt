@@ -29,6 +29,7 @@ import org.koaks.framework.model.Usage
 import org.koaks.runtime.acb.LifecycleState
 import org.koaks.runtime.observe.RuntimeEvent
 import org.koaks.runtime.resource.spawnChild
+import org.koaks.runtime.resource.ChildConversation
 import org.koaks.runtime.thread.ThreadMemoryPolicyConflictException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -537,7 +538,11 @@ class RuntimeThreadingTest {
             }
             tools {
                 tool<NoArgs>("delegate", "delegate to another thread") {
-                    spawnChild(child, "child input", thread = "child-thread")
+                    spawnChild(
+                        child,
+                        "child input",
+                        conversation = ChildConversation.Thread(ThreadId("child-thread")),
+                    )
                         .also { childHandle = it }
                         .await()
                         .text

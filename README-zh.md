@@ -296,6 +296,18 @@ AgentRuntime { maxConcurrency = 8 }.use { runtime ->
 `AgentId` 标识不可变的 Agent 定义，`ThreadId` 标识长生命周期会话，`TurnId` 标识一次原子的
 顶层回合，`RunId` 标识一次执行实例。同一 Thread 的顶层 Turn 按 FIFO 串行，不同 Thread 仍可并发。
 
+工具或 Agent 协程可以通过 `spawnChild` 创建结构化子运行。默认情况下失败会向父运行传播；
+需要自行处理结果时可使用 CAPTURE，临时子运行则不会创建持久化 Thread 绑定：
+
+```kotlin
+val result = spawnChild(
+    worker,
+    input = "检查解析器",
+    failurePolicy = ChildFailurePolicy.CAPTURE,
+    conversation = ChildConversation.Ephemeral,
+).await()
+```
+
 ### 8. 结构化输出
 
 请求一个强类型结果，Koaks 会把最后一步约束为合法 JSON（模型支持原生 JSON 模式时启用，

@@ -40,6 +40,13 @@ sealed interface RuntimeEvent {
     data class Terminated(val runId: RunId, val agentId: AgentId, val threadId: ThreadId?, val turnId: TurnId?, val reason: TerminationReason) : RuntimeEvent
     data class Failed(val runId: RunId, val agentId: AgentId, val threadId: ThreadId?, val turnId: TurnId?, val error: AgentError) : RuntimeEvent
     data class Cancelled(val runId: RunId, val agentId: AgentId, val threadId: ThreadId?, val turnId: TurnId?) : RuntimeEvent
+    /** A CAPTURE child failed without any caller consuming the failure via AgentHandle.await(). */
+    data class UnhandledChildFailure(
+        val parentRunId: RunId,
+        val childRunId: RunId,
+        val childAgentId: AgentId,
+        val error: AgentError,
+    ) : RuntimeEvent
     data class SideEffectRollback(
         val runId: RunId,
         val agentId: AgentId,

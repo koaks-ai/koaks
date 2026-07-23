@@ -9,6 +9,7 @@ import org.koaks.framework.loop.AgentId
 import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.Usage
+import org.koaks.runtime.resource.ChildFailurePolicy
 import kotlin.time.TimeSource
 
 /**
@@ -28,6 +29,7 @@ class Acb internal constructor(
     parent: RunId?,
 ) {
     private val cancellationReported = MutableStateFlow(false)
+    private val childFailurePolicies = MutableStateFlow<Map<RunId, ChildFailurePolicy>>(emptyMap())
     private val _state = MutableStateFlow(
         AcbSnapshot(
             runId = runId,
@@ -130,13 +132,20 @@ class Acb internal constructor(
 
     internal fun setState(to: LifecycleState) = transition(to)
 
-    internal fun tryAddChild(child: RunId): Boolean {
+    internal fun tryAddChild(child: RunId, failurePolicy: ChildFailurePolicy): Boolean {
         while (true) {
             val current = _state.value
             if (!current.acceptingChildren || current.state.isTerminal) return false
-            if (_state.compareAndSet(current, current.copy(children = current.children + child))) return true
+            if (_state.compareAndSet(current, current.copy(children = current.children + child))) {
+                childFailurePolicies.update { it + (child to failurePolicy) }
+                return true
+            }
         }
     }
+
+    internal fun childFailurePolicy(child: RunId): ChildFailurePolicy =
+        childFailurePolicies.value[child]
+            ?: error("child run '${child.value}' is not linked to parent '${runId.value}'")
 
     /** Claims the single RuntimeEvent.Cancelled emission for this run. */
     internal fun claimCancellationEvent(): Boolean =
@@ -144,6 +153,7 @@ class Acb internal constructor(
 
     internal fun removeChild(child: RunId) {
         _state.update { it.copy(children = it.children - child) }
+        childFailurePolicies.update { it - child }
     }
 
     internal fun sealChildren() {

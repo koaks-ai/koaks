@@ -27,7 +27,8 @@ fun interface AgentSpawner {
         priority: Int,
         quota: Quota?,
         contextRefs: List<ContextRef>,
-        thread: ThreadId?,
+        failurePolicy: ChildFailurePolicy,
+        conversation: ChildConversation,
     ): AgentHandle
 }
 
@@ -57,8 +58,9 @@ class RuntimeContext internal constructor(
     /**
      * Spawns [agent] as a **child** of this instance (parent = [runId]). Restricted:
      * cannot close the runtime or mutate unrelated instances. By default the child joins
-     * this instance's Turn; an explicit different [thread] creates a new queued Turn. The
-     * parent cannot finish until the child tree settles.
+     * this instance's Turn; [ChildConversation.Ephemeral] runs without a Thread binding,
+     * while [ChildConversation.Thread] starts an independent Turn. The parent cannot finish
+     * until the child tree settles.
      */
     fun spawn(
         agent: Agent,
@@ -66,17 +68,9 @@ class RuntimeContext internal constructor(
         priority: Int = 0,
         quota: Quota? = null,
         contextRefs: List<ContextRef> = emptyList(),
-        thread: ThreadId? = null,
-    ): AgentHandle = spawner.spawn(agent, input, priority, quota, contextRefs, thread)
-
-    fun spawn(
-        agent: Agent,
-        input: String,
-        thread: String,
-        priority: Int = 0,
-        quota: Quota? = null,
-        contextRefs: List<ContextRef> = emptyList(),
-    ): AgentHandle = spawn(agent, input, priority, quota, contextRefs, ThreadId(thread))
+        failurePolicy: ChildFailurePolicy = ChildFailurePolicy.PROPAGATE,
+        conversation: ChildConversation = ChildConversation.Inherit,
+    ): AgentHandle = spawner.spawn(agent, input, priority, quota, contextRefs, failurePolicy, conversation)
 }
 
 /** The current runtime context, or `null` when called outside runtime-managed execution. */
@@ -92,21 +86,13 @@ suspend fun spawnChild(
     priority: Int = 0,
     quota: Quota? = null,
     contextRefs: List<ContextRef> = emptyList(),
-    thread: ThreadId? = null,
+    failurePolicy: ChildFailurePolicy = ChildFailurePolicy.PROPAGATE,
+    conversation: ChildConversation = ChildConversation.Inherit,
 ): AgentHandle {
     val ctx = currentRuntimeContext()
         ?: error("spawnChild is only available inside a runtime-spawned agent")
-    return ctx.spawn(agent, input, priority, quota, contextRefs, thread)
+    return ctx.spawn(agent, input, priority, quota, contextRefs, failurePolicy, conversation)
 }
-
-suspend fun spawnChild(
-    agent: Agent,
-    input: String,
-    thread: String,
-    priority: Int = 0,
-    quota: Quota? = null,
-    contextRefs: List<ContextRef> = emptyList(),
-): AgentHandle = spawnChild(agent, input, priority, quota, contextRefs, ThreadId(thread))
 
 /**
  * Runs [block] holding the runtime lock for shared resource [id]. When there is no
