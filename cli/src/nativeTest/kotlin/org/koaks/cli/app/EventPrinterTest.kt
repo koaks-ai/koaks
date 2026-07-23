@@ -35,6 +35,32 @@ class EventPrinterTest {
     }
 
     @Test
+    fun summarizesTaskToolWithDescriptionAndType() {
+        val output = BufferOutput()
+        val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))
+
+        printer.print(
+            AgentEvent.ToolCallRequested(
+                ToolCall(
+                    "call-1",
+                    "Task",
+                    """{"description":"Explore auth module","prompt":"Find auth entry points","subagent_type":"explore"}""",
+                ),
+            ),
+        )
+        printer.print(AgentEvent.ToolResult("call-1", "[subagent explore] Explore auth module\nfound AuthFilter", isError = false))
+
+        assertEquals(
+            """
+            ▸ Task  Explore auth module [explore]
+              [subagent explore] Explore auth module
+              found AuthFilter
+            """.trimIndent(),
+            output.content().trimEnd(),
+        )
+    }
+
+    @Test
     fun printsAssistantPromptOnlyWhenTextStarts() {
         val output = BufferOutput()
         val printer = EventPrinter(showReasoning = false, output = output, theme = Theme(enabled = false))

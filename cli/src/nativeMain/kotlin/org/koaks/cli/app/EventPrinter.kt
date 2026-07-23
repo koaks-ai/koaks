@@ -240,6 +240,13 @@ internal class EventPrinter(
     }
 
     private fun summarizeToolArgs(arguments: String): String {
+        val description = extractJsonString(arguments, "description")
+        if (description != null) {
+            val type = extractJsonString(arguments, "subagent_type")
+            val label = if (type.isNullOrBlank()) description else "$description [$type]"
+            return truncateSummary(label.compactForLine())
+        }
+
         val command = extractJsonString(arguments, "command")
         if (command != null) return truncateSummary(command.compactForLine())
 

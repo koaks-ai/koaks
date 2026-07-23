@@ -30,7 +30,9 @@ internal class AgentApp(
     private val commands: CommandRegistry = CommandRegistry.builtins(),
 ) {
     private val trace = CliTrace.open(environment)
-    private val runtime = AgentRuntime()
+    private val runtime = AgentRuntime {
+        maxConcurrency = DEFAULT_MAX_CONCURRENCY
+    }
     private val session = CliChatSession(initialConfig, runtime, trace.takeIf { it.enabled })
 
     suspend fun run() {
@@ -208,5 +210,10 @@ internal class AgentApp(
             "1", "true", "yes", "on" -> return true
         }
         return true
+    }
+
+    private companion object {
+        /** Caps parallel main + sub-agent instances (API rate / local resource friendly). */
+        const val DEFAULT_MAX_CONCURRENCY = 8
     }
 }

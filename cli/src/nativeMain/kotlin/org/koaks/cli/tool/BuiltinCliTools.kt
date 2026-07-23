@@ -1,14 +1,21 @@
 package org.koaks.cli.tool
 
 import kotlinx.serialization.Serializable
+import org.koaks.cli.config.AgentConfig
 import org.koaks.framework.loop.ToolScope
 import org.koaks.framework.tool.Tool
 
-internal fun ToolScope.registerBuiltinCliTools() {
+internal fun ToolScope.registerBuiltinCliTools(
+    config: AgentConfig,
+    includeTask: Boolean = true,
+) {
     tool(BashTool)
     tool(ReadTool)
     tool(WriteTool)
     tool(EditTool)
+    if (includeTask) {
+        tool(TaskTool(config))
+    }
 }
 
 @Serializable
