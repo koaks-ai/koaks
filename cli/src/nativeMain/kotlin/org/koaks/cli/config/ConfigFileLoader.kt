@@ -18,7 +18,9 @@ internal object ConfigFileLoader {
             createDefaultConfig(path)
             readText(path) ?: throw CliException("Unable to read config file after creating it: $path")
         }
-        return TomlConfigParser.parse(text, path)
+        return TomlConfigParser.parse(text, path).let { config ->
+            config.copy(skillPaths = config.skillPaths.map { expandSkillPath(it, env) })
+        }
     }
 
     fun configPath(env: Environment): String? {
@@ -33,6 +35,9 @@ internal object ConfigFileLoader {
         provider = "openai"
         # Enable model thinking / show reasoning output (same as /reasoning on|off).
         show_reasoning = false
+        # Skill directories. When `skills` is omitted or empty, every discovered Skill is enabled.
+        # skill_paths = [".agents/skills"]
+        # skills = ["code-review", "project-conventions"]
 
         [providers.openai]
         base_url = "${Provider.OPENAI.defaultBaseUrl}"
@@ -46,6 +51,18 @@ internal object ConfigFileLoader {
         model = "claude-opus-4-8"
         model_list = ["claude-opus-4-8"]
         """.trimIndent() + "\n"
+
+    internal fun expandSkillPath(path: String, env: Environment): String {
+        if (path == "~" || path.startsWith("~/") || path.startsWith("~\\")) {
+            val home = env.value("HOME") ?: env.value("USERPROFILE")
+                ?: throw CliException("Unable to expand Skill path '$path': home directory is unavailable.")
+            return home.trimEnd('/', '\\') + path.drop(1)
+        }
+        if (path.startsWith('~')) {
+            throw CliException("Unsupported Skill path '$path': only '~/' and '~\\' home expansion are supported.")
+        }
+        return path
+    }
 
     private fun createDefaultConfig(path: String) {
         parentDirectory(path)?.let(ConfigFileSystem::createDirectory)

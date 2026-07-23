@@ -12,6 +12,8 @@ kotlin {
                 api(libs.kotlin.logging)
                 api(libs.serialization.core)
                 api(libs.serialization.json)
+                implementation(libs.kaml)
+                implementation(libs.okio)
             }
         }
         val jvmMain by getting {
@@ -38,6 +40,7 @@ kotlin {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(libs.coroutines.test)
+                implementation(libs.okio.fakefilesystem)
             }
         }
         val windowsX64Main by getting {

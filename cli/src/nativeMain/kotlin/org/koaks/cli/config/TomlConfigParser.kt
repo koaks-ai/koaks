@@ -60,6 +60,8 @@ internal object TomlConfigParser {
             historyMessages = root.historyMessages,
             temperature = root.temperature,
             showReasoning = root.showReasoning,
+            skillPaths = root.skillPaths,
+            skills = root.skills,
             providers = providers.mapValues { it.value.build() },
             providerOrder = providerOrder,
         )
@@ -91,6 +93,8 @@ private class RootBuilder {
     var historyMessages: Int? = null
     var temperature: Double? = null
     var showReasoning: Boolean? = null
+    var skillPaths: List<String> = emptyList()
+    var skills: List<String> = emptyList()
 
     fun apply(key: String, value: String, sourceName: String, lineNumber: Int) {
         when (key) {
@@ -101,6 +105,8 @@ private class RootBuilder {
             "history", "history_messages" -> historyMessages = parsePositiveIntValue(key, value, sourceName, lineNumber)
             "temperature" -> temperature = parseDoubleValue(key, value, sourceName, lineNumber)
             "show_reasoning", "reasoning" -> showReasoning = parseBooleanValue(key, value, sourceName, lineNumber)
+            "skill_paths" -> skillPaths = parseStringList(key, value, sourceName, lineNumber)
+            "skills" -> skills = parseStringList(key, value, sourceName, lineNumber)
             else -> configError(sourceName, lineNumber, "Unknown top-level key '$key'.")
         }
     }
@@ -117,7 +123,7 @@ private class ProviderBuilder {
             "base_url", "baseUrl" -> baseUrl = parseNonBlankString(key, value, sourceName, lineNumber)
             "api_key", "apiKey" -> apiKey = parseNonBlankString(key, value, sourceName, lineNumber)
             "model", "model_name", "default_model" -> defaultModel = parseNonBlankString(key, value, sourceName, lineNumber)
-            "model_list", "models" -> modelList = parseStringList(value, sourceName, lineNumber)
+            "model_list", "models" -> modelList = parseStringList(key, value, sourceName, lineNumber)
             else -> configError(sourceName, lineNumber, "Unknown provider key '$key'.")
         }
     }
@@ -242,7 +248,7 @@ private fun parseQuotedString(value: String, quote: Char, sourceName: String, li
     return parsed.toString()
 }
 
-private fun parseStringList(value: String, sourceName: String, lineNumber: Int): List<String> {
+private fun parseStringList(key: String, value: String, sourceName: String, lineNumber: Int): List<String> {
     val trimmed = value.trim()
     if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
         configError(sourceName, lineNumber, "Expected an array of strings.")
@@ -258,7 +264,7 @@ private fun parseStringList(value: String, sourceName: String, lineNumber: Int):
         val raw = token.toString().trim()
         token.clear()
         if (raw.isNotEmpty()) {
-            items += parseNonBlankString("model_list", raw, sourceName, lineNumber)
+            items += parseNonBlankString(key, raw, sourceName, lineNumber)
         }
     }
 

@@ -16,6 +16,7 @@
 
 - **一个声明式 DSL**: `agent { }` 组装出一个不可变、可复用的 Agent。
 - **一等公民的工具**: 用带类型的输入内联定义工具，其 JSON Schema 由你的 `@Serializable` 类自动生成。同时支持类式工具、JVM 的 `@Tool` 注解，以及 **MCP** 工具的懒发现。
+- **可组合的 Skills**: 从 `SKILL.md` 目录或自定义来源加载可复用 instructions、只读资源和工具。
 - **可插拔的记忆**: 滑动窗口、摘要式或向量式记忆，按对话轮次原子提交（运行失败或被取消，不污染历史）。
 - **结构化输出**: `agent.run<T>()` 直接返回解码后的强类型结果。
 - **天生健壮**: 模型回退（fallback）、重试/替换错误策略、步数与 token 预算，以及 Around 中间件（缓存、护栏、人工审批）。
@@ -206,7 +207,61 @@ tools {
 }
 ```
 
-### 6. 记忆（多轮对话）
+### 6. Skills
+
+Skill 为 Agent 添加可复用的 instructions、资源和工具。内置 Markdown 加载器要求每个
+直接子目录代表一个 Skill：
+
+```text
+.agents/skills/
+└── code-review/
+    ├── SKILL.md
+    └── references/conventions.md
+```
+
+每个 `SKILL.md` 以 YAML front matter 开头，Markdown 正文会作为该 Skill 的 instructions：
+
+```markdown
+---
+name: code-review
+description: Review Kotlin code using project conventions
+---
+Check correctness, concurrency, error handling, and public API compatibility.
+```
+
+在构建 Agent 时配置来源和可选的启用清单：
+
+```kotlin
+val agent = agent {
+    id = "reviewer"
+    model { qwen(baseUrl = "base-url", apiKey = "api-key", modelName = "qwen3-235b-a22b-instruct-2507") }
+    skills {
+        source(".agents/skills")
+        source(customLoader)       // 实现 SkillLoader
+
+        use("code-review")       // 任意 use(...) 会切换到全局白名单模式
+        use("project-conventions")
+    }
+}
+
+agent.prepare()                   // 可选：在服务启动时提前校验
+```
+
+`source(path)` 使用内置 `MarkdownDirectorySkillLoader`；`source(loader)` 可接入以内存、
+数据库、远程服务或其他格式为后端的自定义 `SkillLoader`。默认目录文件系统支持 JVM、
+Native 和 Node.js；浏览器 JS 应通过 `source(customLoader)` 接入 HTTP、IndexedDB、打包资源
+或其他由应用持有的后端。core 中路径按字面解释，相对路径以进程工作目录为基准；Koaks CLI
+还会将 `~/` 展开为用户主目录。
+没有 `use()` 时会启用所有发现
+到的 Skill；一旦出现任意 `use()`，则仅按 `use()` 调用顺序加载白名单中的 Skill。
+发现阶段只读取元数据，完整定义只为已启用的 Skill 加载。若未显式调用 `prepare()`，首次
+`run` 或 `stream` 会自动完成准备。
+
+Skill 资源保持延迟、只读。Koaks 通过一个受大小限制且支持分页的资源工具将它们提供给模型；
+该工具只接受已启用 Skill 目录内的相对路径，并使用从 1 开始的行/列游标，因此超长单行也能
+继续读取而不丢内容。Skill 包内脚本仅作为资源，绝不会自动执行。
+
+### 7. 记忆（多轮对话）
 
 为 Agent 配置记忆，然后在每次运行时传入相同的 `thread`。`ThreadId` 由 Runtime 全局管理，
 因此不同 Agent 也可以加入同一个会话。每一轮都会加载历史，并仅在整个 Turn 成功结束时原子
@@ -241,7 +296,7 @@ AgentRuntime { maxConcurrency = 8 }.use { runtime ->
 `AgentId` 标识不可变的 Agent 定义，`ThreadId` 标识长生命周期会话，`TurnId` 标识一次原子的
 顶层回合，`RunId` 标识一次执行实例。同一 Thread 的顶层 Turn 按 FIFO 串行，不同 Thread 仍可并发。
 
-### 7. 结构化输出
+### 8. 结构化输出
 
 请求一个强类型结果，Koaks 会把最后一步约束为合法 JSON（模型支持原生 JSON 模式时启用，
 否则退化为在提示词中注入 schema），并完成解码。
@@ -258,7 +313,7 @@ agent.use {
 }
 ```
 
-### 8. 模型回退与健壮性
+### 9. 模型回退与健壮性
 
 ```kotlin
 agent {
@@ -298,7 +353,7 @@ agent {
 
 | 模块 | Artifact | 用途 |
 |------|----------|------|
-| core | `koaks-core` | Agent 运行时：DSL、循环、工具、记忆、Hook/监听器、传输层 |
+| core | `koaks-core` | Agent 运行时：DSL、循环、工具、Skills、记忆、Hook/监听器、传输层 |
 | qwen | `koaks-model-qwen` | Qwen / OpenAI 兼容提供商 |
 | ollama | `koaks-model-ollama` | 本地 Ollama 提供商（NDJSON） |
 | memory: summarizing | `koaks-memory-summarizing` | 长对话摘要式记忆 |

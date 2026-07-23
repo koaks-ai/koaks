@@ -13,6 +13,8 @@ class TomlConfigParserTest {
             provider = "openai"
             model = "gpt-4.1-mini"
             show_reasoning = true
+            skill_paths = [".agents/skills", "~/.koaks/skills"]
+            skills = ["code-review"]
 
             [providers.openai]
             base_url = "https://api.openai.example/v1/chat/completions"
@@ -32,6 +34,8 @@ class TomlConfigParserTest {
         assertEquals(Provider.OPENAI, config.defaultProvider)
         assertEquals("gpt-4.1-mini", config.defaultModel)
         assertEquals(true, config.showReasoning)
+        assertEquals(listOf(".agents/skills", "~/.koaks/skills"), config.skillPaths)
+        assertEquals(listOf("code-review"), config.skills)
         assertEquals(listOf(Provider.OPENAI, Provider.ANTHROPIC), config.providerOrder)
         assertEquals("openai-key", config.providers[Provider.OPENAI]?.apiKey)
         assertEquals(

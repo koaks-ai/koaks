@@ -16,6 +16,7 @@
 
 - **One declarative DSL**: `agent { }` assembles an immutable, reusable agent.
 - **First-class tools**: define a tool inline with a typed input; its JSON Schema is derived from your `@Serializable` class. Class-based tools, JVM `@Tool` annotations, and lazy **MCP** discovery are all supported.
+- **Composable Skills**: load reusable instructions, read-only resources, and tools from `SKILL.md` directories or custom sources.
 - **Pluggable memory**: sliding-window, summarizing, or vector memory, committed atomically per turn (a failed or cancelled run won't corrupt history).
 - **Structured output**: `agent.run<T>()` returns a typed, decoded result.
 - **Resilient by design**: model fallbacks, retry/substitute error policies, step & token budgets, typed hooks, guardrails, and human approval.
@@ -211,7 +212,65 @@ tools {
 }
 ```
 
-### 6. Memory (Multi-Turn Conversations)
+### 6. Skills
+
+Skills add reusable instructions, resources, and tools to an Agent. The built-in Markdown
+loader expects one direct child directory per Skill:
+
+```text
+.agents/skills/
+└── code-review/
+    ├── SKILL.md
+    └── references/conventions.md
+```
+
+Each `SKILL.md` starts with YAML front matter; its Markdown body becomes the Skill
+instructions:
+
+```markdown
+---
+name: code-review
+description: Review Kotlin code using project conventions
+---
+Check correctness, concurrency, error handling, and public API compatibility.
+```
+
+Configure sources and optional selections when building the Agent:
+
+```kotlin
+val agent = agent {
+    id = "reviewer"
+    model { qwen(baseUrl = "base-url", apiKey = "api-key", modelName = "qwen3-235b-a22b-instruct-2507") }
+    skills {
+        source(".agents/skills")
+        source(customLoader)       // implements SkillLoader
+
+        use("code-review")       // any use(...) switches to a global allow-list
+        use("project-conventions")
+    }
+}
+
+agent.prepare()                   // optional: validate eagerly at service startup
+```
+
+`source(path)` uses the built-in `MarkdownDirectorySkillLoader`; `source(loader)` accepts
+a custom `SkillLoader` backed by memory, a database, a remote service, or another format.
+The default directory filesystem is available on JVM, Native, and Node.js. Browser JS
+applications should use `source(customLoader)` with HTTP, IndexedDB, bundled resources,
+or another application-owned backend. Core paths are literal and relative paths use the
+process working directory; the Koaks CLI additionally expands `~/` to the user's home.
+Without `use()`, every discovered Skill is enabled. Once any `use()` is present, only the
+selected Skills are loaded, in `use()` order. Discovery reads metadata first and full
+definitions only for enabled Skills. The first `run` or `stream` automatically prepares
+the Agent if `prepare()` was not called explicitly.
+
+Skill resources remain lazy and read-only. Koaks exposes them to the model through a
+bounded, paginated resource tool that only accepts relative paths inside enabled Skills.
+Pages use a 1-based line/column cursor, so even a single very long line can be continued
+without losing content. Scripts in a Skill package are resources only and are never
+executed automatically.
+
+### 7. Memory (Multi-Turn Conversations)
 
 Attach memory to the agent, then pass the same `thread` to each run. `ThreadId` is owned
 by the Runtime, so different Agents can join the same conversation. History is loaded on
@@ -251,7 +310,7 @@ conversation, `TurnId` identifies one atomic top-level turn, and `RunId` identif
 execution instance. Top-level turns on the same Thread run FIFO; different Threads remain
 concurrent.
 
-### 7. Structured Output
+### 8. Structured Output
 
 Ask for a typed result and Koaks constrains the final step to valid JSON (native JSON
 mode when the model supports it, otherwise a schema-in-prompt fallback) and decodes it.
@@ -268,7 +327,7 @@ agent.use {
 }
 ```
 
-### 8. Model Fallback & Resilience
+### 9. Model Fallback & Resilience
 
 ```kotlin
 agent {
@@ -308,7 +367,7 @@ agent {
 
 | Module | Artifact | Purpose |
 |--------|----------|---------|
-| core | `koaks-core` | The agent runtime: DSL, loop, tools, memory, hooks/listeners, transport |
+| core | `koaks-core` | The agent runtime: DSL, loop, tools, Skills, memory, hooks/listeners, transport |
 | qwen | `koaks-model-qwen` | Qwen / OpenAI-compatible provider |
 | ollama | `koaks-model-ollama` | Local Ollama provider (NDJSON) |
 | memory: summarizing | `koaks-memory-summarizing` | Summarizing long-conversation memory |

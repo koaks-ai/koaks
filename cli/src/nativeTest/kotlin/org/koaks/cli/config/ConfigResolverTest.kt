@@ -14,6 +14,8 @@ class ConfigResolverTest {
             historyMessages = 7,
             temperature = 0.4,
             showReasoning = true,
+            skillPaths = listOf(".agents/skills"),
+            skills = listOf("code-review"),
             providers = mapOf(
                 Provider.OPENAI to FileProviderConfig(
                     baseUrl = "https://openai.config",
@@ -35,6 +37,8 @@ class ConfigResolverTest {
         assertEquals(7, config.historyMessages)
         assertEquals(0.4, config.temperature)
         assertEquals(true, config.showReasoning)
+        assertEquals(listOf(".agents/skills"), config.skillPaths)
+        assertEquals(listOf("code-review"), config.skills)
         assertEquals(listOf("gpt-file", "gpt-other"), config.profileFor(Provider.OPENAI).modelList)
     }
 

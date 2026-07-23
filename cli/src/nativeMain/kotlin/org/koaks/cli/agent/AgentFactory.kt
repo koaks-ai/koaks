@@ -29,6 +29,12 @@ internal object AgentFactory {
             tools {
                 registerBuiltinCliTools()
             }
+            if (config.skillPaths.isNotEmpty()) {
+                skills {
+                    config.skillPaths.forEach { source(it) }
+                    config.skills.forEach { use(it) }
+                }
+            }
             model {
                 when (config.provider) {
                     Provider.OPENAI -> openai(

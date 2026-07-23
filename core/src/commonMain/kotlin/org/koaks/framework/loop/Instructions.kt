@@ -30,6 +30,10 @@ class Instructions internal constructor(
         return parts.joinToString("\n\n").ifBlank { null }
     }
 
+    internal fun appendStatic(values: Iterable<String>): Instructions = Instructions(
+        segments + values.filter { it.isNotBlank() }.map(InstructionSegment::Static),
+    )
+
     companion object {
         val EMPTY: Instructions = Instructions(emptyList())
 

@@ -5,6 +5,7 @@ import platform.posix.rmdir
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class ConfigFileLoaderTest {
     @Test
@@ -39,6 +40,24 @@ class ConfigFileLoaderTest {
         assertEquals(false, config.showReasoning)
         assertEquals("gpt-5.5", config.providers[Provider.OPENAI]?.modelOrDefault(Provider.OPENAI))
         assertEquals("claude-opus-4-8", config.providers[Provider.ANTHROPIC]?.modelOrDefault(Provider.ANTHROPIC))
+    }
+
+    @Test
+    fun expandsHomeRelativeSkillPaths() {
+        val env = TestEnvironment("HOME" to "/users/reviewer")
+
+        assertEquals(
+            "/users/reviewer/.koaks/skills",
+            ConfigFileLoader.expandSkillPath("~/.koaks/skills", env),
+        )
+        assertEquals(".agents/skills", ConfigFileLoader.expandSkillPath(".agents/skills", env))
+    }
+
+    @Test
+    fun rejectsNamedUserHomeExpansion() {
+        assertFailsWith<CliException> {
+            ConfigFileLoader.expandSkillPath("~other/skills", TestEnvironment("HOME" to "/users/current"))
+        }
     }
 }
 

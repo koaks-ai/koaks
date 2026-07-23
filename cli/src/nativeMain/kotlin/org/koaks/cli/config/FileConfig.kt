@@ -8,6 +8,8 @@ internal data class FileConfig(
     val historyMessages: Int? = null,
     val temperature: Double? = null,
     val showReasoning: Boolean? = null,
+    val skillPaths: List<String> = emptyList(),
+    val skills: List<String> = emptyList(),
     val providers: Map<Provider, FileProviderConfig> = emptyMap(),
     val providerOrder: List<Provider> = emptyList(),
 ) {

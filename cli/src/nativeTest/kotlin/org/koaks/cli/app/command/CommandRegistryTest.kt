@@ -10,7 +10,7 @@ class CommandRegistryTest {
         val registry = CommandRegistry.builtins()
 
         assertEquals(
-            listOf("/help", "/status", "/provider", "/model", "/reasoning", "/exit"),
+            listOf("/help", "/status", "/provider", "/model", "/reasoning", "/skills", "/exit"),
             registry.suggestions.map { it.name },
         )
         assertTrue(registry.isBuiltinCommand("/EXIT"))

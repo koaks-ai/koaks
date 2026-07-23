@@ -15,6 +15,7 @@ import org.koaks.framework.model.Message
 import org.koaks.framework.policy.ErrorPolicy
 import org.koaks.framework.policy.RunBudget
 import org.koaks.framework.policy.TerminationPolicy
+import org.koaks.framework.skill.SkillDescriptor
 import org.koaks.framework.tool.ToolRegistry
 import org.koaks.framework.transport.Transport
 import org.koaks.runtime.AgentRuntime
@@ -35,6 +36,7 @@ class Agent internal constructor(
     val termination: TerminationPolicy,
     val errorPolicy: ErrorPolicy,
     val runBudget: RunBudget,
+    private val preparation: AgentPreparation,
     internal val memoryProvider: MemoryProvider?,
     private val transport: Transport?,
     private val ownsTransport: Boolean,
@@ -43,6 +45,18 @@ class Agent internal constructor(
     internal val definitionUid: Long = AgentDefinitionIds.next()
 
     private val runner = AgentRunner(this)
+
+    /** Descriptors of the fixed Skills loaded by [prepare]; empty before preparation. */
+    val skillDescriptors: List<SkillDescriptor>
+        get() = preparation.skillDescriptors
+
+    /**
+     * Resolves Skill sources and lazy tools exactly once, validates all contributions,
+     * and fixes the effective Skill contributions before the first model call.
+     */
+    suspend fun prepare() {
+        preparation.await()
+    }
 
     /** Runtime-managed streaming execution using the process-wide default runtime. */
     fun stream(input: String, thread: ThreadId? = null): Flow<AgentEvent> =
@@ -65,17 +79,13 @@ class Agent internal constructor(
     fun spawn(input: String, thread: String): AgentHandle =
         spawn(input, ThreadId(thread))
 
-    internal fun executeStream(input: String, context: List<Message>): Flow<AgentEvent> =
-        flow { emitAll(runner.stream(initialMessages(input, context))) }
+    internal fun executeStream(input: String, context: List<Message>): Flow<AgentEvent> = flow {
+        emitAll(runner.stream(initialMessages(input, context)))
+    }
 
-    internal suspend fun executeRun(input: String, context: List<Message>): AgentResult =
-        runner.run(initialMessages(input, context))
-
-    internal suspend fun executeStructured(input: String, context: List<Message>, spec: OutputSpec): AgentResult =
-        runner.runStructured(initialMessages(input, context), spec)
-
-    internal fun executeStructuredStream(input: String, context: List<Message>, spec: OutputSpec): Flow<AgentEvent> =
-        flow { emitAll(runner.streamStructured(initialMessages(input, context), spec)) }
+    internal fun executeStructuredStream(input: String, context: List<Message>, spec: OutputSpec): Flow<AgentEvent> = flow {
+        emitAll(runner.streamStructured(initialMessages(input, context), spec))
+    }
 
     suspend fun runStructured(input: String, spec: OutputSpec, thread: ThreadId? = null): AgentResult =
         AgentRuntime.default.runStructured(this, input, spec, thread = thread)
@@ -85,7 +95,7 @@ class Agent internal constructor(
 
     /** Builds system instructions + runtime-owned history/context + current user input. */
     private suspend fun initialMessages(input: String, context: List<Message>): List<Message> = buildList {
-        instructions.resolve()?.let { add(Message.system(it)) }
+        preparation.await().instructions.resolve()?.let { add(Message.system(it)) }
         addAll(context)
         add(Message.user(input))
     }

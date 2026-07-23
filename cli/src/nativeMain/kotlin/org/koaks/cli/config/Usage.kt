@@ -16,6 +16,8 @@ internal fun usageText(): String =
 
       provider = "openai"
       show_reasoning = false
+      skill_paths = [".agents/skills"]
+      skills = ["code-review"]
 
       [providers.openai]
       base_url = "https://api.openai.com"

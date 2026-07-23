@@ -12,7 +12,6 @@ external object Dotenv {
     fun config(options: dynamic = definedExternally): dynamic
 }
 
-
 actual object EnvTools {
     actual fun loadValue(key: String): String {
         Dotenv.config(js("{ path: process.env.PROJECT_ROOT + '/.env' }"))

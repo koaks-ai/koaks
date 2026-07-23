@@ -1,14 +1,18 @@
 package org.koaks.framework.model
 
+import org.koaks.framework.skill.SkillId
+import org.koaks.framework.skill.SkillStage
+
 /**
  * The framework's first-class error model. Shared across [ModelEvent.Failed],
  * `ToolOutcome.Failure`, and `AgentEvent.Failed`.
  *
  * Error classification directly drives whether recovery can safely retry: network
  * hiccups are retriable, argument parse failures are not. This is why it is a
- * `sealed` hierarchy rather than a bare `Throwable`/`String`.
+ * structured hierarchy rather than a bare `Throwable`/`String`. The interface is
+ * intentionally extensible so future framework errors do not break downstream code.
  */
-sealed interface AgentError {
+interface AgentError {
     val message: String
     val cause: Throwable?
 
@@ -43,6 +47,21 @@ sealed interface AgentError {
         override val message: String get() = "tool not found: $toolName"
         override val cause: Throwable? get() = null
     }
+
+    /** Skill discovery, loading, validation, or resource access failed. */
+    data class SkillError(
+        val skillId: SkillId?,
+        val stage: SkillStage,
+        override val message: String,
+        override val cause: Throwable? = null,
+    ) : AgentError
+
+    /** Agent component initialization failed before the first model request. */
+    data class PreparationError(
+        val component: String,
+        override val message: String,
+        override val cause: Throwable? = null,
+    ) : AgentError
 
     /** A stage exceeded its time budget. Retriable. */
     data class Timeout(val stage: String, val elapsedMs: Long) : AgentError {

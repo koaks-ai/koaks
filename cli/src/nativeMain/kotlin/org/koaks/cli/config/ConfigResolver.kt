@@ -24,6 +24,8 @@ internal object ConfigResolver {
             historyMessages = history,
             temperature = fileConfig.temperature,
             showReasoning = fileConfig.showReasoning ?: false,
+            skillPaths = fileConfig.skillPaths,
+            skills = fileConfig.skills,
             providerProfiles = profiles,
             configuredProviders = fileConfig.providerOrder,
         )

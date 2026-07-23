@@ -14,6 +14,7 @@ internal fun builtinCommands(): List<SlashCommand> =
         ProviderCommand,
         ModelCommand,
         ReasoningCommand,
+        SkillsCommand,
         ExitCommand,
     )
 
@@ -51,6 +52,11 @@ private object StatusCommand : SlashCommand {
                 Thread: ${config.threadId}
                 History: ${config.historyMessages} messages
                 Reasoning: ${if (config.showReasoning) "on" else "off"}
+                Skills: ${when {
+                    config.skillPaths.isEmpty() -> "disabled"
+                    config.skills.isEmpty() -> "all discovered"
+                    else -> config.skills.joinToString(", ")
+                }}
                 """.trimIndent()
             )
         )
@@ -142,6 +148,27 @@ private object ReasoningCommand : SlashCommand {
             }
             else -> context.output.writeLine(context.theme.error("[error] Usage: /reasoning <on|off>"))
         }
+        return CommandResult.Continue
+    }
+}
+
+private object SkillsCommand : SlashCommand {
+    override val names: Set<String> = setOf("/skills")
+    override val description: String = "Show fixed Skill configuration"
+
+    override fun run(input: String, context: AgentContext, registry: CommandRegistry): CommandResult {
+        val config = context.config
+        val message = if (config.skillPaths.isEmpty()) {
+            "Skills: disabled\nConfigure skill_paths in ~/.koaks/config.toml."
+        } else {
+            buildString {
+                appendLine("Skill sources:")
+                config.skillPaths.forEach { appendLine("  $it") }
+                append("Enabled: ")
+                append(if (config.skills.isEmpty()) "all discovered Skills" else config.skills.joinToString(", "))
+            }
+        }
+        context.output.writeLine(context.theme.dim(message))
         return CommandResult.Continue
     }
 }

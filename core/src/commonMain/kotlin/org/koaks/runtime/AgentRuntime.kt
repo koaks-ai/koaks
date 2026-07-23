@@ -39,6 +39,7 @@ import org.koaks.framework.memory.ThreadMemory
 import org.koaks.framework.memory.TurnCommitBuffer
 import org.koaks.framework.memory.WindowMemoryProvider
 import org.koaks.framework.model.AgentError
+import org.koaks.framework.model.AgentFrameworkException
 import org.koaks.framework.model.Message
 import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.TerminationReason
@@ -747,6 +748,16 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             val message = Message.assistant(stepText.toString().ifEmpty { lastAssistant })
             sink.emit(AgentEvent.Terminated(message, currentUsage, reason))
             return AgentResult.Terminated(message, currentUsage, reason)
+        } catch (failure: AgentFrameworkException) {
+            val currentUsage = acb.snapshot.usage
+            val error = failure.error
+            val event = AgentEvent.Failed(error, currentUsage)
+            acb.markFailed(error, currentUsage)
+            emit(RuntimeEvent.Failed(acb.runId, agent.id, acb.snapshot.threadId, acb.snapshot.turnId, error))
+            cancelDescendants(acb.runId, "parent ${acb.runId} failed")
+            agent.listeners.forEach { it.onAgentEvent(event) }
+            sink.emit(event)
+            return AgentResult.Failed(error, currentUsage)
         }
 
         return when (val term = terminal) {

@@ -12,6 +12,8 @@ import org.koaks.framework.memory.WindowMemoryProvider
 import org.koaks.framework.policy.ErrorPolicy
 import org.koaks.framework.policy.RunBudget
 import org.koaks.framework.policy.TerminationPolicy
+import org.koaks.framework.skill.SkillPlan
+import org.koaks.framework.skill.SkillsScope
 import org.koaks.framework.tool.ToolRegistry
 
 /**
@@ -47,6 +49,7 @@ class AgentBuilder {
     private var modelScope: ModelScope? = null
     private var selection: ModelSelection? = null
     private val tools = ToolRegistry()
+    private var skillPlan: SkillPlan? = null
     private val hooks = mutableListOf<Hook>()
     private val listeners = mutableListOf<AgentListener>()
     private var termination: TerminationPolicy = TerminationPolicy.maxSteps(Int.MAX_VALUE)
@@ -62,6 +65,11 @@ class AgentBuilder {
 
     fun tools(block: ToolScope.() -> Unit) {
         ToolScope(tools).apply(block)
+    }
+
+    /** Configures fixed, Agent-level Skills. */
+    fun skills(block: SkillsScope.() -> Unit) {
+        skillPlan = SkillsScope().apply(block).build()
     }
 
     /** Configures conversation memory: `memory { window(40) }` / `none()` / `custom(...)`. */
@@ -111,6 +119,7 @@ class AgentBuilder {
         val resolvedInstructions = instructionsSpec
             ?: instructions?.let { Instructions.of(it) }
             ?: Instructions.EMPTY
+        val preparation = AgentPreparation(resolvedInstructions, tools, skillPlan)
         return Agent(
             id = agentId,
             name = name,
@@ -122,6 +131,7 @@ class AgentBuilder {
             termination = termination,
             errorPolicy = errorPolicy,
             runBudget = runBudget,
+            preparation = preparation,
             memoryProvider = memoryProvider,
             transport = transportInfo.transport,
             ownsTransport = transportInfo.ownsTransport,

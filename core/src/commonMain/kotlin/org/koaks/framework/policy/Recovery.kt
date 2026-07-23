@@ -53,6 +53,9 @@ fun interface ErrorPolicy {
             is AgentError.Timeout -> true
             is AgentError.ParseError -> false
             is AgentError.ToolNotFound -> false
+            is AgentError.SkillError -> false
+            is AgentError.PreparationError -> false
+            else -> false
         }
     }
 }

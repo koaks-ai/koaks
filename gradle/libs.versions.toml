@@ -10,6 +10,8 @@ ktor = "3.2.3"
 serializationJson = "1.8.1"
 serializationCore = "1.8.1"
 coroutines = "1.10.2"
+kaml = "0.85.0"
+okio = "3.15.0"
 
 logback = "1.5.13"
 dotenv = "6.5.1"
@@ -30,6 +32,9 @@ serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-jso
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "serializationCore" }
+kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
+okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
+okio-fakefilesystem = { module = "com.squareup.okio:okio-fakefilesystem", version.ref = "okio" }
 
 # jvmMain
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }

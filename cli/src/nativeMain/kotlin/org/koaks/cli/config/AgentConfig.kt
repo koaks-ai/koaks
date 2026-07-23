@@ -47,6 +47,8 @@ internal data class AgentConfig(
     val historyMessages: Int,
     val temperature: Double?,
     val showReasoning: Boolean,
+    val skillPaths: List<String>,
+    val skills: List<String>,
     val providerProfiles: Map<Provider, ProviderProfile>,
     val configuredProviders: List<Provider>,
 )

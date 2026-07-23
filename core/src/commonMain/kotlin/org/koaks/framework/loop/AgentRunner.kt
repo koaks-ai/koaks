@@ -64,10 +64,6 @@ internal class AgentRunner(private val agent: Agent) {
             emit(event)
         }
 
-        // Resolve any deferred tool sources (e.g. MCP tools/list) once, in this
-        // suspend context, before the first model step.
-        agent.tools.resolveLazySources()
-
         var state = AgentState(messages = initial, activeAgentName = agent.name)
         var retries = 0
 
