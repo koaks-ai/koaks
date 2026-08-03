@@ -39,17 +39,26 @@
 The current published group is `org.koaks`. Pick the `koaks-core` runtime plus
 the provider module(s) you need.
 
+For snapshot versions, add the Central snapshot repository:
+
+```kotlin
+repositories {
+    mavenCentral()
+    maven("https://central.sonatype.com/repository/maven-snapshots/")
+}
+```
+
 **Gradle (Kotlin DSL)**
 ```kotlin
 // For Gradle projects — JVM or Kotlin Multiplatform — just add the artifact below.
 // Gradle resolves the right platform variant automatically.
-implementation("org.koaks:koaks-core:0.0.1-snapshot1")
-implementation("org.koaks:koaks-model-qwen:0.0.1-snapshot1")
+implementation("org.koaks:koaks-core:0.0.1-SNAPSHOT")
+implementation("org.koaks:koaks-model-qwen:0.0.1-SNAPSHOT")
 
 // Optional add-ons:
-// implementation("org.koaks:koaks-model-ollama:0.0.1-snapshot1")
-// implementation("org.koaks:koaks-memory-summarizing:0.0.1-snapshot1")
-// implementation("org.koaks:koaks-memory-vector:0.0.1-snapshot1")
+// implementation("org.koaks:koaks-model-ollama:0.0.1-SNAPSHOT")
+// implementation("org.koaks:koaks-memory-summarizing:0.0.1-SNAPSHOT")
+// implementation("org.koaks:koaks-memory-vector:0.0.1-SNAPSHOT")
 ```
 
 **Maven**
@@ -59,12 +68,12 @@ implementation("org.koaks:koaks-model-qwen:0.0.1-snapshot1")
 <dependency>
   <groupId>org.koaks</groupId>
   <artifactId>koaks-core-jvm</artifactId>
-  <version>0.0.1-snapshot1</version>
+  <version>0.0.1-SNAPSHOT</version>
 </dependency>
 <dependency>
   <groupId>org.koaks</groupId>
   <artifactId>koaks-model-qwen-jvm</artifactId>
-  <version>0.0.1-snapshot1</version>
+  <version>0.0.1-SNAPSHOT</version>
 </dependency>
 ```
 

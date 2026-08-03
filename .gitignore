@@ -16,6 +16,7 @@ build/
 *.iml
 *.ipr
 *.env
+signing-key.asc
 out/
 !**/src/main/**/out/
 !**/src/test/**/out/

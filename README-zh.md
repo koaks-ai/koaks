@@ -38,17 +38,26 @@
 
 当前发布的 group 为 `org.koaks`。引入 `koaks-core` 运行时，再按需选择提供商模块。
 
+使用快照版本时，需要添加 Central 快照仓库：
+
+```kotlin
+repositories {
+    mavenCentral()
+    maven("https://central.sonatype.com/repository/maven-snapshots/")
+}
+```
+
 **Gradle (Kotlin DSL)**
 ```kotlin
 // 对于 Gradle 项目（无论 JVM 还是 Kotlin Multiplatform），只需添加如下依赖，
 // Gradle 会自动解析对应平台的变体。
-implementation("org.koaks:koaks-core:0.0.1-snapshot1")
-implementation("org.koaks:koaks-model-qwen:0.0.1-snapshot1")
+implementation("org.koaks:koaks-core:0.0.1-SNAPSHOT")
+implementation("org.koaks:koaks-model-qwen:0.0.1-SNAPSHOT")
 
 // 可选模块：
-// implementation("org.koaks:koaks-model-ollama:0.0.1-snapshot1")
-// implementation("org.koaks:koaks-memory-summarizing:0.0.1-snapshot1")
-// implementation("org.koaks:koaks-memory-vector:0.0.1-snapshot1")
+// implementation("org.koaks:koaks-model-ollama:0.0.1-SNAPSHOT")
+// implementation("org.koaks:koaks-memory-summarizing:0.0.1-SNAPSHOT")
+// implementation("org.koaks:koaks-memory-vector:0.0.1-SNAPSHOT")
 ```
 
 **Maven**
@@ -58,12 +67,12 @@ implementation("org.koaks:koaks-model-qwen:0.0.1-snapshot1")
 <dependency>
   <groupId>org.koaks</groupId>
   <artifactId>koaks-core-jvm</artifactId>
-  <version>0.0.1-snapshot1</version>
+  <version>0.0.1-SNAPSHOT</version>
 </dependency>
 <dependency>
   <groupId>org.koaks</groupId>
   <artifactId>koaks-model-qwen-jvm</artifactId>
-  <version>0.0.1-snapshot1</version>
+  <version>0.0.1-SNAPSHOT</version>
 </dependency>
 ```
 
