@@ -33,6 +33,7 @@
 * 一个 LLM 端点 + API 密钥（任意 OpenAI 兼容的提供商，例如通义千问 / DeepSeek，或本地 Ollama）
 
 > **注意：当前项目正在快速迭代期，API 随时都有可能发生变化。**
+> JVM artifacts 使用 Java 21 字节码，不再支持在 Java 17 运行时中加载。
 
 ### 2. 引入依赖
 
@@ -107,6 +108,61 @@ fun main() = runBlocking {
 
 `run` 会驱动 Agent 运行至终止状态，并返回 `AgentResult`（`.text`、`.usage`、
 `.isSuccess`）。`agent.use { }` 会在结束时关闭由 Agent 持有的传输层。
+
+**纯 Java 21。** JVM artifacts 同时提供普通 Builder、`CompletableFuture`、JDK
+`Flow.Publisher`、虚拟线程 Tool 回调和 Jackson 结构化输出门面：
+
+```java
+import org.koaks.framework.loop.AgentResult;
+import org.koaks.framework.annotation.Param;
+import org.koaks.framework.annotation.Tool;
+import org.koaks.java.Agent;
+import org.koaks.java.qwen.Qwen;
+
+record WeatherInput(String city) {}
+record Weather(String city, int tempC) {}
+
+final class WeatherTools {
+    @Tool("查询指定城市天气")
+    public String getWeather(WeatherInput input) {
+        return input.city() + "：多云";
+    }
+}
+
+try (Agent agent = Agent.builder()
+        .id("weather-agent")
+        .instructions("回答天气问题，必要时调用工具。")
+        .model(Qwen.builder()
+                .apiKey(System.getenv("QWEN_API_KEY"))
+                .modelName("qwen-plus")
+                .build())
+        .tool(new WeatherTools())
+        .maxSteps(20)
+        .build()) {
+    AgentResult result = agent.run("上海天气怎么样？");
+    Weather typed = agent.runStructured("以 JSON 返回上海天气", Weather.class);
+    System.out.println(result.getText() + " / " + typed);
+}
+```
+
+Java 方法直接接收标量参数时，框架会将它包装为模型 Tool Calling 所需的对象
+Schema。它必须通过 `@Param` 显式提供稳定的 JSON 字段名和描述，不使用参数名推断：
+
+```java
+@Tool("查询指定城市天气")
+public String getWeather(
+        @Param(name = "city", description = "城市名称，例如上海") String city
+) {
+    return city + "：多云";
+}
+```
+
+传入对象上所有公开的 `@Tool` 方法都会注册。方法可以没有参数或接收一个
+record/POJO 参数，并返回 `String` 或 `CompletionStage<String>`。需要显式 lambda
+注册时仍可使用 `Tools.sync`/`Tools.async`。`runAsync` 返回可取消的
+`CompletableFuture`，`stream` 返回单订阅 JDK Publisher；需要显式并发和 quota
+控制时使用 `AgentRuntime.builder()`。完整注解示例见
+[`JavaQuickStart.java`](/examples/src/jvmMain/java/examples/JavaQuickStart.java)。
 
 **多段 & 动态系统指令。** 固定提示词用 `instructions = "..."` 即可。当指令需要分成多段、
 或某些片段依赖运行时上下文时，改用 `instructions { }` 块。其中每个 `dynamic { }` 都是一个

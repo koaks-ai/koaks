@@ -1,18 +1,32 @@
 package org.koaks.framework.annotation
 
 /**
- * JVM convenience annotation marking a tool's input type (a data class) with the
- * metadata the model needs. This is **sugar only**:
- * it carries `name`/`description`, and [annotatedTool] turns an annotated input type
- * plus an `execute` lambda into a regular [org.koaks.framework.tool.Tool].
+ * Marks a JVM method as an Agent tool.
  *
- * There is NO separate reflection-based execution path — reflection is used once, at
- * registration time, only to read this annotation; execution still flows through the
- * normal `Tool<In>.execute`, identical across all platforms.
+ * Java callers can pass an object containing annotated public methods directly to
+ * `org.koaks.java.Agent.Builder.tool(Object)`. The builder scans the object once and
+ * adapts every annotated method to the regular core Tool abstraction.
+ *
+ * [AnnotationTarget.CLASS] is retained for the older Kotlin/JVM [annotatedTool]
+ * convenience API.
  */
-@Target(AnnotationTarget.CLASS)
+@Target(
+    AnnotationTarget.CLASS,
+    AnnotationTarget.FUNCTION,
+    AnnotationTarget.PROPERTY_GETTER,
+    AnnotationTarget.PROPERTY_SETTER,
+)
 @Retention(AnnotationRetention.RUNTIME)
 annotation class Tool(
-    val name: String,
-    val description: String,
+    /** Positional description form: `@Tool("Get the weather for a city")`. */
+    val value: String = "",
+
+    /** Explicit tool name; method-level tools default to the Java method name. */
+    val name: String = "",
+
+    /** Named description form retained for source compatibility. */
+    val description: String = "",
 )
+
+internal val Tool.resolvedDescription: String
+    get() = value.ifBlank { description }

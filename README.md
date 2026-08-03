@@ -33,6 +33,7 @@
 * An LLM endpoint + API key (any OpenAI-compatible provider, e.g. Qwen / DeepSeek, or a local Ollama)
 
 > **Warning:** The project is in a rapid iteration phase — the API may change at any time.
+> JVM artifacts are compiled for Java 21; Java 17 runtimes are no longer supported.
 
 ### 2. Add Dependencies
 
@@ -109,6 +110,64 @@ fun main() = runBlocking {
 `run` drives the agent to a terminal state and returns an `AgentResult`
 (`.text`, `.usage`, `.isSuccess`). `agent.use { }` closes the transport the agent owns
 when you're done.
+
+**Pure Java 21.** The JVM artifacts also expose a facade that uses regular builders,
+`CompletableFuture`, JDK `Flow.Publisher`, virtual-thread tool callbacks, and Jackson
+for tool inputs and structured output:
+
+```java
+import org.koaks.framework.loop.AgentResult;
+import org.koaks.framework.annotation.Param;
+import org.koaks.framework.annotation.Tool;
+import org.koaks.java.Agent;
+import org.koaks.java.qwen.Qwen;
+
+record WeatherInput(String city) {}
+record Weather(String city, int tempC) {}
+
+final class WeatherTools {
+    @Tool("Get weather for a city")
+    public String getWeather(WeatherInput input) {
+        return input.city() + ": cloudy";
+    }
+}
+
+try (Agent agent = Agent.builder()
+        .id("weather-agent")
+        .instructions("Answer concisely and call tools when useful.")
+        .model(Qwen.builder()
+                .apiKey(System.getenv("QWEN_API_KEY"))
+                .modelName("qwen-plus")
+                .build())
+        .tool(new WeatherTools())
+        .maxSteps(20)
+        .build()) {
+    AgentResult result = agent.run("What is the weather in Shanghai?");
+    Weather typed = agent.runStructured("Return Shanghai weather as JSON", Weather.class);
+    System.out.println(result.getText() + " / " + typed);
+}
+```
+
+A direct Java scalar parameter is wrapped into the object schema expected by model
+tool calling. It must declare a stable JSON name and description with `@Param`;
+parameter-name inference is intentionally not used:
+
+```java
+@Tool("Get weather for a city")
+public String getWeather(
+        @Param(name = "city", description = "City name, for example Shanghai") String city
+) {
+    return city + ": cloudy";
+}
+```
+
+Every public `@Tool` method on the supplied object is registered. Methods may take no
+arguments or one record/POJO argument, and may return `String` or
+`CompletionStage<String>`. `Tools.sync`/`Tools.async` remain available for explicit
+lambda-based registration. Use `runAsync` for a cancellable `CompletableFuture`,
+`stream` for a single-subscriber JDK publisher, and `AgentRuntime.builder()` when
+explicit concurrency and quota control is needed. A complete annotated example is
+available in [`JavaQuickStart.java`](/examples/src/jvmMain/java/examples/JavaQuickStart.java).
 
 **Multi-segment & dynamic instructions.** The `instructions = "..."` shorthand is fine for
 a fixed prompt. When you need several pieces — or parts that depend on run-time context —

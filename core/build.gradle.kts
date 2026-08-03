@@ -19,6 +19,9 @@ kotlin {
         val jvmMain by getting {
             dependencies {
                 api(libs.ktor.client.okhttp)
+                api(libs.jackson.databind)
+                implementation(libs.victools.jsonschema.generator)
+                implementation(libs.victools.jsonschema.jackson)
 //                api(libs.coroutines.reactor)
                 api(libs.logback.classic)
             }

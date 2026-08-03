@@ -12,6 +12,7 @@ kotlin {
                 implementation(project(":koaks-memory:summarizing"))
                 implementation(project(":koaks-model:anthropic"))
                 implementation(project(":koaks-model:openai"))
+                implementation(project(":koaks-model:qwen"))
                 implementation(libs.dotenv)
             }
         }

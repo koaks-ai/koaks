@@ -15,7 +15,7 @@ plugins {
 kotlin {
     // The toolchain fixes both the compile JDK and the resulting jvmTarget, so no
     // explicit `jvmTarget` is needed (and `kotlinOptions` is deprecated in Kotlin 2.x).
-    jvmToolchain(17)
+    jvmToolchain(21)
 
     jvm()
 

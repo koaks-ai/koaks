@@ -28,8 +28,10 @@ inline fun <reified In> annotatedTool(
         "${In::class.java.simpleName} must be annotated with @org.koaks.framework.annotation.Tool"
     }
     return InlineTool(
-        name = meta.name,
-        description = meta.description,
+        name = meta.name.ifBlank { In::class.java.simpleName },
+        description = meta.value.ifBlank { meta.description }.also {
+            require(it.isNotBlank()) { "@Tool description on ${In::class.java.name} must not be blank" }
+        },
         inputSerializer = serializer<In>(),
         returnDirectly = returnDirectly,
         hasSideEffects = hasSideEffects,

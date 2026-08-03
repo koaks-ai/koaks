@@ -10,6 +10,8 @@ ktor = "3.2.3"
 serializationJson = "1.8.1"
 serializationCore = "1.8.1"
 coroutines = "1.10.2"
+jackson = "3.2.1"
+victools = "5.0.0"
 kaml = "0.85.0"
 okio = "3.15.0"
 
@@ -41,6 +43,9 @@ logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "lo
 reflections = { module = "org.reflections:reflections", version.ref = "reflections" }
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
 coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactor", version.ref = "coroutines" }
+jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson" }
+victools-jsonschema-generator = { module = "com.github.victools:jsonschema-generator", version.ref = "victools" }
+victools-jsonschema-jackson = { module = "com.github.victools:jsonschema-module-jackson", version.ref = "victools" }
 
 # jvmMain & androidMain
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
