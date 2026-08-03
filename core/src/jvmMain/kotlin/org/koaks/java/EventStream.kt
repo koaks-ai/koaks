@@ -24,7 +24,6 @@ class EventStream private constructor(
     private val active = AtomicReference<StreamSubscription?>()
 
     override fun subscribe(subscriber: Flow.Subscriber<in AgentEvent>) {
-        requireNotNull(subscriber) { "subscriber must not be null" }
         if (closed.get()) {
             subscriber.onSubscribe(RejectedSubscription)
             subscriber.onError(IllegalStateException("EventStream is closed"))
