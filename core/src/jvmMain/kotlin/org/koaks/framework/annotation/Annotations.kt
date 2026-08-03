@@ -16,13 +16,3 @@ annotation class Tool(
     val name: String,
     val description: String,
 )
-
-/**
- * Documents a single tool input field. Purely advisory metadata for now; the JSON
- * schema's property names already come from the serializer / `@SerialName`.
- */
-@Target(AnnotationTarget.PROPERTY, AnnotationTarget.VALUE_PARAMETER, AnnotationTarget.FIELD)
-@Retention(AnnotationRetention.RUNTIME)
-annotation class Param(
-    val description: String = "",
-)

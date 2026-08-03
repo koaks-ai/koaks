@@ -12,6 +12,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import org.koaks.framework.annotation.Param
+import org.koaks.framework.annotation.resolvedDescription
 
 /**
  * `SerialDescriptor → JSON Schema` generator, running purely in commonMain (no JVM
@@ -28,6 +30,7 @@ import kotlinx.serialization.json.buildJsonObject
  *  - recursion → handled via `$ref` / `$defs`; a self-referential type emits a
  *    `$ref` to its own definition rather than recursing forever
  *  - `@SerialName` → honored via element names / serialName
+ *  - `@Param` → type/property descriptions and explicit optionality
  *
  * Named composite types (objects, enums, sealed hierarchies) are hoisted into
  * `$defs` and referenced by `$ref`, which both deduplicates and breaks recursion.
@@ -45,7 +48,10 @@ object SerialDescriptorToJsonSchema {
      */
     fun generate(descriptor: SerialDescriptor): JsonObject {
         val ctx = Ctx()
-        val root = ctx.schemaFor(descriptor, inlineTopLevel = true)
+        val root = withDescription(
+            ctx.schemaFor(descriptor, inlineTopLevel = true),
+            descriptor.annotations.param()?.resolvedDescription,
+        )
         if (ctx.defs.isEmpty()) return root
         return buildJsonObject {
             root.forEach { (k, v) -> put(k, v) }
@@ -101,13 +107,21 @@ object SerialDescriptorToJsonSchema {
             put("type", JsonPrimitive("object"))
             put("properties", buildJsonObject {
                 for (i in 0 until descriptor.elementsCount) {
-                    put(descriptor.getElementName(i), elementSchema(descriptor.getElementDescriptor(i)))
+                    val annotations = descriptor.getElementAnnotations(i)
+                    put(
+                        descriptor.getElementName(i),
+                        withDescription(
+                            elementSchema(descriptor.getElementDescriptor(i)),
+                            annotations.param()?.resolvedDescription,
+                        ),
+                    )
                 }
             })
             val required = buildJsonArray {
                 for (i in 0 until descriptor.elementsCount) {
                     val elem = descriptor.getElementDescriptor(i)
-                    if (!elem.isNullable && !descriptor.isElementOptional(i)) {
+                    val explicitlyOptional = descriptor.getElementAnnotations(i).param()?.required == false
+                    if (!explicitlyOptional && !elem.isNullable && !descriptor.isElementOptional(i)) {
                         add(JsonPrimitive(descriptor.getElementName(i)))
                     }
                 }
@@ -201,6 +215,16 @@ object SerialDescriptorToJsonSchema {
             put("oneOf", buildJsonArray { add(base); add(buildJsonObject { put("type", JsonPrimitive("null")) }) })
         }
     }
+
+    private fun withDescription(base: JsonObject, description: String?): JsonObject {
+        if (description.isNullOrBlank()) return base
+        return buildJsonObject {
+            base.forEach { (key, value) -> put(key, value) }
+            put("description", JsonPrimitive(description))
+        }
+    }
+
+    private fun List<Annotation>.param(): Param? = filterIsInstance<Param>().firstOrNull()
 
     /** A stable `$defs` key for a named type — last path segment of the serialName. */
     private fun defName(descriptor: SerialDescriptor): String =

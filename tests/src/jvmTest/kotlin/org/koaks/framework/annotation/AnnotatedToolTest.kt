@@ -19,7 +19,7 @@ class AnnotatedToolTest {
     @Serializable
     @Tool(name = "weather", description = "Get the weather for a city")
     data class WeatherInput(
-        @Param("the city name") val city: String,
+        @Param(name = "city", description = "the city name") val city: String,
         @SerialName("unit") val unit: String = "celsius",
     )
 

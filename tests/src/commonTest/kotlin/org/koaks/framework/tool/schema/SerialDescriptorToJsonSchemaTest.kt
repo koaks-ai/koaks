@@ -6,6 +6,7 @@ import kotlinx.serialization.serializer
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import org.koaks.framework.annotation.Param
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -70,6 +71,31 @@ class SerialDescriptorToJsonSchemaTest {
         assertTrue("tags" in required)
         assertTrue("note" !in required, "nullable field must not be required")
         assertTrue("verbose" !in required, "field with default must not be required")
+    }
+
+    @Serializable
+    @Param(name = "describedInput", description = "Weather query input")
+    data class DescribedInput(
+        @Param(name = "city", description = "City name, for example Shanghai")
+        val city: String,
+        @Param(name = "date", description = "Optional date supplied by the caller", required = false)
+        val date: String,
+    )
+
+    @Test
+    fun param_annotations_add_common_schema_descriptions() {
+        val schema = SerialDescriptorToJsonSchema.generate(serializer<DescribedInput>().descriptor)
+        assertEquals("Weather query input", (schema["description"] as JsonPrimitive).content)
+
+        val properties = schema["properties"] as JsonObject
+        val city = properties["city"] as JsonObject
+        val date = properties["date"] as JsonObject
+        assertEquals("City name, for example Shanghai", (city["description"] as JsonPrimitive).content)
+        assertEquals("Optional date supplied by the caller", (date["description"] as JsonPrimitive).content)
+
+        val required = (schema["required"] as JsonArray).map { (it as JsonPrimitive).content }
+        assertTrue("city" in required)
+        assertTrue("date" !in required)
     }
 
     private fun typeOf(el: kotlinx.serialization.json.JsonElement): String =

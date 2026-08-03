@@ -13,7 +13,7 @@ import org.koaks.framework.tool.Tool
  * ```kotlin
  * @Serializable
  * @Tool(name = "weather", description = "Get weather")
- * data class WeatherInput(@Param("city name") val city: String)
+ * data class WeatherInput(@Param(name = "city", description = "city name") val city: String)
  *
  * tools { tool(annotatedTool<WeatherInput> { fetchWeather(it.city) }) }
  * ```

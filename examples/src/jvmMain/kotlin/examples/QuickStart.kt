@@ -2,6 +2,7 @@ package examples
 
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
+import org.koaks.framework.annotation.Param
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.tool
@@ -80,6 +81,7 @@ data object NoInput
 
 @Serializable
 data class WeatherInput(
+    @Param(name = "city", description = "城市名称，例如西安或上海")
     val city: String,
 )
 
