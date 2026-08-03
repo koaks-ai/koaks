@@ -218,6 +218,7 @@ agent.use {
 
 ```kotlin
 import kotlinx.serialization.Serializable
+import org.koaks.framework.annotation.Param
 import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.tool
 import org.koaks.framework.loop.use
@@ -227,7 +228,10 @@ import org.koaks.provider.qwen.qwen
 data object NoInput
 
 @Serializable
-data class WeatherInput(val city: String)
+data class WeatherInput(
+    @Param(name = "city", description = "城市名称，例如西安或上海")
+    val city: String,
+)
 
 fun main() = kotlinx.coroutines.runBlocking {
     val agent = agent {

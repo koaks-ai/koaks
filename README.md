@@ -226,6 +226,7 @@ Define a tool inline with a typed input — its JSON Schema is generated from th
 
 ```kotlin
 import kotlinx.serialization.Serializable
+import org.koaks.framework.annotation.Param
 import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.tool
 import org.koaks.framework.loop.use
@@ -235,7 +236,10 @@ import org.koaks.provider.qwen.qwen
 data object NoInput
 
 @Serializable
-data class WeatherInput(val city: String)
+data class WeatherInput(
+    @Param(name = "city", description = "City name, for example Shanghai")
+    val city: String,
+)
 
 fun main() = kotlinx.coroutines.runBlocking {
     val agent = agent {
