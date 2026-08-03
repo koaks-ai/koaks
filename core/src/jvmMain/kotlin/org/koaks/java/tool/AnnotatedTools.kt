@@ -54,6 +54,10 @@ internal fun scanAnnotatedTools(toolContainer: Any): List<ToolSpec<*>> {
             "@Tool method ${method.displayName()} must return String or CompletionStage<String>"
         }
         validateAsyncResultType(method, async)
+        require(method.trySetAccessible()) {
+            "@Tool method ${method.displayName()} cannot be accessed; " +
+                "make its declaring class public or open its package to Koaks"
+        }
 
         when {
             method.parameterCount == 0 && async -> Tools.noArgsAsync(

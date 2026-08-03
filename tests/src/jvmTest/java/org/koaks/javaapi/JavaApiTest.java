@@ -203,10 +203,29 @@ class JavaApiTest {
 
     }
 
+    @Test
+    void packagePrivateAnnotatedToolContainerIsInvocable() throws Exception {
+        try (var agent = Agent.builder()
+                .id("java-package-private-tool")
+                .model(Models.custom(JavaFacadeFixtures.toolModel(
+                        "getLocation", "{}", "done")))
+                .tool(new PackagePrivateAnnotatedTools())
+                .build()) {
+            assertEquals("done", agent.run("location").getText());
+        }
+    }
+
     static final class InvalidAnnotatedTools {
         @Tool(name = "invalid", description = "not public")
         private String invalid() {
             return "invalid";
+        }
+    }
+
+    static final class PackagePrivateAnnotatedTools {
+        @Tool("Get the user's location")
+        public String getLocation() {
+            return "Shanghai";
         }
     }
 

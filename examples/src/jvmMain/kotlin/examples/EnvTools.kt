@@ -14,6 +14,7 @@ object EnvTools {
         ignoreIfMissing = true
     }
 
+    @JvmStatic
     fun loadValue(key: String): String = env.required(key)
 
     private fun findEnvDirectory(): String {
