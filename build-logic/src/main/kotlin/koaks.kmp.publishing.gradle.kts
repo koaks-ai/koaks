@@ -16,7 +16,7 @@ configure<MavenPublishBaseExtension> {
 
     pom {
         description.set(
-            "An Agentic AI framework for Kotlin Multiplatform."
+            "Agentic AI framework for Kotlin Multiplatform."
         )
         inceptionYear.set("2025")
         url.set("https://github.com/koaks-ai/koaks")
@@ -29,9 +29,9 @@ configure<MavenPublishBaseExtension> {
         }
         developers {
             developer {
-                id.set("mynna404")
-                name.set("TruE")
-                url.set("https://github.com/mynna404")
+                id.set("gmjneko")
+                name.set("GMJneko")
+                url.set("https://github.com/gmjneko")
             }
         }
         scm {
