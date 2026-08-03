@@ -37,12 +37,12 @@ jobs:
     needs: validate-version
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Upload Windows Kotlin/Native publications
         shell: pwsh
         run: >-
@@ -54,12 +54,12 @@ jobs:
     needs: [validate-version, publish-windows]
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Upload Apple, JVM, JS, and multiplatform publications
         run: >-
           ./gradlew publishToMavenCentral
