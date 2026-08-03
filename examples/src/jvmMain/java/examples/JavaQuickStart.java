@@ -68,28 +68,15 @@ public final class JavaQuickStart {
                         }
                         case AgentEvent.ToolCallRequested requested -> {
                             var call = requested.getCall();
-                            System.out.printf(
-                                    "%n[调用工具] %s %s%n",
-                                    call.getName(),
-                                    call.getArguments()
-                            );
+                            System.out.printf("%n[调用工具] %s %s%n", call.getName(), call.getArguments());
                         }
-                        case AgentEvent.ToolResult result -> System.out.printf(
-                                "[工具结果] %s%n",
-                                result.getOutput()
-                        );
-                        case AgentEvent.Failed failed -> System.err.println(
-                                "[执行错误] " + failed.getError().getMessage()
-                        );
+                        case AgentEvent.ToolResult result -> System.out.printf("[工具结果] %s%n", result.getOutput());
+                        case AgentEvent.Failed failed ->
+                                System.err.println("[执行错误] " + failed.getError().getMessage());
                         case AgentEvent.Completed completed ->
-                                System.out.printf(
-                                        "%n[完成] usage=%s%n",
-                                        completed.getUsage()
-                                );
-                        case AgentEvent.Terminated terminated -> System.out.printf(
-                                "%n[提前终止] reason=%s%n",
-                                terminated.getReason()
-                        );
+                                System.out.printf("%n[完成] usage=%s%n", completed.getUsage());
+                        case AgentEvent.Terminated terminated ->
+                                System.out.printf("%n[提前终止] reason=%s%n", terminated.getReason());
                         default -> {
                         }
                     }
