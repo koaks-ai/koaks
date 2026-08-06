@@ -1,6 +1,7 @@
 package examples
 
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
@@ -61,29 +62,30 @@ private suspend fun runMassSchedulingStress(options: StressOptions) = coroutineS
     AgentRuntime { maxConcurrency = options.concurrency }.use { runtime ->
         val startedAt = System.nanoTime()
         val submitted = AtomicInteger(0)
+        val executionStartedAt = AtomicLong(0L)
         val progressJob = launch(Dispatchers.Default) {
             var lastSubmitted = -1
             var lastCompleted = -1
             while (true) {
-                delay(250)
+                delay(500)
                 val submittedNow = submitted.get()
                 val completed = probe.completedCount
                 if (completed >= options.agents) break
                 if (submittedNow == lastSubmitted && completed == lastCompleted) continue
                 lastSubmitted = submittedNow
                 lastCompleted = completed
-                val elapsedSeconds = (System.nanoTime() - startedAt) / 1_000_000_000.0
-                val throughput = completed / elapsedSeconds.coerceAtLeast(0.000_001)
-                val remaining = options.agents - completed
-                val etaSeconds = if (throughput > 0.0) remaining / throughput else Double.POSITIVE_INFINITY
+                val executionStart = executionStartedAt.get()
+                val executionSeconds = if (executionStart == 0L) {
+                    0.0
+                } else {
+                    (System.nanoTime() - executionStart) / 1_000_000_000.0
+                }
+                val throughput = if (executionSeconds > 0.0) completed / executionSeconds else 0.0
                 StressConsole.progress(
                     submitted = submittedNow,
                     completed = completed,
                     total = options.agents,
-                    running = runtime.metrics().running,
-                    maximum = probe.maxObservedConcurrency,
                     throughput = throughput,
-                    etaSeconds = etaSeconds,
                 )
             }
         }
@@ -92,8 +94,16 @@ private suspend fun runMassSchedulingStress(options: StressOptions) = coroutineS
             submittedNanos[index] = System.nanoTime()
             runtime.spawn(worker, "stress-run#$index").also { submitted.incrementAndGet() }
         }
-        StressConsole.kv("提交完成", "${formatCount(submitted.get())} Runs 已进入 Runtime")
-        StressConsole.note("统一起跑门已释放：Scheduler 开始以最多 ${options.concurrency} 个并发槽消费就绪队列。")
+        StressConsole.progress(
+            submitted = submitted.get(),
+            completed = 0,
+            total = options.agents,
+            throughput = 0.0,
+            forceQueue = true,
+        )
+        StressConsole.kv("任务提交完毕", "共 ${formatCount(submitted.get())} 个")
+        StressConsole.note("开始执行，最多同时运行 ${formatCount(options.concurrency)} 个任务。")
+        executionStartedAt.set(System.nanoTime())
         startGate.complete(Unit)
 
         val heapAfterSpawn = usedHeapBytes()
@@ -108,6 +118,8 @@ private suspend fun runMassSchedulingStress(options: StressOptions) = coroutineS
         val metrics = runtime.metrics()
         val elapsedSeconds = elapsedNanos / 1_000_000_000.0
         val throughput = options.agents / elapsedSeconds.coerceAtLeast(0.000_001)
+        val executionElapsedSeconds = (System.nanoTime() - executionStartedAt.get()) / 1_000_000_000.0
+        val executionThroughput = options.agents / executionElapsedSeconds.coerceAtLeast(0.000_001)
         val heapDelta = (maxOf(heapAfterSpawn, heapAfterRun) - heapBefore).coerceAtLeast(0L)
 
         check(completed == options.agents) {
@@ -122,31 +134,29 @@ private suspend fun runMassSchedulingStress(options: StressOptions) = coroutineS
             submitted = submitted.get(),
             completed = completed,
             total = options.agents,
-            running = metrics.running,
-            maximum = probe.maxObservedConcurrency,
-            throughput = throughput,
-            etaSeconds = 0.0,
+            throughput = executionThroughput,
         )
-        StressConsole.kv("运行实例", "${formatCount(options.agents)}（同一 Agent 定义，不同 RunId/ACB）")
-        StressConsole.kv("完成情况", "completed=${formatCount(completed)}, failed=$failed, terminated=$terminated")
-        StressConsole.kv("并发约束", "observed=${probe.maxObservedConcurrency} ≤ configured=${options.concurrency}")
-        StressConsole.kv("总耗时", formatMillis(elapsedNanos))
-        StressConsole.kv("吞吐量", "${"%.0f".format(throughput)} runs/s")
         StressConsole.kv(
-            "调度等待延迟",
-            "P50=${percentileMillis(schedulingWaitNanos, 0.50)}ms, " +
-                "P95=${percentileMillis(schedulingWaitNanos, 0.95)}ms, " +
-                "P99=${percentileMillis(schedulingWaitNanos, 0.99)}ms",
+            "测试结果",
+            "成功 ${formatCount(completed)}，失败 ${formatCount(failed)}，提前终止 ${formatCount(terminated)}",
         )
-        StressConsole.kv("近似堆内存增量", "${formatBytes(heapDelta)}（未强制 GC，仅作同机对比）")
-        StressConsole.kv("Runtime 指标", "runs=${metrics.total}, tokens=${metrics.totalTokens}, steps=${metrics.totalSteps}")
+        StressConsole.kv("并发控制", "执行峰值 ${probe.maxObservedConcurrency}，配置上限 ${options.concurrency}")
+        StressConsole.kv("总耗时", formatMillis(elapsedNanos))
+        StressConsole.kv("整体吞吐量", "${"%.0f".format(throughput)} 个任务/秒")
+        StressConsole.kv(
+            "调度等待时间",
+            "50% 的任务不超过 ${percentileMillis(schedulingWaitNanos, 0.50)}ms，" +
+                "95% 不超过 ${percentileMillis(schedulingWaitNanos, 0.95)}ms，" +
+                "99% 不超过 ${percentileMillis(schedulingWaitNanos, 0.99)}ms",
+        )
+        StressConsole.kv("内存占用增量", "${formatBytes(heapDelta)}（JVM 估算值）")
 
         val reapStarted = System.nanoTime()
         val reaped = runtime.reap()
         val reapNanos = System.nanoTime() - reapStarted
         check(reaped == options.agents && runtime.runs.isEmpty())
-        StressConsole.result("稳定性断言", "全部完成、无失败、无越过并发上限、无残留 ACB")
-        StressConsole.kv("reap()", "回收 ${formatCount(reaped)} 个终态实例，耗时 ${formatMillis(reapNanos)}")
+        StressConsole.result("测试通过", "所有任务均已完成，并发控制符合预期")
+        StressConsole.kv("资源回收", "已清理 ${formatCount(reaped)} 条运行记录，用时 ${formatMillis(reapNanos)}")
     }
 }
 
@@ -218,47 +228,34 @@ private object StressConsole {
     private const val YELLOW = "\u001B[33m"
 
     fun banner(options: StressOptions) {
-        val width = 70
-        fun line(value: String): String = "║  ${value.padEnd(width - 2)}║"
-        println(
-            cyan(
-                listOf(
-                    "╔${"═".repeat(width)}╗",
-                    line("KOAKS · Agent Runtime Mass-Scheduling Stress Test"),
-                    line("${formatCount(options.agents)} Runs / maxConcurrency=${options.concurrency}"),
-                    "╚${"═".repeat(width)}╝",
-                ).joinToString("\n"),
-            ),
-        )
-        println(dim("  deterministic mock model · sampled progress · no API key required\n"))
-        note("复用同一个不可变 Agent 定义；不订阅逐实例 RuntimeEvent，避免日志干扰测量。")
+        val divider = "━".repeat(64)
+        println(cyan(divider))
+        println(bold("  KOAKS Agent Runtime 大规模调度压力测试"))
+        println("  任务数量：${formatCount(options.agents)}    并发上限：${formatCount(options.concurrency)}")
+        println(cyan(divider))
+        println(dim("  使用本地模拟模型，无需 API Key\n"))
+        note("正在准备 ${formatCount(options.agents)} 个 Agent 任务，请稍候……")
     }
 
     fun progress(
         submitted: Int,
         completed: Int,
         total: Int,
-        running: Int,
-        maximum: Int,
         throughput: Double,
-        etaSeconds: Double,
+        forceQueue: Boolean = false,
     ) {
-        val queueing = submitted < total && completed == 0
+        val queueing = forceQueue || (submitted < total && completed == 0)
         val ratio = if (queueing) submitted.toDouble() / total else completed.toDouble() / total
-        val phase = if (queueing) "queue" else "run  "
+        val phase = if (queueing) "排队进度" else "执行进度"
         val width = 24
         val filled = (ratio.coerceIn(0.0, 1.0) * width).toInt()
         val bar = "█".repeat(filled) + "░".repeat(width - filled)
-        val eta = when {
-            completed >= total -> "done"
-            etaSeconds.isFinite() -> "${"%.1f".format(etaSeconds)}s"
-            else -> "--"
+        val detail = if (queueing) {
+            "已提交 ${formatCount(submitted)} / ${formatCount(total)}"
+        } else {
+            "已完成 ${formatCount(completed)} / ${formatCount(total)}  执行阶段平均速度 ${"%.0f".format(throughput)} 个/秒"
         }
-        println(
-            "  ${blue("stress $phase")} ${cyan(bar)} ${"%5.1f".format(ratio * 100)}%  " +
-                "submitted=${formatCount(submitted)}  completed=${formatCount(completed)}  " +
-                "running=$running  max=$maximum  rate=${"%.0f".format(throughput)}/s  eta=$eta",
-        )
+        println("  ${blue(phase)} ${cyan(bar)} ${"%5.1f".format(ratio * 100)}%  $detail")
     }
 
     fun kv(key: String, value: Any?) = println("  ${dim(key.padEnd(22))} ${bold(value.toString())}")
