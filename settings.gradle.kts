@@ -21,10 +21,10 @@ dependencyResolutionManagement {
 rootProject.name = "koaks"
 
 include("core")
-include("koaks-model:qwen")
-include("koaks-model:ollama")
-include("koaks-model:openai")
-include("koaks-model:anthropic")
+include("model-provider:qwen")
+include("model-provider:ollama")
+include("model-provider:openai")
+include("model-provider:anthropic")
 include("koaks-memory:summarizing")
 include("koaks-memory:vector")
 include("tests")

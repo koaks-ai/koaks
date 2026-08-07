@@ -7,10 +7,10 @@ kotlin {
         val commonTest by getting {
             dependencies {
                 implementation(project(":core"))
-                implementation(project(":koaks-model:qwen"))
-                implementation(project(":koaks-model:ollama"))
-                implementation(project(":koaks-model:openai"))
-                implementation(project(":koaks-model:anthropic"))
+                implementation(project(":model-provider:qwen"))
+                implementation(project(":model-provider:ollama"))
+                implementation(project(":model-provider:openai"))
+                implementation(project(":model-provider:anthropic"))
                 implementation(project(":koaks-memory:summarizing"))
                 implementation(project(":koaks-memory:vector"))
                 implementation(libs.coroutines.test)

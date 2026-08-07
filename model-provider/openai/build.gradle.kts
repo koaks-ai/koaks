@@ -16,10 +16,10 @@ kotlin {
 mavenPublishing {
     coordinates(
         groupId = project.group.toString(),
-        artifactId = "koaks-model-qwen",
+        artifactId = "provider-openai",
         version = project.version.toString()
     )
     pom {
-        name.set("koaks-model-qwen")
+        name.set("provider-openai")
     }
 }
