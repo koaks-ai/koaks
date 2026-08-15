@@ -6,8 +6,8 @@ import kotlinx.serialization.json.buildJsonObject
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.tool
-import org.koaks.provider.openai.ResponsesStateMode
-import org.koaks.provider.openai.openaiResponses
+import org.koaks.provider.openai.responses.ResponsesStateMode
+import org.koaks.provider.openai.responses.openaiResponses
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -34,7 +34,7 @@ fun main() = runBlocking {
             openaiResponses(
                 baseUrl = EnvTools.loadValue("OPENAI_BASE_URL"),
                 apiKey = EnvTools.loadValue("OPENAI_API_KEY"),
-                modelName = "gpt-5.6-luna",
+                modelName = "gpt-5.6-terra",
             ) {
                 stateMode = ResponsesStateMode.Replayable
                 temperature = 0.7

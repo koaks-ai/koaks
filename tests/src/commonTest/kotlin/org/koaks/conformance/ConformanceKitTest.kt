@@ -45,11 +45,11 @@ import org.koaks.provider.anthropic.toAnthropicMessages
 import org.koaks.provider.chatcompletions.ChatCompletionsDecoder
 import org.koaks.provider.chatcompletions.ChatCompletionsResponse
 import org.koaks.provider.chatcompletions.toChatMessages
-import org.koaks.provider.openai.OpenAIResponsesModel
-import org.koaks.provider.openai.ResponsesDecoder
-import org.koaks.provider.openai.ResponsesItemTypes
-import org.koaks.provider.openai.ResponsesStateMode
-import org.koaks.provider.openai.toInput
+import org.koaks.provider.openai.responses.OpenAIResponsesModel
+import org.koaks.provider.openai.responses.ResponsesDecoder
+import org.koaks.provider.openai.responses.ResponsesItemTypes
+import org.koaks.provider.openai.responses.ResponsesStateMode
+import org.koaks.provider.openai.responses.toInput
 import org.koaks.framework.utils.json.JsonUtil
 import kotlin.test.Test
 import kotlin.test.assertEquals

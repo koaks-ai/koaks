@@ -3,8 +3,8 @@ package org.koaks.java.openai
 import java.time.Duration
 import org.koaks.java.ModelSpec
 import org.koaks.provider.openai.OPENAI_DEFAULT_BASE_URL
-import org.koaks.provider.openai.ResponsesStateMode
-import org.koaks.provider.openai.openaiResponses
+import org.koaks.provider.openai.responses.ResponsesStateMode
+import org.koaks.provider.openai.responses.openaiResponses
 
 /** Java builder for OpenAI Responses API. */
 class OpenAIResponses private constructor() {

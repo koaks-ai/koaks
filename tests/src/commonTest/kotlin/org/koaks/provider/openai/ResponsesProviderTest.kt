@@ -19,6 +19,12 @@ import org.koaks.framework.provider.ModelConfig
 import org.koaks.framework.transport.ModelTransport
 import org.koaks.framework.transport.WireCall
 import org.koaks.framework.transport.WireFrame
+import org.koaks.provider.openai.responses.OpenAIResponsesModel
+import org.koaks.provider.openai.responses.ResponsesCheckpointCodec
+import org.koaks.provider.openai.responses.ResponsesDecoder
+import org.koaks.provider.openai.responses.ResponsesParams
+import org.koaks.provider.openai.responses.ResponsesStateMode
+import org.koaks.provider.openai.responses.toInput
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -28,7 +34,8 @@ class ResponsesProviderTest {
 
     @Test
     fun streaming_function_call_is_dispatched_once() {
-        val decoder = ResponsesDecoder(ResponsesStateMode.Replayable, persistCheckpoint = false, basisItems = emptyList())
+        val decoder =
+            ResponsesDecoder(ResponsesStateMode.Replayable, persistCheckpoint = false, basisItems = emptyList())
         val events = play(
             decoder,
             "response.created" to """{"type":"response.created","response":{"id":"resp_1"}}""",
@@ -118,7 +125,8 @@ class ResponsesProviderTest {
 
     @Test
     fun streaming_message_has_one_stable_item_and_preserves_refusal_and_annotations() {
-        val decoder = ResponsesDecoder(ResponsesStateMode.Replayable, persistCheckpoint = false, basisItems = emptyList())
+        val decoder =
+            ResponsesDecoder(ResponsesStateMode.Replayable, persistCheckpoint = false, basisItems = emptyList())
         val events = play(
             decoder,
             "response.created" to """{"type":"response.created","response":{"id":"resp_1"}}""",
@@ -175,7 +183,8 @@ class ResponsesProviderTest {
 
     @Test
     fun incomplete_body_preserves_nested_reason() {
-        val decoder = ResponsesDecoder(ResponsesStateMode.Replayable, persistCheckpoint = false, basisItems = emptyList())
+        val decoder =
+            ResponsesDecoder(ResponsesStateMode.Replayable, persistCheckpoint = false, basisItems = emptyList())
         val events = decoder.accept(
             WireFrame.Body(
                 "application/json",
@@ -190,7 +199,8 @@ class ResponsesProviderTest {
 
     @Test
     fun cancelled_background_body_maps_to_incomplete_cancelled() {
-        val decoder = ResponsesDecoder(ResponsesStateMode.ServerStored, persistCheckpoint = true, basisItems = emptyList())
+        val decoder =
+            ResponsesDecoder(ResponsesStateMode.ServerStored, persistCheckpoint = true, basisItems = emptyList())
         val events = decoder.accept(
             WireFrame.Body(
                 "application/json",

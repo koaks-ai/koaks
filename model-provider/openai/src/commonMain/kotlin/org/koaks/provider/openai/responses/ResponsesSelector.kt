@@ -1,4 +1,4 @@
-package org.koaks.provider.openai
+package org.koaks.provider.openai.responses
 
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -11,6 +11,7 @@ import org.koaks.framework.model.ModelCapabilities
 import org.koaks.framework.model.Support
 import org.koaks.framework.provider.DEFAULT_STREAM_IDLE_TIMEOUT_MS
 import org.koaks.framework.provider.ModelConfig
+import org.koaks.provider.openai.OPENAI_DEFAULT_BASE_URL
 
 @AgentDSL
 class OpenAIResponsesConfig(

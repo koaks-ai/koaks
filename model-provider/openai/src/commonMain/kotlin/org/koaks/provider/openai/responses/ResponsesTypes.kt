@@ -1,4 +1,4 @@
-package org.koaks.provider.openai
+package org.koaks.provider.openai.responses
 
 /**
  * How OpenAI Responses carries conversation state across model calls.

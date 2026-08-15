@@ -1,4 +1,4 @@
-package org.koaks.provider.openai
+package org.koaks.provider.openai.responses
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

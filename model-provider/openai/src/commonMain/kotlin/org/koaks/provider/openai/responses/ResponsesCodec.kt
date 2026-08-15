@@ -1,4 +1,4 @@
-package org.koaks.provider.openai
+package org.koaks.provider.openai.responses
 
 import kotlinx.serialization.json.JsonObject
 import org.koaks.framework.model.CheckpointScope

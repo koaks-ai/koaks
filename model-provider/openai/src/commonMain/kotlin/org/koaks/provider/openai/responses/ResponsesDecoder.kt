@@ -1,20 +1,18 @@
-package org.koaks.provider.openai
+package org.koaks.provider.openai.responses
 
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okio.ByteString.Companion.encodeUtf8
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.Annotation
 import org.koaks.framework.model.CheckpointScope
+import org.koaks.framework.model.ContentPart
 import org.koaks.framework.model.IncompleteReason
 import org.koaks.framework.model.ItemRef
 import org.koaks.framework.model.ModelEvent
@@ -534,7 +532,7 @@ class ResponsesDecoder(
         nativeId = nativeItemId?.let { ProviderScopedId(ProviderId.OpenAIResponses, it) },
         role = role,
         content = if (text.isEmpty()) emptyList()
-        else listOf(org.koaks.framework.model.ContentPart.Text(text.toString())),
+        else listOf(ContentPart.Text(text.toString())),
         refusal = refusal.toString().ifBlank { null },
         annotations = annotations.toList(),
     )
