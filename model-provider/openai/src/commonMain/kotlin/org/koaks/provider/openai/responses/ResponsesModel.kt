@@ -36,6 +36,7 @@ import org.koaks.framework.transport.TransportException
 import org.koaks.framework.transport.WireCall
 import org.koaks.framework.transport.WireFrame
 import org.koaks.framework.utils.json.JsonUtil
+import kotlin.time.Duration.Companion.milliseconds
 
 class OpenAIResponsesModel(
     config: ModelConfig,
@@ -78,7 +79,7 @@ class OpenAIResponsesModel(
     override fun wireFrames(request: ModelRequest): Flow<WireFrame> {
         if (params.background != true) return super.wireFrames(request)
         return flow {
-            val completed = withTimeoutOrNull(config.requestTimeoutMs) {
+            val completed = withTimeoutOrNull(config.requestTimeoutMs.milliseconds) {
                 var call = toWireCall(request)
                 while (true) {
                     val frame = transport.call(call).firstOrNull()
@@ -94,7 +95,7 @@ class OpenAIResponsesModel(
                         ?: throw TransportException("background response is missing id")
                     when (val status = response["status"]?.jsonPrimitive?.content) {
                         "queued", "in_progress" -> {
-                            delay(params.backgroundPollIntervalMs)
+                            delay(params.backgroundPollIntervalMs.milliseconds)
                             call = retrieveCall(id)
                         }
                         "completed", "incomplete", "failed", "cancelled" -> return@withTimeoutOrNull
@@ -139,7 +140,7 @@ class OpenAIResponsesModel(
             instructions = req.instructions,
             tools = encodeTools(req),
             text = req.outputFormat.toTextFormat(),
-            previousResponseId = if (chainStored) checkpoint?.responseId else null,
+            previousResponseId = if (chainStored) checkpoint.responseId else null,
             store = params.stateMode == ResponsesStateMode.ServerStored,
             stream = params.background != true,
             include = include,

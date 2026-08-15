@@ -71,7 +71,7 @@ class ConformanceKitTest {
         val call = events.filterIsInstance<ModelEvent.ToolCallCompleted>().single()
         assertEquals("get_weather", call.call.name)
         assertTrue(completed.output.any { it is ModelItem.ToolCall })
-        assertEquals(call.call.nativeId?.raw, "call_1")
+        assertEquals("call_1", call.call.nativeId?.raw)
     }
 
     @Test
@@ -161,7 +161,7 @@ class ConformanceKitTest {
 
     @Test
     fun capability_unknown_is_not_unsupported() {
-        assertEquals(Support.Unknown, org.koaks.framework.model.ModelCapabilities().jsonSchema)
+        assertEquals(Support.Unknown, ModelCapabilities().jsonSchema)
         assertTrue(!Support.Unknown.isKnownUnsupported)
         assertTrue(Support.Unsupported.isKnownUnsupported)
     }

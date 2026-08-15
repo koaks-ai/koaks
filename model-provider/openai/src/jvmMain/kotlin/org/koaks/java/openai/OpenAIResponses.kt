@@ -52,10 +52,10 @@ class OpenAIResponses private constructor() {
                     persistCheckpoint = this@Builder.persistCheckpoint
                     if (enableWebSearch) webSearch()
                     capabilities {
-                        parallelToolCalls?.let { this.parallelToolCalls = it }
-                        vision?.let { this.vision = it }
-                        jsonMode?.let { this.jsonMode = it }
-                        jsonSchema?.let { this.jsonSchema = it }
+                        parallelToolCalls.let { this.parallelToolCalls = it }
+                        vision.let { this.vision = it }
+                        jsonMode.let { this.jsonMode = it }
+                        jsonSchema.let { this.jsonSchema = it }
                     }
                 }
             }
