@@ -89,6 +89,36 @@ class RuntimeSlotParkingTest {
     }
 
     @Test
+    fun dynamic_branch_unparks_an_instance_after_all_existing_branches_wait() = runTest {
+        val callbackStarted = CompletableDeferred<Unit>()
+        val releaseCallback = CompletableDeferred<Unit>()
+        val operationCompleted = CompletableDeferred<Unit>()
+
+        val parent = probeAgent("dynamic-branch-parent") {
+            val exec = currentCoroutineContext()[AgentExecutionContext]!!
+            exec.waiting {
+                callbackStarted.complete(Unit)
+                val branch = exec.forkBranch()
+                branch.run { operationCompleted.complete(Unit) }
+                releaseCallback.await()
+            }
+        }
+
+        val runtime = AgentRuntime {
+            maxConcurrency = 1
+            dispatcher = UnconfinedTestDispatcher(testScheduler)
+        }
+        runtime.use {
+            val handle = it.spawn(parent, "go")
+            callbackStarted.await()
+            operationCompleted.await()
+            assertEquals(LifecycleState.WAITING, handle.state)
+            releaseCallback.complete(Unit)
+            assertTrue(handle.await() is AgentResult.Completed)
+        }
+    }
+
+    @Test
     fun fan_out_children_respect_concurrency_cap_while_parent_parks() = runTest {
         val mutex = Mutex()
         var current = 0

@@ -129,9 +129,7 @@ internal class InstanceActivityGate(
         val id = gate.withLock {
             val newId = branchSeq++
             branches[newId] = BranchRecord(BranchState.RUNNABLE)
-            // Registered on the root coroutine before it awaits, so runnable only rises;
-            // the slot is already held, no unpark needed.
-            runnable++
+            if (runnable++ == 0) unparkAndMarkRunning()
             newId
         }
         return Branch(id)
