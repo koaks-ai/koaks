@@ -1,7 +1,7 @@
 package org.koaks.runtime.context
 
 import kotlinx.coroutines.currentCoroutineContext
-import org.koaks.framework.model.Message
+import org.koaks.framework.model.ModelItem
 import org.koaks.runtime.resource.RuntimeContext
 
 private suspend fun ctx(): RuntimeContext =
@@ -12,7 +12,7 @@ private suspend fun ctx(): RuntimeContext =
  * Stores [messages] in the shared context store from within a runtime-spawned agent.
  * [ContextScope.PRIVATE] blocks are owned by the calling instance automatically.
  */
-suspend fun putContext(messages: List<Message>, scope: ContextScope = ContextScope.GLOBAL): ContextRef {
+suspend fun putContext(messages: List<ModelItem>, scope: ContextScope = ContextScope.GLOBAL): ContextRef {
     val c = ctx()
     val owner = if (scope == ContextScope.PRIVATE) c.runId else null
     return c.context.put(messages, scope, owner)
@@ -21,7 +21,7 @@ suspend fun putContext(messages: List<Message>, scope: ContextScope = ContextSco
 /** Layers [added] over [parent] as a copy-on-write delta. */
 suspend fun deltaContext(
     parent: ContextRef,
-    added: List<Message>,
+    added: List<ModelItem>,
     scope: ContextScope = ContextScope.GLOBAL,
 ): ContextRef {
     val c = ctx()
@@ -30,7 +30,7 @@ suspend fun deltaContext(
 }
 
 /** Resolves [ref] to its full message list, enforcing this instance's read permissions. */
-suspend fun resolveContext(ref: ContextRef): List<Message> {
+suspend fun resolveContext(ref: ContextRef): List<ModelItem> {
     val c = ctx()
     return c.context.resolve(ref, c.runId)
 }

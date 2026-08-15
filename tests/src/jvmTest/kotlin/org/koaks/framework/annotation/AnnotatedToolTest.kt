@@ -7,6 +7,7 @@ import kotlinx.serialization.Serializable
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.FakeLanguageModel
 import org.koaks.framework.loop.agent
+import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
@@ -28,9 +29,9 @@ class AnnotatedToolTest {
         val model = FakeLanguageModel(
             listOf(
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "weather", "{\"city\":\"NYC\"}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
-            listOf(ModelEvent.TextDelta("It's sunny in NYC"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("It's sunny in NYC"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-61"

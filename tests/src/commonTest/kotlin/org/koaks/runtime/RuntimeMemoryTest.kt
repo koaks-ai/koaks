@@ -10,7 +10,10 @@ import org.koaks.framework.loop.agent
 import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.memory.ThreadMemory
 import org.koaks.framework.memory.WindowMemory
-import org.koaks.framework.model.Message
+import org.koaks.framework.memory.stored
+import org.koaks.framework.model.ModelItem
+import org.koaks.framework.model.displayText
+import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Role
 import org.koaks.framework.model.Usage
@@ -28,8 +31,8 @@ class RuntimeMemoryTest {
     @Test
     fun runtime_run_carries_memory_for_a_thread() = runTest {
         val model = FakeLanguageModel(
-            listOf(ModelEvent.TextDelta("a1"), ModelEvent.Completed(Usage.ZERO)),
-            listOf(ModelEvent.TextDelta("a2"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("a1"), done(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("a2"), done(Usage.ZERO)),
         )
         val mem = WindowMemory(maxMessages = 50)
         val a = agent {
@@ -44,16 +47,16 @@ class RuntimeMemoryTest {
             a.runIn(this, "q2", thread = "user-1")
         }
 
-        val history = mem.load(Message.user(""))
-        assertEquals(listOf("q1", "q2"), history.filter { it.role == Role.USER }.map { it.text })
-        assertEquals(2, history.count { it.role == Role.ASSISTANT })
+        val history = mem.stored()
+        assertEquals(listOf("q1", "q2"), history.filterIsInstance<org.koaks.framework.model.ModelItem.Message>().filter { it.role == Role.USER }.map { it.text })
+        assertEquals(2, history.filterIsInstance<org.koaks.framework.model.ModelItem.Message>().count { it.role == Role.ASSISTANT })
     }
 
     @Test
     fun distinct_threads_do_not_bleed_through_runtime() = runTest {
         val model = FakeLanguageModel(
-            listOf(ModelEvent.TextDelta("a1"), ModelEvent.Completed(Usage.ZERO)),
-            listOf(ModelEvent.TextDelta("a2"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("a1"), done(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("a2"), done(Usage.ZERO)),
         )
         val memories = mutableMapOf<ThreadId, WindowMemory>()
         val a = agent {
@@ -72,15 +75,15 @@ class RuntimeMemoryTest {
             a.runIn(this, "from bob", thread = "bob")
         }
 
-        assertEquals(listOf("from alice"), memories.getValue(ThreadId("alice")).load(Message.user("")).filter { it.role == Role.USER }.map { it.text })
-        assertEquals(listOf("from bob"), memories.getValue(ThreadId("bob")).load(Message.user("")).filter { it.role == Role.USER }.map { it.text })
+        assertEquals(listOf("from alice"), memories.getValue(ThreadId("alice")).stored().filterIsInstance<org.koaks.framework.model.ModelItem.Message>().filter { it.role == Role.USER }.map { it.text })
+        assertEquals(listOf("from bob"), memories.getValue(ThreadId("bob")).stored().filterIsInstance<org.koaks.framework.model.ModelItem.Message>().filter { it.role == Role.USER }.map { it.text })
     }
 
     @Test
     fun structured_turn_commits_tool_trace_and_final_json_not_internal_draft() = runTest {
         val model = FakeLanguageModel(
-            listOf(ModelEvent.TextDelta("internal draft"), ModelEvent.Completed(Usage.ZERO)),
-            listOf(ModelEvent.TextDelta("{\"value\":1}"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("internal draft"), done(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("{\"value\":1}"), done(Usage.ZERO)),
         )
         val mem = WindowMemory(maxMessages = 50)
         val agent = agent {
@@ -94,16 +97,16 @@ class RuntimeMemoryTest {
             runtime.runStructured(agent, "question", spec, thread = "structured-thread")
         }
 
-        val history = mem.load(Message.user(""))
-        assertEquals(listOf("question"), history.filter { it.role == Role.USER }.map { it.text })
-        assertEquals(listOf("{\"value\":1}"), history.filter { it.role == Role.ASSISTANT }.map { it.text })
+        val history = mem.stored()
+        assertEquals(listOf("question"), history.filterIsInstance<org.koaks.framework.model.ModelItem.Message>().filter { it.role == Role.USER }.map { it.text })
+        assertEquals(listOf("{\"value\":1}"), history.filterIsInstance<org.koaks.framework.model.ModelItem.Message>().filter { it.role == Role.ASSISTANT }.map { it.text })
     }
 
     @Test
     fun memory_none_explicitly_opts_out_of_runtime_default_memory() = runTest {
         val model = FakeLanguageModel(
-            listOf(ModelEvent.TextDelta("a1"), ModelEvent.Completed(Usage.ZERO)),
-            listOf(ModelEvent.TextDelta("a2"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("a1"), done(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("a2"), done(Usage.ZERO)),
         )
         val agent = agent {
             id = "no-memory-agent"
@@ -116,22 +119,23 @@ class RuntimeMemoryTest {
             runtime.run(agent, "q2", thread = "no-memory-thread")
         }
 
-        assertEquals(listOf("q2"), model.lastRequest!!.messages.map { it.text })
+        assertEquals(listOf("q2"), model.lastRequest!!.items.map { it.displayText() })
     }
 
     @Test
     fun runtime_closes_each_opened_thread_memory() = runTest {
         val closed = CompletableDeferred<Unit>()
         val memory = object : ThreadMemory {
-            override suspend fun load(query: Message): List<Message> = emptyList()
-            override suspend fun commit(messages: List<Message>, usage: Usage) {}
+            override suspend fun load(query: List<org.koaks.framework.model.ModelItem>) =
+                org.koaks.framework.memory.MemoryView.EMPTY
+            override suspend fun commit(turn: org.koaks.framework.memory.ConversationTurn) {}
             override fun close() {
                 closed.complete(Unit)
             }
         }
         val agent = agent {
             id = "close-thread-memory"
-            model { custom(FakeLanguageModel(listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)))) }
+            model { custom(FakeLanguageModel(listOf(ModelEvent.TextDelta("done"), done(Usage.ZERO)))) }
             memory { custom("close-thread-memory") { memory } }
         }
         val runtime = AgentRuntime()

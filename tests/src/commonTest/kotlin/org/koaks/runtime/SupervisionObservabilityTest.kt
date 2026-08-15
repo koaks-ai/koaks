@@ -14,6 +14,8 @@ import org.koaks.framework.loop.AgentResult
 import org.koaks.framework.loop.FakeLanguageModel
 import org.koaks.framework.loop.agent
 import org.koaks.framework.model.AgentError
+import org.koaks.framework.loop.done
+import org.koaks.framework.loop.fail
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Usage
 import org.koaks.runtime.fault.SupervisionPolicy
@@ -29,7 +31,7 @@ class SupervisionObservabilityTest {
         id = name
         this.name = name
         model {
-            custom(FakeLanguageModel(listOf(ModelEvent.TextDelta(answer), ModelEvent.Completed(Usage(1, 1, 2)))))
+            custom(FakeLanguageModel(listOf(ModelEvent.TextDelta(answer), done(Usage(1, 1, 2)))))
         }
         terminateAfter(maxSteps = 5)
     }
@@ -62,8 +64,8 @@ class SupervisionObservabilityTest {
     fun supervised_run_retries_then_succeeds() = runTest {
         // Attempt 1 fails at the model; attempt 2 (same shared script deque) succeeds.
         val model = FakeLanguageModel(
-            listOf(ModelEvent.Failed(AgentError.ModelError("boom", retriable = false))),
-            listOf(ModelEvent.TextDelta("ok"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(fail(AgentError.ModelError("boom", retriable = false))),
+            listOf(ModelEvent.TextDelta("ok"), done(Usage.ZERO)),
         )
         val flaky = agent {
             id = "agent-59"
@@ -101,8 +103,8 @@ class SupervisionObservabilityTest {
     @Test
     fun supervised_run_gives_up_after_max_retries() = runTest {
         val model = FakeLanguageModel(
-            listOf(ModelEvent.Failed(AgentError.ModelError("boom-1", retriable = false))),
-            listOf(ModelEvent.Failed(AgentError.ModelError("boom-2", retriable = false))),
+            listOf(fail(AgentError.ModelError("boom-1", retriable = false))),
+            listOf(fail(AgentError.ModelError("boom-2", retriable = false))),
         )
         val broken = agent {
             id = "agent-60"

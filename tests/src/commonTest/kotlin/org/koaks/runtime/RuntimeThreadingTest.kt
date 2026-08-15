@@ -21,7 +21,11 @@ import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.tool
 import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.memory.ThreadMemory
-import org.koaks.framework.model.Message
+import org.koaks.framework.memory.stored
+import org.koaks.framework.model.ModelItem
+import org.koaks.framework.model.displayText
+import org.koaks.framework.loop.done
+import org.koaks.framework.loop.fail
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Role
 import org.koaks.framework.model.ToolCall
@@ -138,10 +142,10 @@ class RuntimeThreadingTest {
         val primaryMemory = RecordingMemory()
         val unusedMemory = RecordingMemory()
         val firstModel = FakeLanguageModel(
-            listOf(ModelEvent.TextDelta("answer-a"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("answer-a"), done(Usage.ZERO)),
         )
         val secondModel = FakeLanguageModel(
-            listOf(ModelEvent.TextDelta("answer-b"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("answer-b"), done(Usage.ZERO)),
         )
         val first = memoryAgent("shared-agent-a", firstModel, "shared-provider", primaryMemory)
         val second = memoryAgent("shared-agent-b", secondModel, "shared-provider", unusedMemory)
@@ -152,13 +156,13 @@ class RuntimeThreadingTest {
 
             assertEquals(
                 listOf("question-a", "answer-a", "question-b"),
-                secondModel.lastRequest!!.messages.map { it.text },
+                secondModel.lastRequest!!.items.map { it.displayText() },
             )
             assertEquals(
                 listOf("question-a", "question-b"),
-                primaryMemory.load(Message.user("")).filter { it.role == Role.USER }.map { it.text },
+                primaryMemory.stored().filterIsInstance<org.koaks.framework.model.ModelItem.Message>().filter { it.role == Role.USER }.map { it.text },
             )
-            assertEquals(emptyList(), unusedMemory.load(Message.user("")))
+            assertEquals(emptyList(), unusedMemory.stored())
 
             val snapshot = runtime.threadSnapshot(ThreadId("shared-thread"))
             assertEquals(setOf(first.id, second.id), snapshot?.participants)
@@ -278,7 +282,7 @@ class RuntimeThreadingTest {
 
         assertEquals(
             listOf("first question", "remembered", "continue"),
-            secondModel.lastRequest!!.messages.map { it.text },
+            secondModel.lastRequest!!.items.map { it.displayText() },
         )
     }
 
@@ -396,9 +400,9 @@ class RuntimeThreadingTest {
                     FakeLanguageModel(
                         listOf(
                             ModelEvent.ToolCallCompleted(ToolCall("c1", "fork", "{}")),
-                            ModelEvent.Completed(Usage.ZERO),
+                            done(Usage.ZERO),
                         ),
-                        listOf(ModelEvent.TextDelta("parent"), ModelEvent.Completed(Usage.ZERO)),
+                        listOf(ModelEvent.TextDelta("parent"), done(Usage.ZERO)),
                     ),
                 )
             }
@@ -449,9 +453,9 @@ class RuntimeThreadingTest {
                     FakeLanguageModel(
                         listOf(
                             ModelEvent.ToolCallCompleted(ToolCall("c1", "delegate", "{}")),
-                            ModelEvent.Completed(Usage.ZERO),
+                            done(Usage.ZERO),
                         ),
-                        listOf(ModelEvent.TextDelta("parent-answer"), ModelEvent.Completed(Usage.ZERO)),
+                        listOf(ModelEvent.TextDelta("parent-answer"), done(Usage.ZERO)),
                     ),
                 )
             }
@@ -475,7 +479,7 @@ class RuntimeThreadingTest {
             assertEquals(2, memory.loadCalls, "the root of each Turn is the only memory loader")
             assertEquals(
                 listOf("seed", "seed-answer", "child input"),
-                childModel.lastRequest!!.messages.map { it.text },
+                childModel.lastRequest!!.items.map { it.displayText() },
             )
         }
     }
@@ -486,7 +490,7 @@ class RuntimeThreadingTest {
         val child = agent {
             id = "failing-inherited-child"
             model {
-                custom(FakeLanguageModel(listOf(ModelEvent.Failed(org.koaks.framework.model.AgentError.ModelError("child boom", false)))))
+                custom(FakeLanguageModel(listOf(fail(org.koaks.framework.model.AgentError.ModelError("child boom", false)))))
             }
         }
         val parent = agent {
@@ -496,9 +500,9 @@ class RuntimeThreadingTest {
                     FakeLanguageModel(
                         listOf(
                             ModelEvent.ToolCallCompleted(ToolCall("c1", "fork", "{}")),
-                            ModelEvent.Completed(Usage.ZERO),
+                            done(Usage.ZERO),
                         ),
-                        listOf(ModelEvent.TextDelta("parent completed"), ModelEvent.Completed(Usage.ZERO)),
+                        listOf(ModelEvent.TextDelta("parent completed"), done(Usage.ZERO)),
                     ),
                 )
             }
@@ -530,9 +534,9 @@ class RuntimeThreadingTest {
                     FakeLanguageModel(
                         listOf(
                             ModelEvent.ToolCallCompleted(ToolCall("c1", "delegate", "{}")),
-                            ModelEvent.Completed(Usage.ZERO),
+                            done(Usage.ZERO),
                         ),
-                        listOf(ModelEvent.TextDelta("parent-answer"), ModelEvent.Completed(Usage.ZERO)),
+                        listOf(ModelEvent.TextDelta("parent-answer"), done(Usage.ZERO)),
                     ),
                 )
             }
@@ -574,9 +578,9 @@ class RuntimeThreadingTest {
                     FakeLanguageModel(
                         listOf(
                             ModelEvent.ToolCallCompleted(ToolCall("charge-1", "charge", "{}")),
-                            ModelEvent.Completed(Usage.ZERO),
+                            done(Usage.ZERO),
                         ),
-                        listOf(ModelEvent.Failed(org.koaks.framework.model.AgentError.ModelError("after charge", false))),
+                        listOf(fail(org.koaks.framework.model.AgentError.ModelError("after charge", false))),
                     ),
                 )
             }
@@ -591,9 +595,9 @@ class RuntimeThreadingTest {
                     FakeLanguageModel(
                         listOf(
                             ModelEvent.ToolCallCompleted(ToolCall("c1", "fork", "{}")),
-                            ModelEvent.Completed(Usage.ZERO),
+                            done(Usage.ZERO),
                         ),
-                        listOf(ModelEvent.TextDelta("parent completed"), ModelEvent.Completed(Usage.ZERO)),
+                        listOf(ModelEvent.TextDelta("parent completed"), done(Usage.ZERO)),
                     ),
                 )
             }
@@ -629,7 +633,7 @@ class RuntimeThreadingTest {
         model {
             custom(
                 FakeLanguageModel(
-                    ArrayDeque(listOf(listOf(ModelEvent.TextDelta(id), ModelEvent.Completed(Usage.ZERO)))),
+                    ArrayDeque(listOf(listOf(ModelEvent.TextDelta(id), done(Usage.ZERO)))),
                     beforeEmit = {
                         if (!announced) {
                             announced = true
@@ -657,7 +661,7 @@ class RuntimeThreadingTest {
     ): FakeLanguageModel {
         var announced = false
         return FakeLanguageModel(
-            ArrayDeque(listOf(listOf(ModelEvent.TextDelta(answer), ModelEvent.Completed(Usage.ZERO)))),
+            ArrayDeque(listOf(listOf(ModelEvent.TextDelta(answer), done(Usage.ZERO)))),
             beforeEmit = {
                 if (!announced) {
                     announced = true
@@ -669,7 +673,7 @@ class RuntimeThreadingTest {
     }
 
     private fun oneShotModel(answer: String) = FakeLanguageModel(
-        listOf(ModelEvent.TextDelta(answer), ModelEvent.Completed(Usage.ZERO)),
+        listOf(ModelEvent.TextDelta(answer), done(Usage.ZERO)),
     )
 
     private fun memoryAgent(
@@ -685,36 +689,37 @@ class RuntimeThreadingTest {
 
     private class RecordingMemory : ThreadMemory {
         private val mutex = Mutex()
-        private val messages = mutableListOf<Message>()
+        private val items = mutableListOf<ModelItem>()
         var loadCalls: Int = 0
             private set
 
-        override suspend fun load(query: Message): List<Message> = mutex.withLock {
+        override suspend fun load(query: List<ModelItem>): org.koaks.framework.memory.MemoryView = mutex.withLock {
             loadCalls++
-            messages.toList()
+            org.koaks.framework.memory.MemoryView(items.toList())
         }
 
-        override suspend fun commit(messages: List<Message>, usage: Usage) {
-            mutex.withLock { this.messages.addAll(messages) }
+        override suspend fun commit(turn: org.koaks.framework.memory.ConversationTurn) {
+            mutex.withLock { this.items.addAll(turn.items) }
         }
 
-        suspend fun snapshot(): List<Message> = mutex.withLock { messages.toList() }
+        suspend fun snapshot(): List<ModelItem> = mutex.withLock { items.toList() }
     }
 
     private class FailOnceMemory : ThreadMemory {
         private val mutex = Mutex()
-        private val messages = mutableListOf<Message>()
+        private val items = mutableListOf<ModelItem>()
         private var shouldFail = true
 
-        override suspend fun load(query: Message): List<Message> = mutex.withLock { messages.toList() }
+        override suspend fun load(query: List<ModelItem>): org.koaks.framework.memory.MemoryView =
+            mutex.withLock { org.koaks.framework.memory.MemoryView(items.toList()) }
 
-        override suspend fun commit(messages: List<Message>, usage: Usage) {
+        override suspend fun commit(turn: org.koaks.framework.memory.ConversationTurn) {
             mutex.withLock {
                 if (shouldFail) {
                     shouldFail = false
                     throw IllegalStateException("durability failure")
                 }
-                this.messages.addAll(messages)
+                this.items.addAll(turn.items)
             }
         }
     }

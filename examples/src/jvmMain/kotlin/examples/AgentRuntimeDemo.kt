@@ -4,10 +4,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import org.koaks.framework.loop.agent
-import org.koaks.framework.model.ChatRequest
+import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.LanguageModel
-import org.koaks.framework.model.Message
+import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelCapabilities
+import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Usage
 import org.koaks.runtime.AgentRuntime
@@ -29,9 +30,9 @@ import org.koaks.runtime.sched.taskGraph
  */
 private class EchoModel(private val reply: String) : LanguageModel {
     override val capabilities: ModelCapabilities = ModelCapabilities()
-    override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
+    override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
         emit(ModelEvent.TextDelta(reply))
-        emit(ModelEvent.Completed(Usage(promptTokens = 10, completionTokens = 5, totalTokens = 15)))
+        emit(done(Usage(promptTokens = 10, completionTokens = 5, totalTokens = 15)))
     }
 }
 
@@ -70,10 +71,10 @@ fun main() = runBlocking {
 
         println("\n== 3) Shared context by reference (no copying) ==")
         val shared = rt.context.put(
-            (1..100).map { Message.user("shared knowledge line $it") },
+            (1..100).map { ModelItem.user("shared knowledge line $it") },
             scope = ContextScope.GLOBAL,
         )
-        val forAgentA = rt.context.delta(shared, listOf(Message.user("private note for A")))
+        val forAgentA = rt.context.delta(shared, listOf(ModelItem.user("private note for A")))
         println("  shared block ref: ${shared.id}")
         println("  A's view size: ${rt.context.resolve(forAgentA, requester = null).size} messages (100 shared + 1 delta)")
 

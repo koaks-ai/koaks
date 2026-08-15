@@ -5,6 +5,7 @@ import org.koaks.framework.loop.AgentDSL
 import org.koaks.framework.loop.ModelScope
 import org.koaks.framework.loop.ModelSelection
 import org.koaks.framework.model.ModelCapabilities
+import org.koaks.framework.model.Support
 import org.koaks.framework.provider.AuthScheme
 import org.koaks.framework.provider.ModelConfig
 import org.koaks.framework.provider.DEFAULT_STREAM_IDLE_TIMEOUT_MS
@@ -46,7 +47,10 @@ class AnthropicConfig(
     /** Maximum silence between SSE lines before the request fails. */
     var streamIdleTimeoutMs: Long = DEFAULT_STREAM_IDLE_TIMEOUT_MS
 
-    private var caps = ModelCapabilities(jsonMode = false)
+    private var caps = ModelCapabilities(
+        jsonObject = Support.Unsupported,
+        assistantPrefill = Support.Supported,
+    )
     fun capabilities(block: AnthropicCapabilitiesScope.() -> Unit) {
         caps = AnthropicCapabilitiesScope(caps).apply(block).build()
     }
@@ -74,13 +78,17 @@ class AnthropicConfig(
 
 @AgentDSL
 class AnthropicCapabilitiesScope(initial: ModelCapabilities) {
-    var parallelToolCalls: Boolean = initial.parallelToolCalls
-    var vision: Boolean = initial.vision
+    var parallelToolCalls: Boolean = initial.parallelToolCalls == Support.Supported
+    var vision: Boolean = initial.vision == Support.Supported
+    var jsonMode: Boolean = initial.jsonObject == Support.Supported
+    var assistantPrefill: Boolean = initial.assistantPrefill == Support.Supported
 
-    /** Anthropic has no `response_format: json_object`; defaults false. */
-    var jsonMode: Boolean = initial.jsonMode
-
-    internal fun build() = ModelCapabilities(parallelToolCalls, vision, jsonMode)
+    internal fun build() = ModelCapabilities(
+        parallelToolCalls = if (parallelToolCalls) Support.Supported else Support.Unsupported,
+        vision = if (vision) Support.Supported else Support.Unknown,
+        jsonObject = if (jsonMode) Support.Supported else Support.Unsupported,
+        assistantPrefill = if (assistantPrefill) Support.Supported else Support.Unknown,
+    )
 }
 
 /**

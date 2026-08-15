@@ -1,6 +1,7 @@
 package org.koaks.runtime
 
-import org.koaks.framework.model.Message
+import org.koaks.framework.model.ModelItem
+import org.koaks.framework.model.displayText
 import org.koaks.runtime.context.ContextStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,8 +17,8 @@ class ContextSharingBenchmarkTest {
     @Test
     fun reference_sharing_transmits_far_less_than_copying() {
         val store = ContextStore()
-        val shared = (1..200).map { Message.user("shared knowledge paragraph number $it with some content") }
-        val sharedChars = shared.sumOf { it.text.length }
+        val shared = (1..200).map { ModelItem.user("shared knowledge paragraph number $it with some content") }
+        val sharedChars = shared.sumOf { it.displayText().length }
         val agents = 10
 
         // Baseline: each agent receives a full copy of the shared context.
@@ -29,7 +30,7 @@ class ContextSharingBenchmarkTest {
         var runtimeChars = sharedChars.toLong() // stored/transmitted once
         val deltaText = "private note"
         repeat(agents) { i ->
-            store.delta(ref, listOf(Message.user("$deltaText $i")))
+            store.delta(ref, listOf(ModelItem.user("$deltaText $i")))
             runtimeChars += ref.id.length + deltaText.length + 2
         }
 
@@ -42,7 +43,7 @@ class ContextSharingBenchmarkTest {
     @Test
     fun content_addressing_gives_a_high_dedup_hit_rate() {
         val store = ContextStore()
-        val ctx = (1..50).map { Message.user("knowledge line $it") }
+        val ctx = (1..50).map { ModelItem.user("knowledge line $it") }
 
         val attempts = 10
         val refs = (1..attempts).map { store.put(ctx) }

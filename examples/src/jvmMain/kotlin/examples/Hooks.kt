@@ -9,7 +9,7 @@ import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.tool
 import org.koaks.framework.middleware.ModelCallPhase
-import org.koaks.framework.model.Message
+import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.tool.ToolOutcome
 import org.koaks.provider.openai.openai
@@ -73,9 +73,9 @@ fun main() = runBlocking {
                         ctx.request
                     } else {
                         ctx.request.copy(
-                            messages = listOf(
-                                Message.system("RAG: 用户要求回答尽量短，优先使用本地上下文。"),
-                            ) + ctx.request.messages,
+                            items = listOf(
+                                ModelItem.system("RAG: 用户要求回答尽量短，优先使用本地上下文。"),
+                            ) + ctx.request.items,
                         )
                     }
                 }

@@ -20,8 +20,8 @@ class L4Test {
     fun retry_reruns_step_before_any_text() = runTest {
         // First attempt fails pre-text; second attempt succeeds.
         val model = FakeLanguageModel(
-            listOf(ModelEvent.Failed(AgentError.ModelError("transient", retriable = true))),
-            listOf(ModelEvent.TextDelta("recovered"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(fail(AgentError.ModelError("transient", retriable = true))),
+            listOf(ModelEvent.TextDelta("recovered"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-21"
@@ -37,14 +37,14 @@ class L4Test {
     @Test
     fun substitute_continues_with_replacement_message() = runTest {
         val model = FakeLanguageModel(
-            listOf(ModelEvent.Failed(AgentError.ModelError("boom", retriable = false))),
-            listOf(ModelEvent.TextDelta("after substitute"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(fail(AgentError.ModelError("boom", retriable = false))),
+            listOf(ModelEvent.TextDelta("after substitute"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-22"
             name = "t"
             model { custom(model) }
-            onError(ErrorPolicy.substituteOnError(org.koaks.framework.model.Message.user("try again")))
+            onError(ErrorPolicy.substituteOnError(org.koaks.framework.model.ModelItem.user("try again")))
         }
         val result = a.run("hi")
         assertEquals("after substitute", result.text)
@@ -56,7 +56,7 @@ class L4Test {
         val scripts = ArrayDeque((1..20).map {
             listOf<ModelEvent>(
                 ModelEvent.ToolCallCompleted(ToolCall("c$it", "noop", "{}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             )
         })
         val model = FakeLanguageModel(scripts)
@@ -80,9 +80,9 @@ class L4Test {
         val model = FakeLanguageModel(
             listOf(
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "danger", "{}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
-            listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("done"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-24"

@@ -15,6 +15,7 @@ import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.tool
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.AgentFrameworkException
+import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Usage
 import org.koaks.framework.tool.InlineTool
@@ -35,7 +36,7 @@ class SkillPreparationTest {
         )
         val second = RecordingLoader(skill("beta", "BETA"))
         val model = FakeLanguageModel(
-            listOf(ModelEvent.TextDelta("ok"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("ok"), done(Usage.ZERO)),
         )
         val agent = agent {
             id = "skills-all"
@@ -52,7 +53,7 @@ class SkillPreparationTest {
         assertEquals(listOf("alpha", "zeta"), first.loaded)
         assertEquals(listOf("beta"), second.loaded)
         assertEquals(listOf("alpha", "zeta", "beta"), agent.skillDescriptors.map { it.id.value })
-        val system = model.lastRequest!!.messages.first().text
+        val system = model.lastRequest!!.instructions.orEmpty()
         assertTrue(system.indexOf("BASE") < system.indexOf("ALPHA"))
         assertTrue(system.indexOf("ALPHA") < system.indexOf("ZETA"))
         assertTrue(system.indexOf("ZETA") < system.indexOf("BETA"))

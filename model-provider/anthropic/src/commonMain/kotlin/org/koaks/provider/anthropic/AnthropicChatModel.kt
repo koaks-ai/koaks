@@ -1,55 +1,67 @@
 package org.koaks.provider.anthropic
 
 import kotlinx.serialization.json.JsonObject
-import org.koaks.framework.model.ChatRequest
+import org.koaks.framework.model.AgentError
+import org.koaks.framework.model.AgentFrameworkException
 import org.koaks.framework.model.ContentPart
-import org.koaks.framework.model.Message
 import org.koaks.framework.model.ModelCapabilities
+import org.koaks.framework.model.ModelItem
+import org.koaks.framework.model.ModelRequest
+import org.koaks.framework.model.ProviderId
 import org.koaks.framework.model.Role
+import org.koaks.framework.model.ensureDroppable
 import org.koaks.framework.provider.ChatModel
 import org.koaks.framework.provider.ModelConfig
-import org.koaks.framework.provider.WireAdapter
 import org.koaks.framework.provider.WireDecoder
-import org.koaks.framework.transport.Transport
+import org.koaks.framework.provider.authHeaders
+import org.koaks.framework.provider.timeouts
+import org.koaks.framework.transport.Framing
+import org.koaks.framework.transport.HttpMethod
+import org.koaks.framework.transport.ModelTransport
+import org.koaks.framework.transport.WireCall
 import org.koaks.framework.utils.json.JsonUtil
 
-/**
- * Anthropic Messages API provider (POST /v1/messages). Implements only [toWire] /
- * [adapter] / [newDecoder] / [capabilities]; it is fully decoupled from the agent loop.
- *
- * Generation params are Anthropic-native and bound to the model (set in the
- * `anthropic { }` DSL), carried in [params] — there is no cross-provider param abstraction.
- */
 class AnthropicChatModel(
     config: ModelConfig,
-    transport: Transport,
+    transport: ModelTransport,
     private val params: AnthropicParams = AnthropicParams(),
-    override val capabilities: ModelCapabilities = ModelCapabilities(),
-) : ChatModel<AnthropicChatRequest, AnthropicChatResponse>(config, transport) {
+    override val capabilities: ModelCapabilities = ModelCapabilities(
+        jsonObject = org.koaks.framework.model.Support.Unsupported,
+        assistantPrefill = org.koaks.framework.model.Support.Supported,
+    ),
+) : ChatModel(config, transport) {
 
-    override val adapter = WireAdapter(
-        requestSerializer = AnthropicChatRequest.serializer(),
-        responseSerializer = AnthropicChatResponse.serializer(),
-    )
+    override fun newDecoder(): WireDecoder = AnthropicWireDecoder()
 
-    override fun newDecoder(): WireDecoder<AnthropicChatResponse> = AnthropicWireDecoder()
+    override fun toWireCall(req: ModelRequest): WireCall {
+        val body = JsonUtil.toJson(toWire(req), AnthropicChatRequest.serializer())
+        return WireCall(
+            method = HttpMethod.POST,
+            url = config.baseUrl,
+            headers = config.authHeaders(),
+            body = body,
+            expect = Framing.Sse,
+            idempotencyKey = req.idempotencyKey,
+            timeouts = config.timeouts(),
+            retry = config.retry,
+            rateLimit = config.rateLimit,
+        )
+    }
 
-    override fun toWire(req: ChatRequest): AnthropicChatRequest {
-        // System messages are hoisted to the top-level `system` param (not a role).
-        val system = req.messages
-            .filter { it.role == Role.SYSTEM }
-            .joinToString("\n") { it.text }
+    internal fun toWire(req: ModelRequest): AnthropicChatRequest {
+        val system = listOfNotNull(req.instructions)
+            .plus(req.items.filterIsInstance<ModelItem.Message>().filter { it.role == Role.SYSTEM }.map { it.text })
+            .joinToString("\n")
             .ifBlank { null }
-
         return AnthropicChatRequest(
             model = config.modelName,
             maxTokens = params.maxTokens,
-            messages = toAnthropicMessages(req.messages),
+            messages = toAnthropicMessages(req.items),
             system = system,
             tools = req.tools.takeIf { it.isNotEmpty() }?.map { schema ->
                 AnthropicTool(schema.name, schema.description, schema.parameters)
             },
-            stream = req.stream,
+            stream = true,
             temperature = params.temperature,
             topP = params.topP,
             topK = params.topK,
@@ -59,14 +71,6 @@ class AnthropicChatModel(
     }
 }
 
-/**
- * Anthropic-native generation params. Set via the `anthropic { }` DSL and consumed
- * directly in [AnthropicChatModel.toWire]. [maxTokens] maps to the required
- * `max_tokens`; [thinking] is the optional extended-thinking opt-in object.
- *
- * Note: `temperature` / `topP` / `topK` are rejected (HTTP 400) by Opus 4.7+ /
- * Fable thinking-only models — leave them unset there; they are safe on Sonnet/Haiku.
- */
 data class AnthropicParams(
     val maxTokens: Int = 4096,
     val temperature: Double? = null,
@@ -76,53 +80,92 @@ data class AnthropicParams(
     val thinking: JsonObject? = null,
 )
 
-/**
- * Maps the unified messages to Anthropic's user/assistant turns. System messages are
- * dropped here (hoisted separately). Consecutive [Role.TOOL] messages are coalesced
- * into a single following user turn carrying all `tool_result` blocks — the shape
- * Anthropic expects for a multi-tool turn.
- */
-private fun toAnthropicMessages(messages: List<Message>): List<AnthropicMessage> {
-    val nonSystem = messages.filter { it.role != Role.SYSTEM }
+fun toAnthropicMessages(items: List<ModelItem>): List<AnthropicMessage> {
     val out = mutableListOf<AnthropicMessage>()
+    val nonSystem = items.filterNot { it is ModelItem.Message && it.role == Role.SYSTEM }
     var i = 0
     while (i < nonSystem.size) {
-        val msg = nonSystem[i]
-        when (msg.role) {
-            Role.TOOL -> {
+        when (val item = nonSystem[i]) {
+            is ModelItem.ToolResult -> {
                 val blocks = mutableListOf<AnthropicContentBlock>()
-                while (i < nonSystem.size && nonSystem[i].role == Role.TOOL) {
-                    nonSystem[i].parts.filterIsInstance<ContentPart.ToolResultPart>().forEach { tr ->
-                        blocks += AnthropicContentBlock.ToolResult(
-                            toolUseId = tr.callId,
-                            content = tr.output,
-                            isError = tr.isError,
-                        )
-                    }
+                while (i < nonSystem.size && nonSystem[i] is ModelItem.ToolResult) {
+                    val result = nonSystem[i] as ModelItem.ToolResult
+                    val call = items.filterIsInstance<ModelItem.ToolCall>().firstOrNull { it.ref == result.callRef }
+                    val toolUseId = call?.nativeId?.raw ?: result.callRef.value
+                    blocks += AnthropicContentBlock.ToolResult(
+                        toolUseId = toolUseId,
+                        content = result.output,
+                        isError = result.isError,
+                    )
                     i++
                 }
                 out += AnthropicMessage(role = "user", content = blocks)
             }
-
-            Role.ASSISTANT -> {
+            is ModelItem.Message -> if (item.role == Role.USER) {
                 val blocks = mutableListOf<AnthropicContentBlock>()
-                if (msg.text.isNotEmpty()) blocks += AnthropicContentBlock.Text(msg.text)
-                msg.parts.filterIsInstance<ContentPart.ToolCallPart>().forEach { tcp ->
-                    blocks += AnthropicContentBlock.ToolUse(
-                        id = tcp.call.id,
-                        name = tcp.call.name,
-                        input = JsonUtil.json.parseToJsonElement(tcp.call.arguments.ifBlank { "{}" }),
-                    )
-                }
-                out += AnthropicMessage(role = "assistant", content = blocks)
+                item.content.filterIsInstance<ContentPart.Text>().forEach { blocks += AnthropicContentBlock.Text(it.text) }
+                if (blocks.isEmpty()) blocks += AnthropicContentBlock.Text(item.text)
+                out += AnthropicMessage(role = "user", content = blocks)
                 i++
+            } else {
+                i = consumeAssistantTurn(nonSystem, i, out)
             }
-
-            else -> { // Role.USER (SYSTEM already filtered out)
-                out += AnthropicMessage(role = "user", content = listOf(AnthropicContentBlock.Text(msg.text)))
-                i++
+            is ModelItem.ToolCall, is ModelItem.ProviderItem, is ModelItem.ReasoningSummary -> {
+                i = consumeAssistantTurn(nonSystem, i, out)
             }
         }
     }
     return out
+}
+
+private fun consumeAssistantTurn(
+    items: List<ModelItem>,
+    start: Int,
+    out: MutableList<AnthropicMessage>,
+): Int {
+    val blocks = mutableListOf<AnthropicContentBlock>()
+    var i = start
+    while (i < items.size) {
+        when (val item = items[i]) {
+            is ModelItem.ProviderItem -> {
+                if (item.providerId == ProviderId.Anthropic &&
+                    (item.kind == "thinking" || item.kind == "redacted_thinking")
+                ) {
+                    val json = item.payload.utf8()
+                    val block = runCatching {
+                        JsonUtil.fromJson(json, AnthropicContentBlock.serializer())
+                    }.getOrElse { error ->
+                        throw AgentFrameworkException(
+                            AgentError.PreparationError(
+                                component = "anthropic",
+                                message = "failed to replay ${item.kind} block",
+                                cause = error,
+                            ),
+                        )
+                    }
+                    blocks += block
+                } else {
+                    item.ensureDroppable("anthropic")
+                }
+                i++
+            }
+            is ModelItem.Message -> {
+                if (item.role != Role.ASSISTANT) break
+                if (item.text.isNotEmpty()) blocks += AnthropicContentBlock.Text(item.text)
+                i++
+            }
+            is ModelItem.ToolCall -> {
+                blocks += AnthropicContentBlock.ToolUse(
+                    id = item.nativeId?.raw ?: item.ref.value,
+                    name = item.name,
+                    input = JsonUtil.json.parseToJsonElement(item.arguments.ifBlank { "{}" }),
+                )
+                i++
+            }
+            is ModelItem.ReasoningSummary -> i++
+            is ModelItem.ToolResult -> break
+        }
+    }
+    if (blocks.isNotEmpty()) out += AnthropicMessage(role = "assistant", content = blocks)
+    return i
 }

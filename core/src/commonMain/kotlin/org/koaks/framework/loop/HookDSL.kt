@@ -5,15 +5,14 @@ import org.koaks.framework.middleware.Hook
 import org.koaks.framework.middleware.StepContext
 import org.koaks.framework.middleware.ToolContext
 import org.koaks.framework.middleware.ToolDecision
-import org.koaks.framework.model.ChatRequest
 import org.koaks.framework.model.ModelEvent
+import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.tool.ToolOutcome
 
-/** DSL scope for configuring typed agent hooks. */
 @AgentDSL
 class HookScope {
-    private val modelBefores = mutableListOf<suspend (StepContext) -> ChatRequest>()
+    private val modelBefores = mutableListOf<suspend (StepContext) -> ModelRequest>()
     private val modelAfters = mutableListOf<(StepContext, Flow<ModelEvent>) -> Flow<ModelEvent>>()
     private val toolBefores = mutableListOf<suspend (ToolContext) -> ToolDecision>()
     private val toolAfters = mutableListOf<suspend (ToolContext, ToolOutcome) -> ToolOutcome>()
@@ -27,7 +26,7 @@ class HookScope {
     }
 
     internal fun build(): Hook = object : Hook {
-        override suspend fun onModelRequest(ctx: StepContext): ChatRequest {
+        override suspend fun onModelRequest(ctx: StepContext): ModelRequest {
             var current = ctx.request
             for (before in modelBefores) {
                 current = before(ctx.copy(request = current))
@@ -71,10 +70,10 @@ class HookScope {
 
 @AgentDSL
 class ModelCallHookScope internal constructor(
-    private val befores: MutableList<suspend (StepContext) -> ChatRequest>,
+    private val befores: MutableList<suspend (StepContext) -> ModelRequest>,
     private val afters: MutableList<(StepContext, Flow<ModelEvent>) -> Flow<ModelEvent>>,
 ) {
-    fun before(block: suspend (StepContext) -> ChatRequest) {
+    fun before(block: suspend (StepContext) -> ModelRequest) {
         befores += block
     }
 

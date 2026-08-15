@@ -8,8 +8,7 @@ import kotlinx.serialization.json.JsonObject
  * Ollama `/api/chat` wire request. Self-contained — depends only on `koaks-core`'s
  * public model/transport abstractions.
  *
- * Ollama streams NDJSON (one JSON object per line), not SSE. The transport handles
- * that via [org.koaks.framework.provider.StreamFormat.NDJSON].
+ * Ollama streams NDJSON (one JSON object per line), not SSE.
  */
 @Serializable
 data class OllamaChatRequest(

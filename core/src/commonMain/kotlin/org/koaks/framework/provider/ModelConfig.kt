@@ -2,13 +2,10 @@ package org.koaks.framework.provider
 
 /**
  * Connection-level configuration for a provider endpoint. Owned by a `ChatModel`
- * and passed to the [org.koaks.framework.transport.Transport] on each request.
+ * and used when building each [org.koaks.framework.transport.WireCall].
  *
  * Generation/sampling parameters are intentionally absent: those bind to the model
- * and are held by each provider's own native config (see `ChatModel.toWire`).
- *
- * @property streamFormat how the response stream is framed on the wire.
- * @property retry connection-level retry budget (see [RetryBudget]).
+ * and are held by each provider's own native config.
  */
 data class ModelConfig(
     val baseUrl: String,
@@ -16,15 +13,10 @@ data class ModelConfig(
     val modelName: String,
     val auth: AuthScheme = AuthScheme.Bearer,
     val customHeaders: Map<String, String> = emptyMap(),
-    val streamFormat: StreamFormat = StreamFormat.SSE,
-    val streamEndMarker: String = "[DONE]",
     val connectTimeoutMs: Long = 5_000,
     val requestTimeoutMs: Long = 600_000,
     val socketTimeoutMs: Long = 600_000,
-    /** Maximum silence between response lines before a streaming call is failed. */
     val streamIdleTimeoutMs: Long = DEFAULT_STREAM_IDLE_TIMEOUT_MS,
-    /** Whether an EOF without [streamEndMarker] is a truncated response. */
-    val requireStreamEndMarker: Boolean = false,
     val retry: RetryBudget = RetryBudget(),
     val rateLimit: RateLimit? = null,
 ) {
@@ -39,16 +31,12 @@ data class ModelConfig(
 const val DEFAULT_STREAM_IDLE_TIMEOUT_MS: Long = 60_000
 
 /**
- * How a provider frames its streaming response.
- *  - [SSE]: Server-Sent Events; each event is a `data:` line. (OpenAI/Qwen)
- *  - [NDJSON]: newline-delimited JSON; one JSON object per line. (Ollama)
- */
-enum class StreamFormat { SSE, NDJSON }
-
-/**
- * Connection-level retry budget. This only covers transparent, pre-first-byte
+ * Connection-level retry budget. This only covers transparent, pre-first-frame
  * retries (connection/DNS/5xx/first-packet timeout) and is strictly
  * separate from the loop's session-level `Recovery.Retry`, so the two never multiply.
+ *
+ * The same [org.koaks.framework.model.ModelRequest.idempotencyKey] is reused across
+ * every attempt in this budget.
  */
 data class RetryBudget(
     val maxRetries: Int = 2,
@@ -65,3 +53,15 @@ data class RateLimit(
     val permitsPerInterval: Int,
     val intervalMs: Long = 1_000,
 )
+
+fun ModelConfig.timeouts() = org.koaks.framework.transport.Timeouts(
+    connectTimeoutMs = connectTimeoutMs,
+    requestTimeoutMs = requestTimeoutMs,
+    socketTimeoutMs = socketTimeoutMs,
+    streamIdleTimeoutMs = streamIdleTimeoutMs,
+)
+
+fun ModelConfig.authHeaders(): Map<String, String> = buildMap {
+    for ((k, v) in auth.headers(apiKey)) put(k, v)
+    putAll(customHeaders)
+}

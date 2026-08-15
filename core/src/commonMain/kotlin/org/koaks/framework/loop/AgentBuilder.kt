@@ -56,6 +56,7 @@ class AgentBuilder {
     private var errorPolicy: ErrorPolicy = ErrorPolicy.PROPAGATE
     private var memoryProvider: MemoryProvider? = null
     private var runBudget: RunBudget = RunBudget.UNLIMITED
+    private val clientActionHandlers = mutableListOf<org.koaks.framework.model.ClientActionHandler>()
 
     fun model(block: ModelScope.() -> ModelSelection) {
         val scope = ModelScope()
@@ -109,6 +110,10 @@ class AgentBuilder {
         errorPolicy = policy
     }
 
+    fun clientAction(handler: org.koaks.framework.model.ClientActionHandler) {
+        clientActionHandlers += handler
+    }
+
     internal fun build(): Agent {
         val agentId = AgentId(requireNotNull(id) { "agent id is required (e.g. id = \"assistant\")" })
         val scope = requireNotNull(modelScope) { "model { } block is required" }
@@ -133,6 +138,7 @@ class AgentBuilder {
             runBudget = runBudget,
             preparation = preparation,
             memoryProvider = memoryProvider,
+            clientActionHandlers = clientActionHandlers.toList(),
             transport = transportInfo.transport,
             ownsTransport = transportInfo.ownsTransport,
         )

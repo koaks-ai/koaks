@@ -20,6 +20,7 @@ import org.koaks.framework.loop.FakeLanguageModel
 import org.koaks.framework.loop.OutputSpec
 import org.koaks.framework.loop.agent
 import org.koaks.framework.model.AgentError
+import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
@@ -38,7 +39,7 @@ class SchedulerQuotaTest {
         id = name
         this.name = name
         model {
-            custom(FakeLanguageModel(listOf(ModelEvent.TextDelta(answer), ModelEvent.Completed(Usage(1, 1, 2)))))
+            custom(FakeLanguageModel(listOf(ModelEvent.TextDelta(answer), done(Usage(1, 1, 2)))))
         }
         terminateAfter(maxSteps = 5)
     }
@@ -50,7 +51,7 @@ class SchedulerQuotaTest {
         model {
             custom(
                 FakeLanguageModel(
-                    ArrayDeque(listOf(listOf(ModelEvent.TextDelta(name), ModelEvent.Completed(Usage.ZERO)))),
+                    ArrayDeque(listOf(listOf(ModelEvent.TextDelta(name), done(Usage.ZERO)))),
                     beforeEmit = { ev -> if (ev is ModelEvent.TextDelta) onEnter() },
                 ),
             )
@@ -121,14 +122,14 @@ class SchedulerQuotaTest {
         // The model keeps requesting tool calls; no tools are registered, so each becomes
         // an error result and the loop continues — until the quota preempts it.
         val model = FakeLanguageModel(
-            listOf(ModelEvent.ToolCallCompleted(ToolCall("c1", "noop", "{}")), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.ToolCallCompleted(ToolCall("c1", "noop", "{}")), done(Usage.ZERO)),
             listOf(
                 ModelEvent.TextDelta("current-step"),
                 ModelEvent.ToolCallCompleted(ToolCall("c2", "noop", "{}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
-            listOf(ModelEvent.ToolCallCompleted(ToolCall("c3", "noop", "{}")), ModelEvent.Completed(Usage.ZERO)),
-            listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.ToolCallCompleted(ToolCall("c3", "noop", "{}")), done(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("done"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-57"
@@ -169,8 +170,8 @@ class SchedulerQuotaTest {
     @Test
     fun structured_run_exposes_base_steps_to_runtime_quota() = runTest {
         val model = FakeLanguageModel(
-            listOf(ModelEvent.TextDelta("draft"), ModelEvent.Completed(Usage.ZERO)),
-            listOf(ModelEvent.TextDelta("{\"value\":1}"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("draft"), done(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("{\"value\":1}"), done(Usage.ZERO)),
         )
         val agent = agent {
             id = "structured-quota"

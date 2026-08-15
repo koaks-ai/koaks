@@ -13,10 +13,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.koaks.framework.loop.AgentResult
 import org.koaks.framework.loop.agent
-import org.koaks.framework.model.ChatRequest
+import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.model.ModelCapabilities
+import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
+import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.Role
 import org.koaks.framework.model.Usage
 import org.koaks.runtime.AgentRuntime
@@ -173,8 +175,9 @@ private class StressProbeModel(
     val maxObservedConcurrency: Int get() = maximum.get()
     val completedCount: Int get() = completed.get()
 
-    override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
-        val input = request.messages.lastOrNull { it.role == Role.USER }?.text.orEmpty()
+    override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
+        val input = request.items.filterIsInstance<ModelItem.Message>()
+            .lastOrNull { it.role == Role.USER }?.text.orEmpty()
         val index = input.substringAfterLast('#').toInt()
         schedulingWaitNanos[index] = System.nanoTime() - submittedNanos[index]
 
@@ -184,7 +187,7 @@ private class StressProbeModel(
             startGate.await()
             delay(delayMillis)
             emit(ModelEvent.TextDelta("ok"))
-            emit(ModelEvent.Completed(Usage.ZERO))
+            emit(done(Usage.ZERO))
             completed.incrementAndGet()
         } finally {
             active.decrementAndGet()

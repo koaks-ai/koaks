@@ -4,36 +4,24 @@ import org.koaks.framework.loop.AgentDSL
 import org.koaks.framework.loop.ModelScope
 import org.koaks.framework.loop.ModelSelection
 import org.koaks.framework.model.ModelCapabilities
-import org.koaks.framework.provider.ModelConfig
+import org.koaks.framework.model.Support
 import org.koaks.framework.provider.DEFAULT_STREAM_IDLE_TIMEOUT_MS
-import org.koaks.framework.provider.StreamFormat
+import org.koaks.framework.provider.ModelConfig
 
-/**
- * Configuration scope for the Ollama provider DSL: `model { ollama(...) { ... } }`.
- * Generation params are Ollama-native and set flat on this block; only fields that
- * differ from defaults need to be set.
- */
 @AgentDSL
 class OllamaConfig(
     var baseUrl: String,
     var apiKey: String = "ollama",
     var modelName: String,
 ) {
-    // Ollama-native generation params, bound to this model.
     var temperature: Double? = null
     var topP: Double? = null
-
-    /** Maps to Ollama's `num_predict`. */
     var maxTokens: Int? = null
     var stop: List<String>? = null
-
-    /** Maps to Ollama's `think`; surfaced as `ReasoningDelta` events. */
     var think: Boolean? = null
-
-    /** Maximum silence between NDJSON lines before the request fails. */
     var streamIdleTimeoutMs: Long = DEFAULT_STREAM_IDLE_TIMEOUT_MS
 
-    private var caps = ModelCapabilities(parallelToolCalls = false)
+    private var caps = ModelCapabilities(parallelToolCalls = Support.Unsupported)
     fun capabilities(block: OllamaCapabilitiesScope.() -> Unit) {
         caps = OllamaCapabilitiesScope(caps).apply(block).build()
     }
@@ -42,7 +30,6 @@ class OllamaConfig(
         baseUrl = baseUrl,
         apiKey = apiKey,
         modelName = modelName,
-        streamFormat = StreamFormat.NDJSON,
         streamIdleTimeoutMs = streamIdleTimeoutMs,
     )
 
@@ -59,18 +46,17 @@ class OllamaConfig(
 
 @AgentDSL
 class OllamaCapabilitiesScope(initial: ModelCapabilities) {
-    var parallelToolCalls: Boolean = initial.parallelToolCalls
-    var vision: Boolean = initial.vision
-    var jsonMode: Boolean = initial.jsonMode
+    var parallelToolCalls: Boolean = initial.parallelToolCalls == Support.Supported
+    var vision: Boolean = initial.vision == Support.Supported
+    var jsonMode: Boolean = initial.jsonObject == Support.Supported
 
-    internal fun build() = ModelCapabilities(parallelToolCalls, vision, jsonMode)
+    internal fun build() = ModelCapabilities(
+        parallelToolCalls = if (parallelToolCalls) Support.Supported else Support.Unsupported,
+        vision = if (vision) Support.Supported else Support.Unknown,
+        jsonObject = if (jsonMode) Support.Supported else Support.Unknown,
+    )
 }
 
-/**
- * Selects Ollama as the agent's model. Builds an [OllamaChatModel] using the
- * transport from [ModelScope] (agent-owned unless externally injected), returning it
- * as a [ModelSelection] so callers can chain `.fallback(...)`.
- */
 fun ModelScope.ollama(
     baseUrl: String,
     apiKey: String = "ollama",

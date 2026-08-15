@@ -1,20 +1,13 @@
 package org.koaks.framework.provider
 
 import org.koaks.framework.model.ModelEvent
+import org.koaks.framework.transport.WireFrame
 
 /**
- * A stateful streaming decoder. Unlike a stateless `fromWire(chunk): Event`, this
- * accumulates fragments across chunks: assistant text is a series of deltas, and a
- * tool call's `name` / `arguments` arrive split across multiple chunks. The decoder
- * assembles a complete [org.koaks.framework.model.ToolCall] before emitting
- * [ModelEvent.ToolCallCompleted].
- *
- * Non-streaming is just the degenerate "single chunk" case on the same path.
+ * Stateful streaming decoder. Consumes [WireFrame]s (not pre-parsed JSON) so
+ * heterogeneous SSE event types can be dispatched by event name.
  */
-interface WireDecoder<TResp> {
-    /** Consumes one wire chunk, producing 0..N model events. */
-    fun accept(chunk: TResp): List<ModelEvent>
-
-    /** Flushes residual state at stream end (completed tool calls, usage). */
+interface WireDecoder {
+    fun accept(frame: WireFrame): List<ModelEvent>
     fun finish(): List<ModelEvent>
 }

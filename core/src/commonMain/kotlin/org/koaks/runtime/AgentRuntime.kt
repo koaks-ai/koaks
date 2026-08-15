@@ -33,14 +33,20 @@ import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.AgentId
 import org.koaks.framework.loop.AgentResult
 import org.koaks.framework.loop.OutputSpec
+import org.koaks.framework.memory.ConversationTurn
+import org.koaks.framework.memory.InterruptReason
 import org.koaks.framework.memory.MemoryProvider
 import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.memory.ThreadMemory
-import org.koaks.framework.memory.TurnCommitBuffer
+import org.koaks.framework.memory.TurnRetention
+import org.koaks.framework.memory.TurnStatus
 import org.koaks.framework.memory.WindowMemoryProvider
+import org.koaks.framework.memory.forOnlineUse
+import org.koaks.framework.memory.shouldRetain
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.AgentFrameworkException
-import org.koaks.framework.model.Message
+import org.koaks.framework.model.CheckpointScope
+import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.TerminationReason
 import org.koaks.runtime.acb.Acb
@@ -348,6 +354,49 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
     fun spawn(agent: Agent, input: String, thread: String): AgentHandle =
         spawn(agent, input, thread = ThreadId(thread))
 
+    fun resume(agent: Agent, thread: ThreadId): Flow<AgentEvent> = channelFlow {
+        val handle = spawnInternal(
+            agent = agent,
+            input = "",
+            priority = 0,
+            quota = null,
+            parent = null,
+            contextRefs = emptyList(),
+            sink = ChannelEventSink(channel),
+            thread = thread,
+            structuredSpec = null,
+            resume = true,
+        )
+        try {
+            handle.join()
+        } finally {
+            if (handle.isActive || !handle.state.isTerminal) {
+                cancelAndJoin(handle, "runtime resume collection stopped")
+            }
+        }
+    }.buffer(Channel.RENDEZVOUS)
+
+    suspend fun resumeRun(agent: Agent, thread: ThreadId): AgentResult {
+        val handle = spawnInternal(
+            agent = agent,
+            input = "",
+            priority = 0,
+            quota = null,
+            parent = null,
+            contextRefs = emptyList(),
+            sink = EventSink.NONE,
+            thread = thread,
+            structuredSpec = null,
+            resume = true,
+        )
+        return try {
+            handle.await()
+        } catch (cancelled: CancellationException) {
+            cancelAndJoin(handle, cancelled.message ?: "runtime resume cancelled")
+            throw cancelled
+        }
+    }
+
     private fun spawnInternal(
         agent: Agent,
         input: String,
@@ -361,6 +410,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         inheritedTurnContext: TurnContext? = null,
         childConversation: ChildConversation? = null,
         failurePolicy: ChildFailurePolicy = ChildFailurePolicy.PROPAGATE,
+        resume: Boolean = false,
     ): AgentHandle {
         check(!closed.value) { "AgentRuntime is closed" }
 
@@ -405,7 +455,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             inheritsParentTurn -> inheritedTurnContext
                 ?: turnContexts.value[turnId]
                 ?: error("turn '${turnId.value}' has no active context")
-            else -> TurnContext(effectiveThread!!, turnId, Message.user(input))
+            else -> TurnContext(effectiveThread!!, turnId, seedItems(input, resume))
         }
         acquireRegistration(agent)
         var completionOwnsRegistration = false
@@ -480,6 +530,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                         turnOwner,
                         turnReservation,
                         structuredSpec,
+                        resume,
                     )
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -545,7 +596,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         gate: InstanceActivityGate,
         agent: Agent,
         input: String,
-        contextPrefix: List<Message>,
+        contextPrefix: List<ModelItem>,
         acb: Acb,
         control: InstanceControl,
         priority: Int,
@@ -557,19 +608,20 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         turnOwner: Boolean,
         turnReservation: ThreadRegistry.TurnReservation?,
         structuredSpec: OutputSpec?,
+        resume: Boolean,
     ): AgentResult {
         var threadLease: ThreadRegistry.ThreadLease? = null
         var threadMemory: ThreadMemory? = null
-        val buffer: TurnCommitBuffer? = if (turnOwner) turnContext?.commitBuffer else null
         var terminalUsage = Usage.ZERO
         var turnCommitted = false
         try {
             val effectiveContext = if (thread != null && turnId != null && turnContext != null) {
-                val user = Message.user(input)
                 val history = if (turnOwner) {
                     val lease = requireNotNull(turnReservation).await().also { threadLease = it }
                     val memory = lease.memory().also { threadMemory = it }
-                    memory.load(user).also(turnContext::publishHistory)
+                    val view = memory.load(seedItems(input, resume)).forOnlineUse()
+                    turnContext.checkpoint = view.checkpoint
+                    view.transcript.also(turnContext::publishHistory)
                 } else {
                     threads.joinActiveTurn(thread, turnId, agent)
                     turnContext.historySnapshot()
@@ -584,7 +636,17 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                 gate.attachLease(lease)
                 acb.markRunning()
                 emit(RuntimeEvent.Running(acb.runId, agent.id, thread, turnId, agent.name))
-                runWithQuota(agent, input, effectiveContext, acb, control, quota, sink, buffer, structuredSpec) { usage ->
+                runWithQuota(
+                    agent,
+                    input.takeUnless { resume },
+                    effectiveContext,
+                    acb,
+                    control,
+                    quota,
+                    sink,
+                    turnContext,
+                    structuredSpec,
+                ) { usage ->
                     terminalUsage = usage
                 }
             }
@@ -612,29 +674,21 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             when (result) {
                 is AgentResult.Completed -> if (acb.beginCommitting()) {
                     withContext(NonCancellable) {
-                        val commitBuffer = buffer
-                        val memory = threadMemory
-                        if (commitBuffer != null && memory != null && commitBuffer.shouldCommit()) {
-                            memory.commit(commitBuffer.messagesInOrder(), terminalUsage)
-                            turnCommitted = true
-                        }
+                        turnCommitted = commitTurn(threadMemory, turnContext, completed = true)
                         acb.markFinished(result.usage)
                         emit(RuntimeEvent.Finished(acb.runId, agent.id, thread, turnId, result.usage))
                     }
                 }
                 is AgentResult.Terminated -> if (acb.beginCommitting()) {
                     withContext(NonCancellable) {
-                        val commitBuffer = buffer
-                        val memory = threadMemory
-                        if (commitBuffer != null && memory != null && commitBuffer.shouldCommit()) {
-                            memory.commit(commitBuffer.messagesInOrder(), terminalUsage)
-                            turnCommitted = true
-                        }
+                        turnCommitted = commitTurn(threadMemory, turnContext, completed = false, InterruptReason.Policy(result.reason.toString()))
                         acb.markFinished(result.usage)
                         emit(RuntimeEvent.Terminated(acb.runId, agent.id, thread, turnId, result.reason))
                     }
                 }
-                is AgentResult.Failed -> Unit
+                is AgentResult.Failed -> withContext(NonCancellable) {
+                    turnCommitted = commitTurn(threadMemory, turnContext, completed = false, InterruptReason.Failed)
+                }
             }
             return result
         } catch (cancelled: CancellationException) {
@@ -645,6 +699,10 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             }
             cancelDescendants(acb.runId, "parent ${acb.runId} cancelled")
             withContext(NonCancellable) {
+                turnContext?.turnBuilder?.lastResponseId()?.let { id ->
+                    runCatching { agent.model.abandon(id) }
+                }
+                turnCommitted = commitTurn(threadMemory, turnContext, completed = false, InterruptReason.Cancelled)
                 awaitChildren(
                     acb.runId,
                     reportCapturedFailures = false,
@@ -656,6 +714,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             acb.sealChildren()
             cancelDescendants(acb.runId, "parent ${acb.runId} failed")
             withContext(NonCancellable) {
+                turnCommitted = commitTurn(threadMemory, turnContext, completed = false, InterruptReason.Failed)
                 awaitChildren(
                     acb.runId,
                     reportCapturedFailures = false,
@@ -686,21 +745,21 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
 
     private suspend fun runWithQuota(
         agent: Agent,
-        input: String,
-        contextPrefix: List<Message>,
+        input: String?,
+        contextPrefix: List<ModelItem>,
         acb: Acb,
         control: InstanceControl,
         quota: Quota,
         sink: EventSink,
-        buffer: TurnCommitBuffer?,
+        turnContext: TurnContext?,
         structuredSpec: OutputSpec?,
         terminalUsage: (Usage) -> Unit,
     ): AgentResult {
         val wall = quota.wallClockMillis
-            ?: return collectStream(agent, input, contextPrefix, acb, control, quota, sink, buffer, structuredSpec, terminalUsage)
+            ?: return collectStream(agent, input, contextPrefix, acb, control, quota, sink, turnContext, structuredSpec, terminalUsage)
         return try {
             withTimeout(wall.milliseconds) {
-                collectStream(agent, input, contextPrefix, acb, control, quota, sink, buffer, structuredSpec, terminalUsage)
+                collectStream(agent, input, contextPrefix, acb, control, quota, sink, turnContext, structuredSpec, terminalUsage)
             }
         } catch (_: TimeoutCancellationException) {
             val error = AgentError.Timeout("agent wall-clock", wall)
@@ -715,13 +774,13 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
 
     private suspend fun collectStream(
         agent: Agent,
-        input: String,
-        contextPrefix: List<Message>,
+        input: String?,
+        contextPrefix: List<ModelItem>,
         acb: Acb,
         control: InstanceControl,
         quota: Quota,
         sink: EventSink,
-        buffer: TurnCommitBuffer?,
+        turnContext: TurnContext?,
         structuredSpec: OutputSpec?,
         terminalUsage: (Usage) -> Unit,
     ): AgentResult {
@@ -732,15 +791,15 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         var toolCalls = 0
         val stepText = StringBuilder()
         var lastAssistant = ""
+        val turn = turnContext?.turnBuilder ?: org.koaks.framework.loop.TurnBuilder("ephemeral")
 
         try {
             val events = if (structuredSpec == null) {
-                agent.executeStream(input, contextPrefix)
+                agent.executeStream(input, contextPrefix, turn, turnContext?.checkpoint)
             } else {
-                agent.executeStructuredStream(input, contextPrefix, structuredSpec)
+                agent.executeStructuredStream(input, contextPrefix, structuredSpec, turn, turnContext?.checkpoint)
             }
             events.collect { event ->
-                buffer?.observe(event)
                 if (control.isPaused) {
                     acb.setState(LifecycleState.SUSPENDED)
                     emit(RuntimeEvent.Suspended(acb.runId, agent.id, acb.snapshot.threadId, acb.snapshot.turnId))
@@ -787,7 +846,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             }
             cancelDescendants(acb.runId, "parent ${acb.runId} quota exceeded")
             val reason = TerminationReason.Custom("quota exceeded: ${quotaSignal.dimension}")
-            val message = Message.assistant(stepText.toString().ifEmpty { lastAssistant })
+            val message = ModelItem.assistant(stepText.toString().ifEmpty { lastAssistant })
             sink.emit(AgentEvent.Terminated(message, currentUsage, reason))
             return AgentResult.Terminated(message, currentUsage, reason)
         } catch (failure: AgentFrameworkException) {
@@ -803,12 +862,8 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         }
 
         return when (val term = terminal) {
-            is AgentEvent.Completed -> {
-                AgentResult.Completed(term.message, usage)
-            }
-            is AgentEvent.Terminated -> {
-                AgentResult.Terminated(term.message, usage, term.reason)
-            }
+            is AgentEvent.Completed -> AgentResult.Completed(term.message, usage)
+            is AgentEvent.Terminated -> AgentResult.Terminated(term.message, usage, term.reason)
             null -> {
                 val error = lastFailure ?: AgentError.ModelError("agent produced no terminal event", retriable = false)
                 acb.markFailed(error, usage)
@@ -968,8 +1023,30 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         withContext(NonCancellable) { handle.join() }
     }
 
-    private fun resolveContextPrefix(refs: List<ContextRef>, requester: RunId): List<Message> =
+    private fun resolveContextPrefix(refs: List<ContextRef>, requester: RunId): List<ModelItem> =
         refs.flatMap { context.resolve(it, requester) }
+
+    private fun seedItems(input: String, resume: Boolean): List<ModelItem> =
+        if (resume || input.isEmpty()) emptyList() else listOf(ModelItem.user(input))
+
+    private suspend fun commitTurn(
+        memory: ThreadMemory?,
+        turnContext: TurnContext?,
+        completed: Boolean,
+        reason: InterruptReason? = null,
+    ): Boolean {
+        if (memory == null || turnContext == null) return false
+        val builder = turnContext.turnBuilder
+        val raw = if (completed) {
+            builder.completedTurn()
+        } else {
+            builder.interruptedTurn(reason ?: InterruptReason.Cancelled)
+        }
+        val turn = raw.copy(checkpoint = raw.checkpoint?.takeIf { it.scope == CheckpointScope.CrossTurn })
+        if (!shouldRetain(turn, memory.retention, turnContext.hasSideEffects)) return false
+        memory.commit(turn)
+        return true
+    }
 
     override fun close() {
         if (!closed.compareAndSet(expect = false, update = true)) return

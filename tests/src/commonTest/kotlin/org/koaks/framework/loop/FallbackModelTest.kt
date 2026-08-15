@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.koaks.framework.model.AgentError
-import org.koaks.framework.model.ChatRequest
+import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.model.ModelCapabilities
 import org.koaks.framework.model.ModelEvent
@@ -24,19 +24,19 @@ class FallbackModelTest {
     /** Emits [error] as a Failed event before producing any output. */
     private fun failsImmediately(error: AgentError.ModelError) = object : LanguageModel {
         override val capabilities = ModelCapabilities()
-        override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
-            emit(ModelEvent.Failed(error))
+        override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
+            emit(fail(error))
         }
     }
 
     /** Throws before producing any output. */
     private fun throwsImmediately(t: Throwable) = object : LanguageModel {
         override val capabilities = ModelCapabilities()
-        override fun generate(request: ChatRequest): Flow<ModelEvent> = flow { throw t }
+        override fun stream(request: ModelRequest): Flow<ModelEvent> = flow { throw t }
     }
 
     private fun succeeds(text: String) = FakeLanguageModel(
-        listOf(ModelEvent.TextDelta(text), ModelEvent.Completed(Usage.ZERO)),
+        listOf(ModelEvent.TextDelta(text), done(Usage.ZERO)),
     )
 
     @Test
@@ -80,14 +80,14 @@ class FallbackModelTest {
         val secondaryUsed = booleanArrayOf(false)
         val primary = object : LanguageModel {
             override val capabilities = ModelCapabilities()
-            override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
+            override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
                 emit(ModelEvent.TextDelta("partial"))
-                emit(ModelEvent.Failed(AgentError.ModelError("mid-stream", retriable = false)))
+                emit(fail(AgentError.ModelError("mid-stream", retriable = false)))
             }
         }
         val secondary = object : LanguageModel {
             override val capabilities = ModelCapabilities()
-            override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
+            override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
                 secondaryUsed[0] = true
                 emit(ModelEvent.TextDelta("should-not-appear"))
             }

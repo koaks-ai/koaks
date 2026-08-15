@@ -4,41 +4,27 @@ import org.koaks.framework.loop.AgentDSL
 import org.koaks.framework.loop.ModelScope
 import org.koaks.framework.loop.ModelSelection
 import org.koaks.framework.model.ModelCapabilities
-import org.koaks.framework.provider.ModelConfig
+import org.koaks.framework.model.Support
 import org.koaks.framework.provider.DEFAULT_STREAM_IDLE_TIMEOUT_MS
+import org.koaks.framework.provider.ModelConfig
+import org.koaks.provider.chatcompletions.normalizeChatCompletionsUrl
 
-/** OpenAI's default API base URL. */
 const val OPENAI_DEFAULT_BASE_URL: String = "https://api.openai.com"
 
-/**
- * Configuration scope for the OpenAI provider DSL: `model { openai(...) { ... } }`.
- * Generation params are OpenAI-native and set flat on this block; only fields that
- * differ from defaults need to be set.
- */
 @AgentDSL
 class OpenAIConfig(
     var baseUrl: String,
     var apiKey: String,
     var modelName: String,
 ) {
-    // OpenAI-native generation params, bound to this model.
     var temperature: Double? = null
-
-    /** Maps to OpenAI's `max_completion_tokens` (replaces the deprecated `max_tokens`). */
     var maxCompletionTokens: Int? = null
     var topP: Double? = null
     var stop: List<String>? = null
     var presencePenalty: Double? = null
     var frequencyPenalty: Double? = null
-
-    /** Maps to OpenAI's `reasoning_effort`: `"low" | "medium" | "high"`. */
     var reasoningEffort: String? = null
-
-    /** Maximum silence between SSE lines before the request fails. */
     var streamIdleTimeoutMs: Long = DEFAULT_STREAM_IDLE_TIMEOUT_MS
-
-    /** Require the standard `data: [DONE]` terminator; disable for non-standard gateways. */
-    var requireStreamEndMarker: Boolean = true
 
     private var caps = ModelCapabilities()
     fun capabilities(block: OpenAICapabilitiesScope.() -> Unit) {
@@ -50,7 +36,6 @@ class OpenAIConfig(
         apiKey = apiKey,
         modelName = modelName,
         streamIdleTimeoutMs = streamIdleTimeoutMs,
-        requireStreamEndMarker = requireStreamEndMarker,
     )
 
     internal fun params(): OpenAIParams = OpenAIParams(
@@ -68,22 +53,19 @@ class OpenAIConfig(
 
 @AgentDSL
 class OpenAICapabilitiesScope(initial: ModelCapabilities) {
-    var parallelToolCalls: Boolean = initial.parallelToolCalls
-    var vision: Boolean = initial.vision
-    var jsonMode: Boolean = initial.jsonMode
+    var parallelToolCalls: Boolean = initial.parallelToolCalls == Support.Supported
+    var vision: Boolean = initial.vision == Support.Supported
+    var jsonMode: Boolean = initial.jsonObject == Support.Supported
+    var jsonSchema: Boolean = initial.jsonSchema == Support.Supported
 
-    internal fun build() = ModelCapabilities(parallelToolCalls, vision, jsonMode)
+    internal fun build() = ModelCapabilities(
+        parallelToolCalls = if (parallelToolCalls) Support.Supported else Support.Unsupported,
+        vision = if (vision) Support.Supported else Support.Unknown,
+        jsonObject = if (jsonMode) Support.Supported else Support.Unknown,
+        jsonSchema = if (jsonSchema) Support.Supported else Support.Unknown,
+    )
 }
 
-/**
- * Selects OpenAI (Chat Completions) as the agent's model. Builds an [OpenAIChatModel]
- * using the transport from [ModelScope] (agent-owned unless externally injected),
- * returning it as a [ModelSelection] so callers can chain `.fallback(...)`.
- *
- * [baseUrl] accepts a provider base URL (`https://api.openai.com`), an SDK-style
- * base URL (`.../v1`), or the full Chat Completions endpoint (`.../v1/chat/completions`).
- * Param order matches the other providers (`baseUrl, apiKey, modelName`).
- */
 fun ModelScope.openai(
     baseUrl: String = OPENAI_DEFAULT_BASE_URL,
     apiKey: String,
@@ -92,13 +74,4 @@ fun ModelScope.openai(
 ): ModelSelection {
     val cfg = OpenAIConfig(baseUrl, apiKey, modelName).apply(block)
     return custom(OpenAIChatModel(cfg.toConfig(), transport, cfg.params(), cfg.capabilities()))
-}
-
-private fun normalizeChatCompletionsUrl(baseUrl: String): String {
-    val trimmed = baseUrl.trim().trimEnd('/')
-    return when {
-        trimmed.endsWith("/chat/completions") -> trimmed
-        trimmed.endsWith("/v1") -> "$trimmed/chat/completions"
-        else -> "$trimmed/v1/chat/completions"
-    }
 }

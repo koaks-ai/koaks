@@ -1,55 +1,49 @@
 package org.koaks.framework.memory
 
 import kotlinx.coroutines.test.runTest
-import org.koaks.framework.model.Message
+import org.koaks.framework.model.ItemRef
+import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.Role
-import org.koaks.framework.model.ToolCall
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class WindowMemoryTest {
 
-    private fun user(t: String) = Message.user(t)
-    private fun assistantCall(id: String) = Message.assistant("", listOf(ToolCall(id, "tool", "{}")))
-    private fun toolResult(id: String) = Message.tool(id, "result")
+    private fun user(t: String) = ModelItem.user(t)
+    private fun assistantCall(id: String) = ModelItem.ToolCall(ref = ItemRef(id), name = "tool", arguments = "{}")
+    private fun toolResult(id: String) = ModelItem.ToolResult(callRef = ItemRef(id), output = "result")
 
     @Test
     fun keeps_all_when_under_limit() = runTest {
         val mem = WindowMemory(maxMessages = 10)
-        mem.commit(listOf(user("hi"), Message.assistant("hello")))
-        assertEquals(2, mem.load(user("")).size)
+        mem.commit(completedTurn(user("hi"), ModelItem.assistant("hello")))
+        assertEquals(2, mem.load(emptyList()).transcript.size)
     }
 
     @Test
     fun drops_oldest_whole_turns_preserving_tool_pairing() = runTest {
         val mem = WindowMemory(maxMessages = 4)
-        // Turn 1: user + assistant(call) + tool result (3 msgs)
-        mem.commit(listOf(user("q1"), assistantCall("c1"), toolResult("c1")))
-        // Turn 2: user + assistant (2 msgs)
-        mem.commit(listOf(user("q2"), Message.assistant("a2")))
+        mem.commit(completedTurn(user("q1"), assistantCall("c1"), toolResult("c1")))
+        mem.commit(completedTurn(user("q2"), ModelItem.assistant("a2")))
 
-        val loaded = mem.load(user(""))
-        // Budget 4 can't fit both turns (3+2=5); the oldest whole turn is dropped.
-        assertEquals(listOf("q2"), loaded.filter { it.role == Role.USER }.map { it.text })
+        val loaded = mem.load(emptyList()).transcript
+        assertEquals(listOf("q2"), loaded.userTexts())
 
-        // Critically: no orphaned tool result without its assistant tool-call.
-        val toolMsgs = loaded.filter { it.role == Role.TOOL }
-        toolMsgs.forEach { tm ->
-            val callId = (tm.parts.first() as org.koaks.framework.model.ContentPart.ToolResultPart).callId
-            val hasMatchingCall = loaded.any { m -> m.toolCalls.any { it.id == callId } }
-            assertTrue(hasMatchingCall, "tool result $callId must keep its assistant tool-call")
+        val unresolved = loaded.filterIsInstance<ModelItem.ToolResult>()
+        unresolved.forEach { result ->
+            assertTrue(loaded.any { it is ModelItem.ToolCall && it.ref == result.callRef })
         }
     }
 
     @Test
     fun preserves_leading_system_message() = runTest {
         val mem = WindowMemory(maxMessages = 3)
-        mem.commit(listOf(Message.system("sys")))
-        mem.commit(listOf(user("q1"), Message.assistant("a1")))
-        mem.commit(listOf(user("q2"), Message.assistant("a2")))
+        mem.commit(completedTurn(ModelItem.system("sys")))
+        mem.commit(completedTurn(user("q1"), ModelItem.assistant("a1")))
+        mem.commit(completedTurn(user("q2"), ModelItem.assistant("a2")))
 
-        val loaded = mem.load(user(""))
+        val loaded = mem.load(emptyList()).transcript.filterIsInstance<ModelItem.Message>()
         assertEquals(Role.SYSTEM, loaded.first().role, "system message must be preserved at the head")
         assertEquals("sys", loaded.first().text)
     }
@@ -57,10 +51,11 @@ class WindowMemoryTest {
     @Test
     fun never_splits_a_single_oversized_turn() = runTest {
         val mem = WindowMemory(maxMessages = 2)
-        // A single turn of 3 messages, larger than the cap.
-        mem.commit(listOf(user("q1"), assistantCall("c1"), toolResult("c1")))
-        val loaded = mem.load(user(""))
-        // Kept intact rather than orphaning the tool result.
+        mem.commit(completedTurn(user("q1"), assistantCall("c1"), toolResult("c1")))
+        val loaded = mem.load(emptyList()).transcript
         assertEquals(3, loaded.size)
     }
 }
+
+internal fun List<ModelItem>.userTexts(): List<String> =
+    filterIsInstance<ModelItem.Message>().filter { it.role == Role.USER }.map { it.text }

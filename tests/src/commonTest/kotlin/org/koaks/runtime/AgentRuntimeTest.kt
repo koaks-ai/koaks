@@ -22,6 +22,8 @@ import org.koaks.framework.loop.FakeLanguageModel
 import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.tool
 import org.koaks.framework.model.AgentError
+import org.koaks.framework.loop.done
+import org.koaks.framework.loop.fail
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
@@ -51,7 +53,7 @@ class AgentRuntimeTest {
         model {
             custom(
                 FakeLanguageModel(
-                    listOf(ModelEvent.TextDelta(answer), ModelEvent.Completed(Usage(1, 1, 2))),
+                    listOf(ModelEvent.TextDelta(answer), done(Usage(1, 1, 2))),
                 ),
             )
         }
@@ -64,7 +66,7 @@ class AgentRuntimeTest {
         model {
             custom(
                 FakeLanguageModel(
-                    chunks.map { ModelEvent.TextDelta(it) } + ModelEvent.Completed(Usage(1, chunks.size, 1 + chunks.size)),
+                    chunks.map { ModelEvent.TextDelta(it) } + done(Usage(1, chunks.size, 1 + chunks.size)),
                 ),
             )
         }
@@ -140,7 +142,7 @@ class AgentRuntimeTest {
             model {
                 custom(
                     FakeLanguageModel(
-                        ArrayDeque(listOf(listOf(ModelEvent.TextDelta("never"), ModelEvent.Completed(Usage.ZERO)))),
+                        ArrayDeque(listOf(listOf(ModelEvent.TextDelta("never"), done(Usage.ZERO)))),
                         beforeEmit = { gate.await() }, // suspends forever until cancelled
                     ),
                 )
@@ -223,7 +225,7 @@ class AgentRuntimeTest {
 
     @Test
     fun stream_is_cold_and_each_collection_creates_a_new_instance() = runTest {
-        val script = listOf(ModelEvent.TextDelta("again"), ModelEvent.Completed(Usage(1, 1, 2)))
+        val script = listOf(ModelEvent.TextDelta("again"), done(Usage(1, 1, 2)))
         val repeatable = agent {
             id = "agent-38"
             name = "repeatable"
@@ -256,7 +258,7 @@ class AgentRuntimeTest {
                 custom(
                     FakeLanguageModel(
                         ArrayDeque(
-                            listOf(listOf(ModelEvent.TextDelta("never"), ModelEvent.Completed(Usage.ZERO))),
+                            listOf(listOf(ModelEvent.TextDelta("never"), done(Usage.ZERO))),
                         ),
                         beforeEmit = {
                             enteredModel.complete(Unit)
@@ -291,7 +293,7 @@ class AgentRuntimeTest {
                 custom(
                     FakeLanguageModel(
                         ArrayDeque(
-                            listOf(listOf(ModelEvent.TextDelta("child"), ModelEvent.Completed(Usage.ZERO))),
+                            listOf(listOf(ModelEvent.TextDelta("child"), done(Usage.ZERO))),
                         ),
                         beforeEmit = {
                             childStarted.complete(Unit)
@@ -309,7 +311,7 @@ class AgentRuntimeTest {
             model {
                 custom(
                     FakeLanguageModel(
-                        listOf(ModelEvent.ToolCallCompleted(ToolCall("c1", "fork", "{}")), ModelEvent.Completed(Usage.ZERO)),
+                        listOf(ModelEvent.ToolCallCompleted(ToolCall("c1", "fork", "{}")), done(Usage.ZERO)),
                     ),
                 )
             }
@@ -387,7 +389,7 @@ class AgentRuntimeTest {
                 custom(
                     FakeLanguageModel(
                         ArrayDeque(
-                            listOf(listOf(ModelEvent.TextDelta("never"), ModelEvent.Completed(Usage.ZERO))),
+                            listOf(listOf(ModelEvent.TextDelta("never"), done(Usage.ZERO))),
                         ),
                         beforeEmit = {
                             enteredModel.complete(Unit)
@@ -422,7 +424,7 @@ class AgentRuntimeTest {
                 custom(
                     FakeLanguageModel(
                         ArrayDeque(
-                            listOf(listOf(ModelEvent.TextDelta("never"), ModelEvent.Completed(Usage.ZERO))),
+                            listOf(listOf(ModelEvent.TextDelta("never"), done(Usage.ZERO))),
                         ),
                         beforeEmit = {
                             enteredModel.complete(Unit)
@@ -451,7 +453,7 @@ class AgentRuntimeTest {
             model {
                 custom(
                     FakeLanguageModel(
-                        listOf(ModelEvent.Failed(AgentError.ModelError("child boom", false))),
+                        listOf(fail(AgentError.ModelError("child boom", false))),
                     ),
                 )
             }
@@ -463,9 +465,9 @@ class AgentRuntimeTest {
                     FakeLanguageModel(
                         listOf(
                             ModelEvent.ToolCallCompleted(ToolCall("c1", "delegate", "{}")),
-                            ModelEvent.Completed(Usage.ZERO),
+                            done(Usage.ZERO),
                         ),
-                        listOf(ModelEvent.TextDelta("parent-ok"), ModelEvent.Completed(Usage.ZERO)),
+                        listOf(ModelEvent.TextDelta("parent-ok"), done(Usage.ZERO)),
                     ),
                 )
             }
@@ -500,7 +502,7 @@ class AgentRuntimeTest {
         val child = agent {
             id = "unobserved-fail-child"
             model {
-                custom(FakeLanguageModel(listOf(ModelEvent.Failed(AgentError.ModelError("unobserved boom", false)))))
+                custom(FakeLanguageModel(listOf(fail(AgentError.ModelError("unobserved boom", false)))))
             }
         }
         val parent = agent {
@@ -510,9 +512,9 @@ class AgentRuntimeTest {
                     FakeLanguageModel(
                         listOf(
                             ModelEvent.ToolCallCompleted(ToolCall("c1", "delegate", "{}")),
-                            ModelEvent.Completed(Usage.ZERO),
+                            done(Usage.ZERO),
                         ),
-                        listOf(ModelEvent.TextDelta("parent-ok"), ModelEvent.Completed(Usage.ZERO)),
+                        listOf(ModelEvent.TextDelta("parent-ok"), done(Usage.ZERO)),
                     ),
                 )
             }
@@ -555,9 +557,9 @@ class AgentRuntimeTest {
                     FakeLanguageModel(
                         listOf(
                             ModelEvent.ToolCallCompleted(ToolCall("c1", "delegate", "{}")),
-                            ModelEvent.Completed(Usage.ZERO),
+                            done(Usage.ZERO),
                         ),
-                        listOf(ModelEvent.TextDelta("parent-ok"), ModelEvent.Completed(Usage.ZERO)),
+                        listOf(ModelEvent.TextDelta("parent-ok"), done(Usage.ZERO)),
                     ),
                 )
             }
@@ -593,7 +595,7 @@ class AgentRuntimeTest {
             model {
                 custom(
                     FakeLanguageModel(
-                        ArrayDeque(listOf(listOf(ModelEvent.TextDelta("never"), ModelEvent.Completed(Usage.ZERO)))),
+                        ArrayDeque(listOf(listOf(ModelEvent.TextDelta("never"), done(Usage.ZERO)))),
                         beforeEmit = { throw CancellationException("child stopped") },
                     ),
                 )
@@ -606,9 +608,9 @@ class AgentRuntimeTest {
                     FakeLanguageModel(
                         listOf(
                             ModelEvent.ToolCallCompleted(ToolCall("c1", "delegate", "{}")),
-                            ModelEvent.Completed(Usage.ZERO),
+                            done(Usage.ZERO),
                         ),
-                        listOf(ModelEvent.TextDelta("parent-ok"), ModelEvent.Completed(Usage.ZERO)),
+                        listOf(ModelEvent.TextDelta("parent-ok"), done(Usage.ZERO)),
                     ),
                 )
             }
@@ -636,7 +638,7 @@ class AgentRuntimeTest {
     fun mixed_child_failure_policies_only_propagate_the_propagating_failure() = runTest {
         fun failingChild(id: String, message: String) = agent {
             this.id = id
-            model { custom(FakeLanguageModel(listOf(ModelEvent.Failed(AgentError.ModelError(message, false))))) }
+            model { custom(FakeLanguageModel(listOf(fail(AgentError.ModelError(message, false))))) }
         }
         val captured = failingChild("mixed-captured-child", "captured boom")
         val propagating = failingChild("mixed-propagating-child", "propagating boom")
@@ -647,9 +649,9 @@ class AgentRuntimeTest {
                     FakeLanguageModel(
                         listOf(
                             ModelEvent.ToolCallCompleted(ToolCall("c1", "delegate", "{}")),
-                            ModelEvent.Completed(Usage.ZERO),
+                            done(Usage.ZERO),
                         ),
-                        listOf(ModelEvent.TextDelta("parent-finished-model"), ModelEvent.Completed(Usage.ZERO)),
+                        listOf(ModelEvent.TextDelta("parent-finished-model"), done(Usage.ZERO)),
                     ),
                 )
             }

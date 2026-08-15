@@ -21,6 +21,7 @@ dependencyResolutionManagement {
 rootProject.name = "koaks"
 
 include("core")
+include("model-provider:chat-completions")
 include("model-provider:qwen")
 include("model-provider:ollama")
 include("model-provider:openai")

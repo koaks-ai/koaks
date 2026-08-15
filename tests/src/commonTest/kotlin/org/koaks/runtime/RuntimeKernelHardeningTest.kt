@@ -12,7 +12,9 @@ import org.koaks.framework.loop.FakeLanguageModel
 import org.koaks.framework.loop.NoArgs
 import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.tool
-import org.koaks.framework.model.Message
+import org.koaks.framework.model.ModelItem
+import org.koaks.framework.model.displayText
+import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
@@ -35,7 +37,7 @@ class RuntimeKernelHardeningTest {
         id = name
         this.name = name
         model {
-            custom(FakeLanguageModel(listOf(ModelEvent.TextDelta(answer), ModelEvent.Completed(Usage(1, 1, 2)))))
+            custom(FakeLanguageModel(listOf(ModelEvent.TextDelta(answer), done(Usage(1, 1, 2)))))
         }
         terminateAfter(maxSteps = 5)
     }
@@ -43,7 +45,7 @@ class RuntimeKernelHardeningTest {
     @Test
     fun spawn_injects_context_refs_into_initial_messages() = runTest {
         val model = FakeLanguageModel(
-            listOf(ModelEvent.TextDelta("ok"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("ok"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-46"
@@ -55,12 +57,12 @@ class RuntimeKernelHardeningTest {
         val runtime = AgentRuntime()
         runtime.use {
             val ref = it.context.put(
-                listOf(Message.user("shared-fact-1"), Message.assistant("shared-fact-2")),
+                listOf(ModelItem.user("shared-fact-1"), ModelItem.assistant("shared-fact-2")),
                 scope = ContextScope.GLOBAL,
             )
             it.spawn(a, "user-task", contextRefs = listOf(ref)).await()
 
-            val texts = model.lastRequest!!.messages.map { m -> m.text }
+            val texts = model.lastRequest!!.items.map { m -> m.displayText() }
             assertTrue(texts.contains("shared-fact-1"))
             assertTrue(texts.contains("shared-fact-2"))
             assertTrue(texts.contains("user-task"))
@@ -96,8 +98,8 @@ class RuntimeKernelHardeningTest {
             model {
                 custom(
                     FakeLanguageModel(
-                        listOf(ModelEvent.ToolCallCompleted(ToolCall("c1", "fork", "{}")), ModelEvent.Completed(Usage.ZERO)),
-                        listOf(ModelEvent.TextDelta("parent-done"), ModelEvent.Completed(Usage.ZERO)),
+                        listOf(ModelEvent.ToolCallCompleted(ToolCall("c1", "fork", "{}")), done(Usage.ZERO)),
+                        listOf(ModelEvent.TextDelta("parent-done"), done(Usage.ZERO)),
                     ),
                 )
             }
@@ -130,8 +132,8 @@ class RuntimeKernelHardeningTest {
             model {
                 custom(
                     FakeLanguageModel(
-                        listOf(ModelEvent.ToolCallCompleted(ToolCall("c1", "recv", "{}")), ModelEvent.Completed(Usage.ZERO)),
-                        listOf(ModelEvent.TextDelta("got-it"), ModelEvent.Completed(Usage.ZERO)),
+                        listOf(ModelEvent.ToolCallCompleted(ToolCall("c1", "recv", "{}")), done(Usage.ZERO)),
+                        listOf(ModelEvent.TextDelta("got-it"), done(Usage.ZERO)),
                     ),
                 )
             }

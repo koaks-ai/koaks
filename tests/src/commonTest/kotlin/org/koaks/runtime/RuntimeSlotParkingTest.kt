@@ -16,6 +16,7 @@ import org.koaks.framework.loop.FakeLanguageModel
 import org.koaks.framework.loop.NoArgs
 import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.tool
+import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
@@ -40,7 +41,7 @@ class RuntimeSlotParkingTest {
         id = name
         this.name = name
         model {
-            custom(FakeLanguageModel(listOf(ModelEvent.TextDelta(answer), ModelEvent.Completed(Usage(1, 1, 2)))))
+            custom(FakeLanguageModel(listOf(ModelEvent.TextDelta(answer), done(Usage(1, 1, 2)))))
         }
         terminateAfter(maxSteps = 5)
     }
@@ -52,7 +53,7 @@ class RuntimeSlotParkingTest {
         model {
             custom(
                 FakeLanguageModel(
-                    ArrayDeque(listOf(listOf(ModelEvent.TextDelta(name), ModelEvent.Completed(Usage.ZERO)))),
+                    ArrayDeque(listOf(listOf(ModelEvent.TextDelta(name), done(Usage.ZERO)))),
                     beforeEmit = { ev -> if (ev is ModelEvent.TextDelta) onEnter() },
                 ),
             )
@@ -145,9 +146,9 @@ class RuntimeSlotParkingTest {
                         listOf(
                             ModelEvent.ToolCallCompleted(ToolCall("c1", "forkA", "{}")),
                             ModelEvent.ToolCallCompleted(ToolCall("c2", "forkB", "{}")),
-                            ModelEvent.Completed(Usage.ZERO),
+                            done(Usage.ZERO),
                         ),
-                        listOf(ModelEvent.TextDelta("parent-done"), ModelEvent.Completed(Usage.ZERO)),
+                        listOf(ModelEvent.TextDelta("parent-done"), done(Usage.ZERO)),
                     ),
                 )
             }
@@ -217,9 +218,9 @@ class RuntimeSlotParkingTest {
                         listOf(
                             ModelEvent.ToolCallCompleted(ToolCall("c1", "busy", "{}")),
                             ModelEvent.ToolCallCompleted(ToolCall("c2", "block", "{}")),
-                            ModelEvent.Completed(Usage.ZERO),
+                            done(Usage.ZERO),
                         ),
-                        listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
+                        listOf(ModelEvent.TextDelta("done"), done(Usage.ZERO)),
                     ),
                 )
             }

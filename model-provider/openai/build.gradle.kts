@@ -8,6 +8,7 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 implementation(project(":core"))
+                api(project(":model-provider:chat-completions"))
             }
         }
     }

@@ -3,7 +3,7 @@ package org.koaks.framework.loop
 import org.koaks.framework.model.FallbackModel
 import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.transport.KtorTransport
-import org.koaks.framework.transport.Transport
+import org.koaks.framework.transport.ModelTransport
 
 /**
  * DSL scope for selecting the model. Provider modules attach via extension
@@ -25,11 +25,11 @@ import org.koaks.framework.transport.Transport
  */
 @AgentDSL
 class ModelScope {
-    private var external: Transport? = null
-    private var lazyTransport: Transport? = null
+    private var external: ModelTransport? = null
+    private var lazyTransport: ModelTransport? = null
 
     /** Injects an externally-owned transport; the agent will not close it. */
-    fun transport(transport: Transport) {
+    fun transport(transport: ModelTransport) {
         external = transport
     }
 
@@ -40,7 +40,7 @@ class ModelScope {
     fun custom(model: LanguageModel): ModelSelection = ModelSelection(model)
 
     /** The transport providers should use. Created on demand if none was injected. */
-    val transport: Transport
+    val transport: ModelTransport
         get() = external ?: lazyTransport ?: KtorTransport().also { lazyTransport = it }
 
     internal fun transportInfo(): TransportInfo = TransportInfo(
@@ -73,6 +73,6 @@ class ModelSelection internal constructor(
 }
 
 internal data class TransportInfo(
-    val transport: Transport?,
+    val transport: ModelTransport?,
     val ownsTransport: Boolean,
 )

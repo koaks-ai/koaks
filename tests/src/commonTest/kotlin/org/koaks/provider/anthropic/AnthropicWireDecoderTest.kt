@@ -45,37 +45,36 @@ class AnthropicWireDecoderTest {
     fun assembles_tool_call_across_chunks() {
         val decoder = AnthropicWireDecoder()
         val events = buildList {
-            addAll(decoder.accept(messageStart(inputTokens = 10)))
-            addAll(decoder.accept(toolUseStart(index = 0, id = "toolu_1", name = "get_weather")))
+            addAll(decoder.acceptChunk(messageStart(inputTokens = 10)))
+            addAll(decoder.acceptChunk(toolUseStart(index = 0, id = "toolu_1", name = "get_weather")))
             // The input object arrives split across several input_json_delta fragments.
-            addAll(decoder.accept(inputJsonDelta(index = 0, partial = "{\"city\":")))
-            addAll(decoder.accept(inputJsonDelta(index = 0, partial = "\"NYC\"}")))
-            addAll(decoder.accept(messageDelta(outputTokens = 5)))
+            addAll(decoder.acceptChunk(inputJsonDelta(index = 0, partial = "{\"city\":")))
+            addAll(decoder.acceptChunk(inputJsonDelta(index = 0, partial = "\"NYC\"}")))
+            addAll(decoder.acceptChunk(messageDelta(outputTokens = 5)))
             addAll(decoder.finish())
         }
 
         // A single completed tool call with assembled name + arguments.
         val completed = events.filterIsInstance<ModelEvent.ToolCallCompleted>().single()
         assertEquals("get_weather", completed.call.name)
-        assertEquals("toolu_1", completed.call.id)
+        assertEquals("toolu_1", completed.call.nativeId?.raw)
         assertEquals("{\"city\":\"NYC\"}", completed.call.arguments)
 
-        // Usage: prompt from message_start, completion from message_delta.
-        val done = events.filterIsInstance<ModelEvent.Completed>().single()
-        assertEquals(10, done.usage.promptTokens)
-        assertEquals(5, done.usage.completionTokens)
-        assertEquals(15, done.usage.totalTokens)
+        val done = events.filterIsInstance<ModelEvent.Finished>().single()
+        assertEquals(10, done.response.usage.promptTokens)
+        assertEquals(5, done.response.usage.completionTokens)
+        assertEquals(15, done.response.usage.totalTokens)
     }
 
     @Test
     fun forwards_text_and_thinking_as_distinct_events() {
         val decoder = AnthropicWireDecoder()
         val events = buildList {
-            addAll(decoder.accept(messageStart(inputTokens = 3)))
-            addAll(decoder.accept(thinkingDelta("let me ")))
-            addAll(decoder.accept(thinkingDelta("think")))
-            addAll(decoder.accept(textDelta("the answer")))
-            addAll(decoder.accept(messageDelta(outputTokens = 7)))
+            addAll(decoder.acceptChunk(messageStart(inputTokens = 3)))
+            addAll(decoder.acceptChunk(thinkingDelta("let me ")))
+            addAll(decoder.acceptChunk(thinkingDelta("think")))
+            addAll(decoder.acceptChunk(textDelta("the answer")))
+            addAll(decoder.acceptChunk(messageDelta(outputTokens = 7)))
             addAll(decoder.finish())
         }
 
@@ -86,39 +85,40 @@ class AnthropicWireDecoderTest {
         val text = events.filterIsInstance<ModelEvent.TextDelta>().single()
         assertEquals("the answer", text.text)
 
-        val done = events.filterIsInstance<ModelEvent.Completed>().single()
-        assertEquals(10, done.usage.totalTokens)
+        val done = events.filterIsInstance<ModelEvent.Finished>().single()
+        assertEquals(10, done.response.usage.totalTokens)
     }
 
     @Test
     fun reports_error_chunk_as_failed() {
         val decoder = AnthropicWireDecoder()
-        val events = decoder.accept(
+        val events = decoder.acceptChunk(
             AnthropicChatResponse(
                 type = "error",
                 error = AnthropicChatResponse.ErrorOutput(type = "authentication_error", message = "bad key"),
             )
         )
-        assertTrue(events.single() is ModelEvent.Failed)
+        val finished = events.filterIsInstance<ModelEvent.Finished>().single()
+        assertTrue(finished.response is org.koaks.framework.model.ModelResponse.Failed)
     }
 
     @Test
     fun assembles_parallel_tool_calls_in_index_order() {
         val decoder = AnthropicWireDecoder()
         buildList {
-            addAll(decoder.accept(messageStart(inputTokens = 1)))
+            addAll(decoder.acceptChunk(messageStart(inputTokens = 1)))
             // Two tool_use blocks at distinct indices.
-            addAll(decoder.accept(toolUseStart(index = 0, id = "toolu_a", name = "first")))
-            addAll(decoder.accept(inputJsonDelta(index = 0, partial = "{}")))
-            addAll(decoder.accept(toolUseStart(index = 1, id = "toolu_b", name = "second")))
-            addAll(decoder.accept(inputJsonDelta(index = 1, partial = "{}")))
+            addAll(decoder.acceptChunk(toolUseStart(index = 0, id = "toolu_a", name = "first")))
+            addAll(decoder.acceptChunk(inputJsonDelta(index = 0, partial = "{}")))
+            addAll(decoder.acceptChunk(toolUseStart(index = 1, id = "toolu_b", name = "second")))
+            addAll(decoder.acceptChunk(inputJsonDelta(index = 1, partial = "{}")))
         }
         val completed = decoder.finish().filterIsInstance<ModelEvent.ToolCallCompleted>()
         assertEquals(2, completed.size)
         // Emitted sorted by content-block index.
         assertEquals("first", completed[0].call.name)
-        assertEquals("toolu_a", completed[0].call.id)
+        assertEquals("toolu_a", completed[0].call.nativeId?.raw)
         assertEquals("second", completed[1].call.name)
-        assertEquals("toolu_b", completed[1].call.id)
+        assertEquals("toolu_b", completed[1].call.nativeId?.raw)
     }
 }

@@ -6,11 +6,12 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.accept
 import io.ktor.client.request.header
-import io.ktor.client.request.preparePost
+import io.ktor.client.request.prepareRequest
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpMethod as KtorMethod
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.ByteReadChannel
@@ -19,64 +20,50 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koaks.framework.net.provideEngine
-import org.koaks.framework.provider.ModelConfig
 import org.koaks.framework.provider.RateLimit
-import org.koaks.framework.provider.StreamFormat
-import org.koaks.framework.provider.WireAdapter
-import org.koaks.framework.utils.json.JsonUtil
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * Default [Transport] backed by a single shared Ktor [HttpClient] (connection pool).
+ * Default [ModelTransport] backed by a single shared Ktor [HttpClient].
  *
- * Streaming line-reader supports both [org.koaks.framework.provider.StreamFormat.SSE] (`data:` lines) and
- * [org.koaks.framework.provider.StreamFormat.NDJSON] (raw JSON per line). Connection-level retry is transparent
- * and ONLY applies before the first chunk has been emitted downstream: once any
- * byte has been forwarded, no retry happens here — that becomes the loop's call.
+ * Connection-level retry is transparent and ONLY applies before the first frame
+ * has been emitted downstream. The [WireCall.idempotencyKey] is sent on every
+ * attempt so a provider that honors `Idempotency-Key` can collapse duplicates.
  */
 class KtorTransport(
     private val engineClient: HttpClient = HttpClient(provideEngine()) {
         install(HttpTimeout)
     },
-) : Transport {
+) : ModelTransport {
 
     private val logger = KotlinLogging.logger {}
-
-    // One limiter per distinct RateLimit config, shared across requests on this transport.
     private val limiters = mutableMapOf<RateLimit, RateLimiter>()
-    private val limitersLock = kotlinx.coroutines.sync.Mutex()
+    private val limitersLock = Mutex()
 
     private suspend fun limiterFor(limit: RateLimit): RateLimiter =
         limitersLock.withLock { limiters.getOrPut(limit) { RateLimiter(limit) } }
 
-    override fun <TReq, TResp> stream(
-        config: ModelConfig,
-        req: TReq,
-        adapter: WireAdapter<TReq, TResp>,
-    ): Flow<TResp> = flow {
-        val body = JsonUtil.toJson(req, adapter.requestSerializer)
+    override fun call(call: WireCall): Flow<WireFrame> = flow {
         var attempt = 0
         while (true) {
-            config.rateLimit?.let { limiterFor(it).acquire() }
+            call.rateLimit?.let { limiterFor(it).acquire() }
             var emittedAny = false
             try {
-                openStream(config, body) { line ->
-                    val parsed = parseLine(config, line) ?: return@openStream
-                    val chunk = JsonUtil.fromJson(parsed, adapter.responseSerializer)
+                execute(call) { frame ->
                     emittedAny = true
-                    emit(chunk)
+                    emit(frame)
                 }
                 return@flow
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                // Only connection-level (pre-first-byte) failures are retriable here.
-                if (!emittedAny && attempt < config.retry.maxRetries && e.isRetriableTransportFailure()) {
-                    val backoff = config.retry.initialBackoffMs * (1L shl attempt)
-                    logger.warn { "transport retry ${attempt + 1}/${config.retry.maxRetries} after ${backoff}ms: ${e.message}" }
+                if (!emittedAny && attempt < call.retry.maxRetries && e.isRetriableTransportFailure()) {
+                    val backoff = call.retry.initialBackoffMs * (1L shl attempt)
+                    logger.warn { "transport retry ${attempt + 1}/${call.retry.maxRetries} after ${backoff}ms: ${e.message}" }
                     attempt++
                     delay(backoff.milliseconds)
                 } else {
@@ -86,90 +73,70 @@ class KtorTransport(
         }
     }
 
-    /**
-     * Opens the POST stream and invokes [onLine] for each raw text line. The
-     * `[DONE]` end marker (SSE) terminates reading. Throws on non-2xx so the retry
-     * loop can decide.
-     */
-    private suspend inline fun openStream(
-        config: ModelConfig,
-        body: String,
-        crossinline onLine: suspend (String) -> Unit,
+    private suspend fun execute(
+        call: WireCall,
+        onFrame: suspend (WireFrame) -> Unit,
     ) {
-        val stmt = engineClient.preparePost(config.baseUrl) {
+        val stmt = engineClient.prepareRequest(call.url) {
+            method = call.method.toKtor()
             contentType(ContentType.Application.Json)
-            if (config.streamFormat == StreamFormat.SSE) {
-                accept(ContentType.parse("text/event-stream"))
-            } else {
-                accept(ContentType.Application.Json)
+            when (call.expect) {
+                Framing.Sse -> accept(ContentType.parse("text/event-stream"))
+                Framing.Json, Framing.Ndjson -> accept(ContentType.Application.Json)
             }
-            for ((k, v) in config.auth.headers(config.apiKey)) header(k, v)
-            for ((k, v) in config.customHeaders) header(k, v)
-            setBody(body)
+            for ((k, v) in call.headers) header(k, v)
+            call.idempotencyKey?.let { header("Idempotency-Key", it) }
+            call.body?.let { setBody(it) }
             timeout {
-                requestTimeoutMillis = config.requestTimeoutMs
-                connectTimeoutMillis = config.connectTimeoutMs
-                socketTimeoutMillis = config.socketTimeoutMs
+                requestTimeoutMillis = call.timeouts.requestTimeoutMs
+                connectTimeoutMillis = call.timeouts.connectTimeoutMs
+                socketTimeoutMillis = call.timeouts.socketTimeoutMs
             }
         }
 
         stmt.execute { response ->
             if (!response.status.isSuccess()) {
                 val err = response.bodyAsText()
-                throw TransportException("HTTP ${response.status.value}: $err", response.status.value)
-            }
-            val channel: ByteReadChannel = response.bodyAsChannel()
-            var endMarkerReceived = false
-            while (!channel.isClosedForRead) {
-                val line = readStreamLine(channel, config.streamIdleTimeoutMs) ?: break
-                if (isEndMarker(config, line)) {
-                    endMarkerReceived = true
-                    break
+                val frame = WireFrame.HttpError(
+                    status = response.status.value,
+                    contentType = response.contentType()?.toString(),
+                    body = err,
+                )
+                if (response.status.value.isRetriableStatus()) {
+                    throw TransportException("HTTP ${response.status.value}: $err", response.status.value)
                 }
-                onLine(line)
+                onFrame(frame)
+                return@execute
             }
-            validateStreamEnd(config, endMarkerReceived)
+            when (call.expect) {
+                Framing.Json -> onFrame(
+                    WireFrame.Body(response.contentType()?.toString(), response.bodyAsText()),
+                )
+                Framing.Sse -> readSse(
+                    response.bodyAsChannel(),
+                    call.timeouts.streamIdleTimeoutMs,
+                    onFrame,
+                )
+                Framing.Ndjson -> readNdjson(
+                    response.bodyAsChannel(),
+                    call.timeouts.streamIdleTimeoutMs,
+                    onFrame,
+                )
+            }
         }
     }
-
-    /** Returns the JSON payload for a line, or null if the line should be skipped. */
-    private fun parseLine(config: ModelConfig, line: String): String? {
-        val trimmed = line.trim()
-        if (trimmed.isEmpty()) return null
-        return when (config.streamFormat) {
-            StreamFormat.SSE -> {
-                if (!trimmed.startsWith("data:")) return null
-                val content = trimmed.removePrefix("data:").trim()
-                if (content == config.streamEndMarker) null else content
-            }
-
-            StreamFormat.NDJSON -> trimmed
-        }
-    }
-
-    private fun isEndMarker(config: ModelConfig, line: String): Boolean {
-        if (config.streamFormat != StreamFormat.SSE) return false
-        val trimmed = line.trim()
-        if (!trimmed.startsWith("data:")) return false
-        return trimmed.removePrefix("data:").trim() == config.streamEndMarker
-    }
-
-    private fun Throwable.isRetriableTransportFailure(): Boolean =
-        this !is TransportException || statusCode == null || statusCode == 408 || statusCode == 429 || statusCode >= 500
 
     override fun close() {
         engineClient.close()
     }
 }
 
-/** Transport-level failure (non-2xx, connection). */
 class TransportException(
     message: String,
     val statusCode: Int? = null,
     cause: Throwable? = null,
 ) : RuntimeException(message, cause)
 
-/** The HTTP stream stayed open but produced no complete line within its idle budget. */
 class StreamIdleTimeoutException(val idleTimeoutMs: Long) : RuntimeException(
     "model response stream was idle for ${idleTimeoutMs}ms",
 )
@@ -179,16 +146,67 @@ private data class StreamLine(val value: String?)
 internal suspend fun readStreamLine(channel: ByteReadChannel, idleTimeoutMs: Long): String? {
     require(idleTimeoutMs > 0) { "idleTimeoutMs must be positive" }
     val result = withTimeoutOrNull(idleTimeoutMs) {
-        // Wrap the nullable line so EOF (a successful null read) stays distinct from timeout.
         StreamLine(channel.readUTF8Line())
     } ?: throw StreamIdleTimeoutException(idleTimeoutMs)
     return result.value
 }
 
-internal fun validateStreamEnd(config: ModelConfig, endMarkerReceived: Boolean) {
-    if (config.requireStreamEndMarker && !endMarkerReceived) {
-        throw TransportException(
-            "model response stream ended before the '${config.streamEndMarker}' marker",
-        )
+private suspend fun readNdjson(
+    channel: ByteReadChannel,
+    idleTimeoutMs: Long,
+    onFrame: suspend (WireFrame) -> Unit,
+) {
+    while (!channel.isClosedForRead) {
+        val line = readStreamLine(channel, idleTimeoutMs) ?: break
+        if (line.isNotBlank()) onFrame(WireFrame.Ndjson(line))
     }
 }
+
+private suspend fun readSse(
+    channel: ByteReadChannel,
+    idleTimeoutMs: Long,
+    onFrame: suspend (WireFrame) -> Unit,
+) {
+    var event: String? = null
+    var id: String? = null
+    val data = StringBuilder()
+    var hasData = false
+
+    suspend fun flush() {
+        if (!hasData && event == null && id == null) return
+        onFrame(WireFrame.Sse(event = event, data = data.toString(), id = id))
+        event = null
+        id = null
+        data.clear()
+        hasData = false
+    }
+
+    while (!channel.isClosedForRead) {
+        val line = readStreamLine(channel, idleTimeoutMs) ?: break
+        when {
+            line.isEmpty() -> flush()
+            line.startsWith(":") -> Unit
+            line.startsWith("event:") -> event = line.removePrefix("event:").trim()
+            line.startsWith("id:") -> id = line.removePrefix("id:").trim()
+            line.startsWith("data:") -> {
+                if (hasData) data.append('\n')
+                data.append(line.removePrefix("data:").trimStart())
+                hasData = true
+            }
+        }
+    }
+    flush()
+}
+
+private fun HttpMethod.toKtor(): KtorMethod = when (this) {
+    HttpMethod.GET -> KtorMethod.Get
+    HttpMethod.POST -> KtorMethod.Post
+    HttpMethod.PUT -> KtorMethod.Put
+    HttpMethod.PATCH -> KtorMethod.Patch
+    HttpMethod.DELETE -> KtorMethod.Delete
+}
+
+private fun Int.isRetriableStatus(): Boolean = this == 408 || this == 429 || this >= 500
+
+private fun Throwable.isRetriableTransportFailure(): Boolean =
+    this !is TransportException || statusCode == null || statusCode.isRetriableStatus()

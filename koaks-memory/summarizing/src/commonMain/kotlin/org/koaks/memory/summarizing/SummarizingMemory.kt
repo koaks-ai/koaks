@@ -1,97 +1,103 @@
 package org.koaks.memory.summarizing
 
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.koaks.framework.memory.ConversationTurn
+import org.koaks.framework.memory.MemoryView
 import org.koaks.framework.memory.ThreadMemory
-import org.koaks.framework.model.ChatRequest
+import org.koaks.framework.memory.TurnRetention
+import org.koaks.framework.memory.shouldRetain
+import org.koaks.framework.memory.turnHasSideEffects
 import org.koaks.framework.model.LanguageModel
-import org.koaks.framework.model.Message
-import org.koaks.framework.model.ModelEvent
-import org.koaks.framework.model.Role
-import org.koaks.framework.model.Usage
+import org.koaks.framework.model.ModelItem
+import org.koaks.framework.model.ModelRequest
+import org.koaks.framework.model.ReplayPolicy
+import org.koaks.framework.model.displayText
+import org.koaks.framework.model.generate
+import org.koaks.framework.model.isSystem
+import org.koaks.framework.model.isUserTurnBoundary
+import org.koaks.framework.model.newIdempotencyKey
 
 /**
  * Memory that compacts older history once a run's API-measured prompt tokens exceed
  * [maxTokens], using a [LanguageModel] to compress the oldest turns into a single system
- * "summary so far" message. Lives in its own module (`koaks-memory:summarizing`) since it
+ * "summary so far" item. Lives in its own module (`koaks-memory:summarizing`) since it
  * depends on a model — the core stays dependency-free.
  *
  * Compression is **persistent and lossy**: the summarized turns REPLACE the original
- * messages in the store (the raw text is not kept), keeping the store compact and
- * restorable. It happens on [commit], AFTER the response has already been emitted, so it
- * never sits on the run's critical path — but it does block commit's return (the compacted
- * history must be durable before the next run loads it).
- *
- * The token check uses [usage.promptTokens] — the real size of the history+input the model
- * just saw — so the trigger reflects actual context pressure rather than a message count.
- * Turn boundaries are respected so assistant↔toolResult pairings are never split.
+ * items in the store. [ReplayPolicy.Required] provider items are never summarized away.
  */
 class SummarizingMemory(
     private val maxTokens: Int,
     private val model: LanguageModel,
     private val keepRecentTurns: Int = 2,
+    override val retention: TurnRetention = TurnRetention.Interrupted,
 ) : ThreadMemory {
 
     private val mutex = Mutex()
     private var version: Long = 0
-    private var messages: MutableList<Message> = mutableListOf()
+    private var items: MutableList<ModelItem> = mutableListOf()
+    private var checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null
 
-    override suspend fun commit(messages: List<Message>, usage: Usage) {
-        // 1. Faithfully append this run's messages.
+    override suspend fun commit(turn: ConversationTurn) {
         val (snapshotVersion, snapshot) = mutex.withLock {
-            this.messages.addAll(messages)
+            if (!shouldRetain(turn, retention, turnHasSideEffects(turn))) {
+                return
+            }
+            this.items.addAll(turn.items)
+            if (turn.checkpoint != null) this.checkpoint = turn.checkpoint
             version++
-            version to this.messages.toList()
+            version to this.items.toList()
         }
 
-        // 2. Only compact when the last run actually exceeded the token budget.
-        if (usage.promptTokens <= maxTokens) return
+        if (turn.usage.promptTokens <= maxTokens) return
 
-        val system = snapshot.takeWhile { it.role == Role.SYSTEM }
+        val system = snapshot.takeWhile { it.isSystem() }
         val rest = snapshot.drop(system.size)
         val turns = groupIntoTurns(rest)
         if (turns.size <= keepRecentTurns) return
 
-        // 3. Summarize the older turns OUTSIDE the lock (model call may be a network hop).
         val toSummarize = turns.dropLast(keepRecentTurns).flatten()
         val recent = turns.takeLast(keepRecentTurns).flatten()
+        val required = toSummarize.filterIsInstance<ModelItem.ProviderItem>()
+            .filter { it.replay == ReplayPolicy.Required }
         val summary = summarize(toSummarize)
-        val compacted = system + Message.system("Summary of earlier conversation:\n$summary") + recent
+        val compacted = system +
+            listOf(ModelItem.system("Summary of earlier conversation:\n$summary")) +
+            required +
+            recent
 
-        // 4. Replace the persisted history with the compacted view (lossy, in place).
         mutex.withLock {
-            // The summarizer ran outside the lock. Never replace a newer snapshot and
-            // thereby lose turns committed while that model call was in flight.
             if (version == snapshotVersion) {
-                this.messages = compacted.toMutableList()
+                this.items = compacted.toMutableList()
+                this.checkpoint = null
                 version++
             }
         }
     }
 
-    /** Faithful snapshot of the persisted history; compaction already happened on commit. */
-    override suspend fun load(query: Message): List<Message> = mutex.withLock { messages.toList() }
-
-    private suspend fun summarize(messages: List<Message>): String {
-        val transcript = messages.joinToString("\n") { "${it.role}: ${it.text}" }
-        val request = ChatRequest(
-            messages = listOf(
-                Message.system("Summarize the following conversation concisely, preserving facts, decisions, and open questions."),
-                Message.user(transcript),
-            ),
-            stream = false,
-        )
-        val events = model.generate(request).toList()
-        return events.filterIsInstance<ModelEvent.TextDelta>().joinToString("") { it.text }
-            .ifBlank { "(summary unavailable)" }
+    override suspend fun load(query: List<ModelItem>): MemoryView = mutex.withLock {
+        MemoryView(items.toList(), checkpoint)
     }
 
-    private fun groupIntoTurns(messages: List<Message>): List<List<Message>> {
-        val turns = mutableListOf<MutableList<Message>>()
-        for (msg in messages) {
-            if (msg.role == Role.USER || turns.isEmpty()) turns += mutableListOf(msg)
-            else turns.last() += msg
+    private suspend fun summarize(items: List<ModelItem>): String {
+        val transcript = items.joinToString("\n") { it.displayText() }
+        val request = ModelRequest(
+            instructions = "Summarize the following conversation concisely, preserving facts, decisions, and open questions.",
+            items = listOf(ModelItem.user(transcript)),
+            idempotencyKey = newIdempotencyKey(),
+        )
+        val response = model.generate(request)
+        val text = response.output.filterIsInstance<ModelItem.Message>().joinToString("") { it.text }
+            .ifBlank { items.filterIsInstance<ModelItem.Message>().joinToString("") { it.text } }
+        return text.ifBlank { "(summary unavailable)" }
+    }
+
+    private fun groupIntoTurns(items: List<ModelItem>): List<List<ModelItem>> {
+        val turns = mutableListOf<MutableList<ModelItem>>()
+        for (item in items) {
+            if (item.isUserTurnBoundary() || turns.isEmpty()) turns += mutableListOf(item)
+            else turns.last() += item
         }
         return turns
     }

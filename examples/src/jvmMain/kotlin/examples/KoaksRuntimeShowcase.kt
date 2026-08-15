@@ -26,11 +26,14 @@ import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.memory.ThreadMemory
 import org.koaks.framework.memory.memoryProvider
 import org.koaks.framework.model.AgentError
-import org.koaks.framework.model.ChatRequest
+import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.ContentPart
 import org.koaks.framework.model.LanguageModel
-import org.koaks.framework.model.Message
+import org.koaks.framework.model.ModelItem
+import org.koaks.framework.model.displayText
 import org.koaks.framework.model.ModelCapabilities
+import org.koaks.framework.loop.done
+import org.koaks.framework.loop.fail
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Role
 import org.koaks.framework.model.ToolCall
@@ -234,7 +237,7 @@ private suspend fun demonstrateContextManagement(runtime: AgentRuntime) {
     Console.section("03", "上下文复用 / 压缩 / 隔离", "内容寻址 + Copy-on-Write + Summary Memory + PRIVATE ACL")
 
     val background = (1..200).map { index ->
-        Message.system("共享规范 #${index.toString().padStart(3, '0')}：所有模块遵循统一接口、审计和故障边界。")
+        ModelItem.system("共享规范 #${index.toString().padStart(3, '0')}：所有模块遵循统一接口、审计和故障边界。")
     }
     val shared = runtime.context.put(background, scope = ContextScope.GLOBAL)
     val deduplicated = runtime.context.put(background, scope = ContextScope.GLOBAL)
@@ -242,12 +245,12 @@ private suspend fun demonstrateContextManagement(runtime: AgentRuntime) {
     val agentRefs = (1..10).map { index ->
         runtime.context.delta(
             parent = shared,
-            added = listOf(Message.user("Agent-$index 私有任务增量：只处理第 $index 个子域。")),
+            added = listOf(ModelItem.user("Agent-$index 私有任务增量：只处理第 $index 个子域。")),
         )
     }
 
-    val backgroundChars = background.sumOf { it.text.length }
-    val deltaChars = agentRefs.sumOf { ref -> runtime.context.get(ref)!!.messages.sumOf { it.text.length } }
+    val backgroundChars = background.sumOf { it.displayText().length }
+    val deltaChars = agentRefs.sumOf { ref -> runtime.context.get(ref)!!.messages.sumOf { it.displayText().length } }
     val fullCopyChars = backgroundChars * agentRefs.size + deltaChars
     val sharedChars = backgroundChars + deltaChars
     val ratio = sharedChars.toDouble() / fullCopyChars.toDouble()
@@ -283,10 +286,10 @@ private suspend fun demonstrateContextManagement(runtime: AgentRuntime) {
     runtime.run(memoryAgent, "第一轮：确定统一抽象", thread = "summary-context-demo")
     runtime.run(memoryAgent, "第二轮：确定调度策略", thread = "summary-context-demo")
     runtime.run(memoryAgent, "第三轮：确定容错策略", thread = "summary-context-demo")
-    val compacted = summarizingMemory.load(Message.user("snapshot"))
-    check(compacted.firstOrNull()?.text?.startsWith("Summary of earlier conversation") == true)
-    Console.result("摘要压缩", compacted.first().text.substringBefore('\n'))
-    Console.kv("压缩后持久上下文", "${compacted.size} 条消息；仅保留最近 ${compacted.count { it.role == Role.USER }} 个原始 Turn")
+    val compacted = summarizingMemory.load(listOf(ModelItem.user("snapshot"))).transcript
+    check(compacted.filterIsInstance<ModelItem.Message>().firstOrNull()?.text?.startsWith("Summary of earlier conversation") == true)
+    Console.result("摘要压缩", compacted.filterIsInstance<ModelItem.Message>().first().text.substringBefore('\n'))
+    Console.kv("压缩后持久上下文", "${compacted.size} 条消息；仅保留最近 ${compacted.filterIsInstance<ModelItem.Message>().count { it.role == Role.USER }} 个原始 Turn")
 
     var privateRef: ContextRef? = null
     val contextReader = agent {
@@ -313,11 +316,11 @@ private suspend fun demonstrateContextManagement(runtime: AgentRuntime) {
             tool<ShowcaseNoInput>("verify_context_acl", "创建私有块并让另一个 Agent 尝试读取") {
                 val ctx = requireNotNull(currentRuntimeContext())
                 val secret = putContext(
-                    listOf(Message.system("私有凭据：仅 owner run=${ctx.runId.value} 可读")),
+                    listOf(ModelItem.system("私有凭据：仅 owner run=${ctx.runId.value} 可读")),
                     scope = ContextScope.PRIVATE,
                 )
                 privateRef = secret
-                val ownerView = resolveContext(secret).single().text
+                val ownerView = resolveContext(secret).single().displayText()
                 val childResult = spawnChild(
                     agent = contextReader,
                     input = "收到 ContextRef=${secret.id}，尝试主动解析",
@@ -338,7 +341,7 @@ private suspend fun demonstrateIpc(runtime: AgentRuntime) {
 
     var reviewerRunId: RunId? = null
     val reviewContext = runtime.context.put(
-        (1..80).map { Message.system("架构附件 #$it：调度、上下文、IPC、容错证据。") },
+        (1..80).map { ModelItem.system("架构附件 #$it：调度、上下文、IPC、容错证据。") },
         scope = ContextScope.TASK,
     )
     val reviewer = agent {
@@ -574,7 +577,7 @@ private suspend fun demonstrateFaultIsolationAndRecovery(runtime: AgentRuntime) 
     ).await()
 
     val commits = memory.committedTurns()
-    val persistedText = commits.flatten().joinToString(" | ") { it.text }
+    val persistedText = commits.flatten().joinToString(" | ") { it.displayText() }
     check(commits.size == 1) { "失败 Turn 不应提交，实际 commits=${commits.size}" }
     check("半成品" !in persistedText) { "失败草稿泄漏进持久记忆" }
 
@@ -644,12 +647,12 @@ private class PromptAwareModel(
 ) : LanguageModel {
     override val capabilities: ModelCapabilities = ModelCapabilities()
 
-    override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
+    override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
         delay(delayMillis)
-        val input = request.messages.lastOrNull { it.role == Role.USER }?.text.orEmpty()
+        val input = request.items.filterIsInstance<ModelItem.Message>().lastOrNull { it.role == Role.USER }?.text.orEmpty()
         val text = reply(input)
         emit(ModelEvent.TextDelta(text))
-        emit(ModelEvent.Completed(usageFor(text)))
+        emit(done(usageFor(text)))
     }
 }
 
@@ -660,11 +663,11 @@ private class GateModel(
 ) : LanguageModel {
     override val capabilities: ModelCapabilities = ModelCapabilities()
 
-    override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
+    override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
         started.complete(Unit)
         release.await()
         emit(ModelEvent.TextDelta(answer))
-        emit(ModelEvent.Completed(usageFor(answer)))
+        emit(done(usageFor(answer)))
     }
 }
 
@@ -674,10 +677,10 @@ private class AdmissionProbeModel(
 ) : LanguageModel {
     override val capabilities: ModelCapabilities = ModelCapabilities()
 
-    override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
+    override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
         order += label
         emit(ModelEvent.TextDelta(label))
-        emit(ModelEvent.Completed(Usage(promptTokens = 1, completionTokens = 1, totalTokens = 2)))
+        emit(done(Usage(promptTokens = 1, completionTokens = 1, totalTokens = 2)))
     }
 }
 
@@ -685,10 +688,10 @@ private class RepeatingToolModel(private val toolName: String) : LanguageModel {
     override val capabilities: ModelCapabilities = ModelCapabilities()
     private val calls = AtomicInteger(0)
 
-    override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
+    override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
         val call = calls.incrementAndGet()
         emit(ModelEvent.ToolCallCompleted(ToolCall("quota-call-$call", toolName, "{}")))
-        emit(ModelEvent.Completed(Usage(promptTokens = 2, completionTokens = 1, totalTokens = 3)))
+        emit(done(Usage(promptTokens = 2, completionTokens = 1, totalTokens = 3)))
     }
 }
 
@@ -703,13 +706,13 @@ private class ScriptedUsageModel(
         require(replies.isNotEmpty() && replies.size == promptTokens.size)
     }
 
-    override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
+    override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
         val index = calls.getAndIncrement().coerceAtMost(replies.lastIndex)
         val reply = replies[index]
         val completionTokens = (reply.length / 3).coerceAtLeast(1)
         emit(ModelEvent.TextDelta(reply))
         emit(
-            ModelEvent.Completed(
+            done(
                 Usage(
                     promptTokens = promptTokens[index],
                     completionTokens = completionTokens,
@@ -725,9 +728,9 @@ private class AlwaysFailModel(private val message: String) : LanguageModel {
     private val callCounter = AtomicInteger(0)
     val calls: Int get() = callCounter.get()
 
-    override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
+    override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
         callCounter.incrementAndGet()
-        emit(ModelEvent.Failed(AgentError.ModelError(message, retriable = true)))
+        emit(fail(AgentError.ModelError(message, retriable = true)))
     }
 }
 
@@ -738,20 +741,15 @@ private class ToolThenAnswerModel(
     override val capabilities: ModelCapabilities = ModelCapabilities()
     private val calls = AtomicInteger(0)
 
-    override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
+    override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
         if (calls.getAndIncrement() == 0) {
             emit(ModelEvent.ToolCallCompleted(ToolCall("call-$toolName", toolName, "{}")))
-            emit(ModelEvent.Completed(Usage(promptTokens = 6, completionTokens = 2, totalTokens = 8)))
+            emit(done(Usage(promptTokens = 6, completionTokens = 2, totalTokens = 8)))
         } else {
-            val toolOutput = request.messages
-                .lastOrNull { it.role == Role.TOOL }
-                ?.parts
-                ?.filterIsInstance<ContentPart.ToolResultPart>()
-                ?.joinToString("") { it.output }
-                .orEmpty()
+            val toolOutput = request.items.filterIsInstance<ModelItem.ToolResult>().lastOrNull()?.output.orEmpty()
             val answer = "$answerPrefix：$toolOutput"
             emit(ModelEvent.TextDelta(answer))
-            emit(ModelEvent.Completed(usageFor(answer)))
+            emit(done(usageFor(answer)))
         }
     }
 }
@@ -759,13 +757,13 @@ private class ToolThenAnswerModel(
 private class ChunkedModel : LanguageModel {
     override val capabilities: ModelCapabilities = ModelCapabilities()
 
-    override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
+    override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
         val chunks = listOf("调度正常；", "上下文已挂载；", "IPC 在线；", "监督器就绪；", "报告完成。")
         for (chunk in chunks) {
             delay(90)
             emit(ModelEvent.TextDelta(chunk))
         }
-        emit(ModelEvent.Completed(Usage(promptTokens = 12, completionTokens = 12, totalTokens = 24)))
+        emit(done(Usage(promptTokens = 12, completionTokens = 12, totalTokens = 24)))
     }
 }
 
@@ -773,7 +771,7 @@ private class FailOnceModel : LanguageModel {
     override val capabilities: ModelCapabilities = ModelCapabilities()
     private val calls = AtomicInteger(0)
 
-    override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
+    override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
         delay(70)
         if (calls.getAndIncrement() == 0) {
             emit(ModelEvent.TextDelta("半成品草稿（该内容必须回滚）"))
@@ -781,22 +779,25 @@ private class FailOnceModel : LanguageModel {
         } else {
             val answer = "恢复成功：TurnCommitBuffer 只提交完整成功回合。"
             emit(ModelEvent.TextDelta(answer))
-            emit(ModelEvent.Completed(usageFor(answer)))
+            emit(done(usageFor(answer)))
         }
     }
 }
 
 private class RecordingMemory : ThreadMemory {
     private val mutex = Mutex()
-    private val turns = mutableListOf<List<Message>>()
+    private val turns = mutableListOf<List<ModelItem>>()
+    override val retention = org.koaks.framework.memory.TurnRetention.CompletedOnly
 
-    override suspend fun load(query: Message): List<Message> = mutex.withLock { turns.flatten() }
-
-    override suspend fun commit(messages: List<Message>, usage: Usage) {
-        mutex.withLock { turns += messages.toList() }
+    override suspend fun load(query: List<ModelItem>) = mutex.withLock {
+        org.koaks.framework.memory.MemoryView(turns.flatten())
     }
 
-    suspend fun committedTurns(): List<List<Message>> = mutex.withLock { turns.map { it.toList() } }
+    override suspend fun commit(turn: org.koaks.framework.memory.ConversationTurn) {
+        mutex.withLock { turns += turn.items.toList() }
+    }
+
+    suspend fun committedTurns(): List<List<ModelItem>> = mutex.withLock { turns.map { it.toList() } }
 }
 
 private fun usageFor(text: String): Usage {

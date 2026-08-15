@@ -19,7 +19,6 @@ class Qwen private constructor() {
         private var frequencyPenalty: Double? = null
         private var enableThinking: Boolean? = null
         private var streamIdleTimeoutMillis: Long? = null
-        private var requireStreamEndMarker: Boolean? = null
         private var parallelToolCalls: Boolean? = null
         private var vision: Boolean? = null
         private var jsonMode: Boolean? = null
@@ -36,7 +35,6 @@ class Qwen private constructor() {
         fun frequencyPenalty(value: Double): Builder = apply { frequencyPenalty = value }
         fun enableThinking(enabled: Boolean): Builder = apply { enableThinking = enabled }
         fun streamIdleTimeout(timeout: Duration): Builder = apply { streamIdleTimeoutMillis = positiveMillis(timeout) }
-        fun requireStreamEndMarker(required: Boolean): Builder = apply { requireStreamEndMarker = required }
         fun parallelToolCalls(enabled: Boolean): Builder = apply { parallelToolCalls = enabled }
         fun vision(enabled: Boolean): Builder = apply { vision = enabled }
         fun jsonMode(enabled: Boolean): Builder = apply { jsonMode = enabled }
@@ -54,7 +52,6 @@ class Qwen private constructor() {
                     frequencyPenalty = this@Builder.frequencyPenalty
                     enableThinking = this@Builder.enableThinking
                     streamIdleTimeoutMillis?.let { streamIdleTimeoutMs = it }
-                    requireStreamEndMarker?.let { this.requireStreamEndMarker = it }
                     capabilities {
                         parallelToolCalls?.let { this.parallelToolCalls = it }
                         vision?.let { this.vision = it }

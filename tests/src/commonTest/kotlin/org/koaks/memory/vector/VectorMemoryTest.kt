@@ -2,8 +2,8 @@ package org.koaks.memory.vector
 
 import kotlinx.coroutines.test.runTest
 import org.koaks.framework.memory.ThreadId
-import org.koaks.framework.model.Message
-import org.koaks.framework.model.Usage
+import org.koaks.framework.memory.completedTurn
+import org.koaks.framework.model.ModelItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -14,7 +14,7 @@ class VectorMemoryTest {
         val store = RecordingVectorStore()
         val memory = VectorMemory(store, ThreadId("thread"), topK = 3)
 
-        memory.load(Message.user("current question"))
+        memory.load(listOf(ModelItem.user("current question")))
 
         assertEquals("thread", store.lastThread)
         assertEquals("current question", store.lastQuery)
@@ -25,25 +25,25 @@ class VectorMemoryTest {
     fun commit_indexes_the_successful_turn_messages() = runTest {
         val store = RecordingVectorStore()
         val memory = VectorMemory(store, ThreadId("thread"))
-        val messages = listOf(Message.user("q"), Message.assistant("a"))
+        val items = listOf(ModelItem.user("q"), ModelItem.assistant("a"))
 
-        memory.commit(messages, Usage.ZERO)
+        memory.commit(completedTurn(*items.toTypedArray()))
 
-        assertEquals(messages, store.added)
+        assertEquals(items, store.added)
     }
 
     private class RecordingVectorStore : VectorStore {
         var lastThread: String? = null
         var lastQuery: String? = null
         var lastTopK: Int? = null
-        var added: List<Message> = emptyList()
+        var added: List<ModelItem> = emptyList()
 
-        override suspend fun add(threadId: String, messages: List<Message>) {
+        override suspend fun add(threadId: String, items: List<ModelItem>) {
             lastThread = threadId
-            added = messages
+            added = items
         }
 
-        override suspend fun search(threadId: String, query: String, topK: Int): List<Message> {
+        override suspend fun search(threadId: String, query: String, topK: Int): List<ModelItem> {
             lastThread = threadId
             lastQuery = query
             lastTopK = topK

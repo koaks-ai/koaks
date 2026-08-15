@@ -6,9 +6,10 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.agent
-import org.koaks.framework.model.ChatRequest
+import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.model.ModelCapabilities
+import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Usage
 import org.koaks.runtime.AgentRuntime
@@ -24,12 +25,12 @@ import org.koaks.runtime.AgentRuntime
  */
 private class SlowEchoModel(private val chunks: List<String>) : LanguageModel {
     override val capabilities: ModelCapabilities = ModelCapabilities()
-    override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
+    override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
         for (chunk in chunks) {
             delay(1000) // pretend tokens arrive over time
             emit(ModelEvent.TextDelta(chunk))
         }
-        emit(ModelEvent.Completed(Usage(promptTokens = 8, completionTokens = chunks.size, totalTokens = 8 + chunks.size)))
+        emit(done(Usage(promptTokens = 8, completionTokens = chunks.size, totalTokens = 8 + chunks.size)))
     }
 }
 

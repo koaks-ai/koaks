@@ -5,7 +5,7 @@ import kotlinx.coroutines.runBlocking
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.AgentResult
 import org.koaks.framework.loop.agent
-import org.koaks.framework.model.Message
+import org.koaks.framework.model.ModelItem
 import org.koaks.provider.openai.openai
 import org.koaks.runtime.AgentRuntime
 import org.koaks.runtime.awaitAll
@@ -91,7 +91,7 @@ fun main() = runBlocking {
         // 1) 共享上下文：大段背景只存一份，spawn 时传 ref，不复制全文。
         val brief = rt.context.put(
             messages = listOf(
-                Message.user(
+                ModelItem.user(
                     """
                     项目：个人待办 App
                     目标用户：个人效率爱好者
@@ -117,7 +117,7 @@ fun main() = runBlocking {
         // CoW delta：只存调研结论增量，父块不复制。
         val withResearch = rt.context.delta(
             parent = brief,
-            added = listOf(Message.assistant("调研结论：\n${research.text}")),
+            added = listOf(ModelItem.assistant("调研结论：\n${research.text}")),
         )
 
         // 3) 并行：前后端同时跑。priority 越高越先拿到并发槽。

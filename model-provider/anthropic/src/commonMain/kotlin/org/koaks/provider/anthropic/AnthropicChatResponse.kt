@@ -35,6 +35,7 @@ data class AnthropicChatResponse(
         @SerialName("type") val type: String? = null,
         @SerialName("id") val id: String? = null,
         @SerialName("name") val name: String? = null,
+        @SerialName("data") val data: String? = null,
     )
 
     @Serializable
@@ -42,6 +43,7 @@ data class AnthropicChatResponse(
         @SerialName("type") val type: String? = null,
         @SerialName("text") val text: String? = null,
         @SerialName("thinking") val thinking: String? = null,
+        @SerialName("signature") val signature: String? = null,
         @SerialName("partial_json") val partialJson: String? = null,
     )
 

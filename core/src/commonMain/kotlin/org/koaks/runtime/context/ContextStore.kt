@@ -2,7 +2,7 @@ package org.koaks.runtime.context
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
-import org.koaks.framework.model.Message
+import org.koaks.framework.model.ModelItem
 import org.koaks.runtime.acb.RunId
 
 /** The three context tiers, mapped from the plan's global / agent-private / task layers. */
@@ -18,7 +18,7 @@ class ContextBlock internal constructor(
     val scope: ContextScope,
     val owner: RunId?,
     val parent: ContextRef?,
-    val messages: List<Message>,
+    val messages: List<ModelItem>,
 )
 
 /** Thrown when an agent tries to read a block it has no permission for. */
@@ -42,7 +42,7 @@ class ContextStore {
     private val blocks = MutableStateFlow<Map<String, ContextBlock>>(emptyMap())
 
     /** Stores a root block and returns its ref (deduplicated by content). */
-    fun put(messages: List<Message>, scope: ContextScope = ContextScope.GLOBAL, owner: RunId? = null): ContextRef {
+    fun put(messages: List<ModelItem>, scope: ContextScope = ContextScope.GLOBAL, owner: RunId? = null): ContextRef {
         val ref = ContextRef(address(scope, owner, null, messages))
         blocks.update { if (ref.id in it) it else it + (ref.id to ContextBlock(ref, scope, owner, null, messages)) }
         return ref
@@ -51,7 +51,7 @@ class ContextStore {
     /** Layers [added] over [parent] as a delta block (copy-on-write). */
     fun delta(
         parent: ContextRef,
-        added: List<Message>,
+        added: List<ModelItem>,
         scope: ContextScope = ContextScope.GLOBAL,
         owner: RunId? = null,
     ): ContextRef {
@@ -68,7 +68,7 @@ class ContextStore {
      * Resolves [ref] to the full message list, walking the parent chain and enforcing
      * per-block access for [requester]. Throws [ContextAccessException] on denial.
      */
-    fun resolve(ref: ContextRef, requester: RunId?): List<Message> {
+    fun resolve(ref: ContextRef, requester: RunId?): List<ModelItem> {
         val chain = ArrayList<ContextBlock>()
         var cur: ContextRef? = ref
         while (cur != null) {
@@ -89,10 +89,19 @@ class ContextStore {
         if (!allowed) throw ContextAccessException(block.ref, requester)
     }
 
-    private fun address(scope: ContextScope, owner: RunId?, parent: ContextRef?, messages: List<Message>): String {
+    private fun address(scope: ContextScope, owner: RunId?, parent: ContextRef?, messages: List<ModelItem>): String {
         val sb = StringBuilder()
         sb.append(scope.name).append('|').append(owner?.value ?: -1L).append('|').append(parent?.id ?: "").append('|')
-        for (m in messages) sb.append(m.role.name).append(':').append(m.text).append('\n')
+        for (m in messages) {
+            when (m) {
+                is ModelItem.Message -> sb.append(m.role.name).append(':').append(m.text)
+                is ModelItem.ToolCall -> sb.append("call:").append(m.name).append(':').append(m.arguments)
+                is ModelItem.ToolResult -> sb.append("result:").append(m.callRef.value).append(':').append(m.output)
+                is ModelItem.ReasoningSummary -> sb.append("reason:").append(m.text)
+                is ModelItem.ProviderItem -> sb.append("ext:").append(m.providerId.value).append(':').append(m.kind).append(':').append(m.displayText)
+            }
+            sb.append('\n')
+        }
         return "blk-" + fnv1a(sb.toString())
     }
 

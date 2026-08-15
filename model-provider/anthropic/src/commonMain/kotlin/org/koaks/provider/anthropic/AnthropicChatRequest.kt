@@ -45,6 +45,19 @@ data class AnthropicMessage(
 @Serializable
 sealed interface AnthropicContentBlock {
     @Serializable
+    @SerialName("thinking")
+    data class Thinking(
+        @SerialName("thinking") val thinking: String,
+        @SerialName("signature") val signature: String? = null,
+    ) : AnthropicContentBlock
+
+    @Serializable
+    @SerialName("redacted_thinking")
+    data class RedactedThinking(
+        @SerialName("data") val data: String,
+    ) : AnthropicContentBlock
+
+    @Serializable
     @SerialName("text")
     data class Text(@SerialName("text") val text: String) : AnthropicContentBlock
 

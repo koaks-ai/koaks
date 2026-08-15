@@ -21,10 +21,10 @@ class OpenAI private constructor() {
         private var frequencyPenalty: Double? = null
         private var reasoningEffort: ReasoningEffort? = null
         private var streamIdleTimeoutMillis: Long? = null
-        private var requireStreamEndMarker: Boolean? = null
         private var parallelToolCalls: Boolean? = null
         private var vision: Boolean? = null
         private var jsonMode: Boolean? = null
+        private var jsonSchema: Boolean? = null
 
         fun baseUrl(baseUrl: String): Builder = apply { this.baseUrl = requireText(baseUrl, "baseUrl") }
         fun apiKey(apiKey: String): Builder = apply { this.apiKey = requireText(apiKey, "apiKey") }
@@ -38,10 +38,10 @@ class OpenAI private constructor() {
         fun frequencyPenalty(value: Double): Builder = apply { frequencyPenalty = value }
         fun reasoningEffort(value: ReasoningEffort): Builder = apply { reasoningEffort = value }
         fun streamIdleTimeout(timeout: Duration): Builder = apply { streamIdleTimeoutMillis = positiveMillis(timeout) }
-        fun requireStreamEndMarker(required: Boolean): Builder = apply { requireStreamEndMarker = required }
         fun parallelToolCalls(enabled: Boolean): Builder = apply { parallelToolCalls = enabled }
         fun vision(enabled: Boolean): Builder = apply { vision = enabled }
         fun jsonMode(enabled: Boolean): Builder = apply { jsonMode = enabled }
+        fun jsonSchema(enabled: Boolean): Builder = apply { jsonSchema = enabled }
 
         fun build(): ModelSpec {
             val key = requireNotNull(apiKey) { "apiKey is required" }
@@ -56,11 +56,11 @@ class OpenAI private constructor() {
                     frequencyPenalty = this@Builder.frequencyPenalty
                     reasoningEffort = this@Builder.reasoningEffort?.wireValue
                     streamIdleTimeoutMillis?.let { streamIdleTimeoutMs = it }
-                    requireStreamEndMarker?.let { this.requireStreamEndMarker = it }
                     capabilities {
                         parallelToolCalls?.let { this.parallelToolCalls = it }
                         vision?.let { this.vision = it }
                         jsonMode?.let { this.jsonMode = it }
+                        jsonSchema?.let { this.jsonSchema = it }
                     }
                 }
             }
@@ -72,12 +72,12 @@ class OpenAI private constructor() {
     companion object { @JvmStatic fun builder(): Builder = Builder.create() }
 }
 
-private fun requireText(value: String, name: String): String {
+internal fun requireText(value: String, name: String): String {
     require(value.isNotBlank()) { "$name must not be blank" }
     return value
 }
 
-private fun positiveMillis(duration: Duration): Long {
+internal fun positiveMillis(duration: Duration): Long {
     require(!duration.isZero && !duration.isNegative) { "duration must be positive" }
     return duration.toMillis()
 }

@@ -33,7 +33,7 @@ class AgentRunnerTest {
                 ModelEvent.ReasoningDelta("let me "),
                 ModelEvent.ReasoningDelta("think"),
                 ModelEvent.TextDelta("answer"),
-                ModelEvent.Completed(Usage(1, 1, 2)),
+                done(Usage(1, 1, 2)),
             ),
         )
         val a = agentWith("runner-reasoning", model)
@@ -56,10 +56,10 @@ class AgentRunnerTest {
                 ModelEvent.TextDelta("Let me "),
                 ModelEvent.TextDelta("check. "),
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "noop", "{}")),
-                ModelEvent.Completed(Usage(1, 1, 2)),
+                done(Usage(1, 1, 2)),
             ),
             // second step: no tool calls -> finish
-            listOf(ModelEvent.TextDelta("Done."), ModelEvent.Completed(Usage(1, 1, 2))),
+            listOf(ModelEvent.TextDelta("Done."), done(Usage(1, 1, 2))),
         )
         val a = agentWith("runner-tee", model) {
             tool<NoArgs>(name = "noop", description = "no-op") { "ok" }
@@ -80,9 +80,9 @@ class AgentRunnerTest {
         val model = FakeLanguageModel(
             listOf(
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "ghost", "{}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
-            listOf(ModelEvent.TextDelta("recovered"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("recovered"), done(Usage.ZERO)),
         )
         val a = agentWith("runner-tool-not-found", model) // no tools registered
 
@@ -106,9 +106,9 @@ class AgentRunnerTest {
                 ModelEvent.ToolCallDelta(id = "c1", index = 0, nameDelta = "noop", argumentsDelta = "{}"),
                 ModelEvent.ToolCallDelta(id = "", index = 1), // phantom: blank id, no name
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "noop", "{}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
-            listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("done"), done(Usage.ZERO)),
         )
         val a = agentWith("runner-phantom-tool", model) {
             tool<NoArgs>(name = "noop", description = "no-op") { "ok" }
@@ -128,7 +128,7 @@ class AgentRunnerTest {
     @Test
     fun finishes_when_no_tool_calls() = runTest {
         val model = FakeLanguageModel(
-            listOf(ModelEvent.TextDelta("hello"), ModelEvent.Completed(Usage(2, 3, 5))),
+            listOf(ModelEvent.TextDelta("hello"), done(Usage(2, 3, 5))),
         )
         val a = agentWith("runner-no-tools", model)
         val result = a.run("hi")
@@ -143,7 +143,7 @@ class AgentRunnerTest {
         val model = FakeLanguageModel(
             listOf(
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "answer", "{}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
         )
         val a = agentWith("runner-return-directly", model) {
@@ -161,9 +161,9 @@ class AgentRunnerTest {
         val model = FakeLanguageModel(
             listOf(
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "noop", "{}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
-            listOf(ModelEvent.TextDelta("should not run"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("should not run"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-2"
@@ -185,7 +185,7 @@ class AgentRunnerTest {
         val model = FakeLanguageModel(
             listOf(
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "noop", "{}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
         )
         val a = agent {
@@ -209,9 +209,9 @@ class AgentRunnerTest {
         val model = FakeLanguageModel(
             listOf(
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "noop", "{}")),
-                ModelEvent.Completed(Usage(totalTokens = 7)),
+                done(Usage(totalTokens = 7)),
             ),
-            listOf(ModelEvent.Failed(org.koaks.framework.model.AgentError.ModelError("boom", retriable = false))),
+            listOf(fail(org.koaks.framework.model.AgentError.ModelError("boom", retriable = false))),
         )
         val a = agent {
             id = "agent-4"

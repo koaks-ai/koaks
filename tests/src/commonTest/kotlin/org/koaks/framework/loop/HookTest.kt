@@ -9,7 +9,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.Serializable
 import org.koaks.framework.middleware.ModelCallPhase
-import org.koaks.framework.model.Message
+import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
@@ -30,13 +30,13 @@ class HookTest {
 
     @Test
     fun onModelCall_before_injects_request_without_polluting_state() = runTest {
-        val rag = Message.system("RAG context")
+        val rag = ModelItem.system("RAG context")
         val model = FakeLanguageModel(
             listOf(
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "noop", "{}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
-            listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("done"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-11"
@@ -45,7 +45,7 @@ class HookTest {
             tools { tool<NoArgs>(name = "noop", description = "noop") { "ok" } }
             hook {
                 onModelCall {
-                    before { ctx -> ctx.request.copy(messages = listOf(rag) + ctx.request.messages) }
+                    before { ctx -> ctx.request.copy(items = listOf(rag) + ctx.request.items) }
                 }
             }
         }
@@ -54,14 +54,14 @@ class HookTest {
 
         assertEquals("done", result.text)
         assertEquals(2, model.requests.size)
-        assertEquals(1, model.requests[0].messages.count { it.text == "RAG context" })
-        assertEquals(1, model.requests[1].messages.count { it.text == "RAG context" })
+        assertEquals(1, model.requests[0].items.filterIsInstance<org.koaks.framework.model.ModelItem.Message>().count { it.text == "RAG context" })
+        assertEquals(1, model.requests[1].items.filterIsInstance<org.koaks.framework.model.ModelItem.Message>().count { it.text == "RAG context" })
     }
 
     @Test
     fun onModelCall_after_wraps_stream() = runTest {
         val model = FakeLanguageModel(
-            listOf(ModelEvent.TextDelta("hello"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("hello"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-12"
@@ -87,8 +87,8 @@ class HookTest {
     fun onModelCall_structured_finalization_sets_phase() = runTest {
         val phases = mutableListOf<ModelCallPhase>()
         val model = FakeLanguageModel(
-            listOf(ModelEvent.TextDelta("It's warm."), ModelEvent.Completed(Usage.ZERO)),
-            listOf(ModelEvent.TextDelta("{\"city\":\"NYC\",\"tempC\":21}"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("It's warm."), done(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("{\"city\":\"NYC\",\"tempC\":21}"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-13"
@@ -116,9 +116,9 @@ class HookTest {
         val model = FakeLanguageModel(
             listOf(
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "danger", "{}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
-            listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("done"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-14"
@@ -149,9 +149,9 @@ class HookTest {
         val model = FakeLanguageModel(
             listOf(
                 ModelEvent.ToolCallCompleted(ToolCall("original-id", "alias", "{\"value\":\"old\"}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
-            listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("done"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-15"
@@ -183,9 +183,9 @@ class HookTest {
         val model = FakeLanguageModel(
             listOf(
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "gated", "{}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
-            listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("done"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-16"
@@ -220,9 +220,9 @@ class HookTest {
     fun onToolResult_transforms_outcome() = runTest {        val model = FakeLanguageModel(
             listOf(
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "noisy", "{}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
-            listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("done"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-17"
@@ -252,9 +252,9 @@ class HookTest {
         val model = FakeLanguageModel(
             listOf(
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "danger", "{}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
-            listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("done"), done(Usage.ZERO)),
         )
         val hookA = object : org.koaks.framework.middleware.Hook {
             override suspend fun onToolCall(ctx: org.koaks.framework.middleware.ToolContext) =
@@ -290,9 +290,9 @@ class HookTest {
         val model = FakeLanguageModel(
             listOf(
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "noop", "{}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
-            listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("done"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-19"
@@ -316,7 +316,7 @@ class HookTest {
     @Test
     fun model_request_hook_exception_routes_through_error_policy() = runTest {
         val model = FakeLanguageModel(
-            listOf(ModelEvent.TextDelta("never"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("never"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-20"

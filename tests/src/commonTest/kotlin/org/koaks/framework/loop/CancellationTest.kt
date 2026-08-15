@@ -21,7 +21,7 @@ class CancellationTest {
                 listOf(
                     buildList {
                         add(ModelEvent.TextDelta("partial"))
-                        add(ModelEvent.Completed(Usage.ZERO))
+                        add(done(Usage.ZERO))
                     }
                 )
             ),

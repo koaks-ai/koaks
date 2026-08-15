@@ -2,27 +2,27 @@ package org.koaks.runtime.thread
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
+import org.koaks.framework.loop.TurnBuilder
 import org.koaks.framework.memory.ThreadId
-import org.koaks.framework.memory.TurnCommitBuffer
-import org.koaks.framework.model.Message
+import org.koaks.framework.model.ModelItem
 import org.koaks.runtime.acb.TurnId
 
-/** Shared state for every parent/child Run that participates in one atomic Thread Turn. */
 internal class TurnContext(
     val threadId: ThreadId,
     val turnId: TurnId,
-    userMessage: Message,
+    seed: List<ModelItem>,
 ) {
-    val commitBuffer: TurnCommitBuffer = TurnCommitBuffer(userMessage)
+    val turnBuilder: TurnBuilder = TurnBuilder(turnId.value.toString(), seed)
 
-    private val history = CompletableDeferred<List<Message>>()
+    private val history = CompletableDeferred<List<ModelItem>>()
     private val sideEffectOccurred = MutableStateFlow(false)
+    var checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null
 
-    fun publishHistory(snapshot: List<Message>) {
+    fun publishHistory(snapshot: List<ModelItem>) {
         check(history.complete(snapshot.toList())) { "history was already published for $turnId" }
     }
 
-    suspend fun historySnapshot(): List<Message> = history.await()
+    suspend fun historySnapshot(): List<ModelItem> = history.await()
 
     fun markSideEffect() {
         sideEffectOccurred.value = true

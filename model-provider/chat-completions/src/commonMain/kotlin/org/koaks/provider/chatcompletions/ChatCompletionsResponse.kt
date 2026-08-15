@@ -1,18 +1,10 @@
-package org.koaks.provider.openai
+package org.koaks.provider.chatcompletions
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/**
- * OpenAI Chat Completions streaming response chunk. In streaming mode each chunk
- * carries a [Choice.delta]; the final chunk(s) may carry [usage]. A tool call's name
- * and arguments arrive split across multiple chunks — assembled by `OpenAIWireDecoder`.
- *
- * `reasoning_content` is kept as an optional field for OpenAI-compatible gateways that
- * surface a reasoning trace; OpenAI's own o-series hides reasoning, so it stays null.
- */
 @Serializable
-data class OpenAIChatResponse(
+data class ChatCompletionsResponse(
     @SerialName("id") val id: String? = null,
     @SerialName("model") val model: String? = null,
     @SerialName("choices") val choices: List<Choice>? = null,
@@ -25,7 +17,9 @@ data class OpenAIChatResponse(
         @SerialName("delta") val delta: Delta? = null,
         @SerialName("message") val message: Delta? = null,
         @SerialName("finish_reason") val finishReason: String? = null,
-    )
+    ) {
+        val payload: Delta? get() = delta ?: message
+    }
 
     @Serializable
     data class Delta(
@@ -33,6 +27,7 @@ data class OpenAIChatResponse(
         @SerialName("content") val content: String? = null,
         @SerialName("reasoning_content") val reasoningContent: String? = null,
         @SerialName("tool_calls") val toolCalls: List<ToolCallChunk>? = null,
+        @SerialName("refusal") val refusal: String? = null,
     )
 
     @Serializable
@@ -54,6 +49,18 @@ data class OpenAIChatResponse(
         @SerialName("prompt_tokens") val promptTokens: Int? = null,
         @SerialName("completion_tokens") val completionTokens: Int? = null,
         @SerialName("total_tokens") val totalTokens: Int? = null,
+        @SerialName("prompt_tokens_details") val promptDetails: PromptDetails? = null,
+        @SerialName("completion_tokens_details") val completionDetails: CompletionDetails? = null,
+    )
+
+    @Serializable
+    data class PromptDetails(
+        @SerialName("cached_tokens") val cachedTokens: Int? = null,
+    )
+
+    @Serializable
+    data class CompletionDetails(
+        @SerialName("reasoning_tokens") val reasoningTokens: Int? = null,
     )
 
     @Serializable

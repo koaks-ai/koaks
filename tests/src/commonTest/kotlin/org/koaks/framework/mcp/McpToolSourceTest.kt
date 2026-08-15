@@ -9,6 +9,7 @@ import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.FakeLanguageModel
 import org.koaks.framework.loop.agent
 import org.koaks.framework.mcp.entity.McpTool
+import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
@@ -47,9 +48,9 @@ class McpToolSourceTest {
         val model = FakeLanguageModel(
             listOf(
                 ModelEvent.ToolCallCompleted(ToolCall("c1", "remote_add", "{\"a\":1,\"b\":2}")),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
-            listOf(ModelEvent.TextDelta("the sum is 42"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("the sum is 42"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-27"
@@ -72,8 +73,8 @@ class McpToolSourceTest {
     fun resolves_sources_only_once_across_runs() = runTest {
         val gateway = FakeGateway()
         val model = FakeLanguageModel(
-            listOf(ModelEvent.TextDelta("ok"), ModelEvent.Completed(Usage.ZERO)),
-            listOf(ModelEvent.TextDelta("ok2"), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("ok"), done(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("ok2"), done(Usage.ZERO)),
         )
         val a = agent {
             id = "agent-28"

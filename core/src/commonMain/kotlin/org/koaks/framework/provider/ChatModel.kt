@@ -1,41 +1,83 @@
 package org.koaks.framework.provider
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import org.koaks.framework.model.ChatRequest
+import org.koaks.framework.model.AgentError
+import org.koaks.framework.model.AgentFrameworkException
 import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.model.ModelEvent
-import org.koaks.framework.transport.Transport
+import org.koaks.framework.model.ModelRequest
+import org.koaks.framework.model.ModelResponse
+import org.koaks.framework.transport.ModelTransport
+import org.koaks.framework.transport.WireCall
 
 /**
- * Base class for provider implementations. A provider only implements [toWire],
- * [adapter], [newDecoder] and [capabilities] — it is completely decoupled from the
- * agent loop.
- *
- * [generate] is `final`: it drives the [Transport] stream through a fresh stateful
- * [WireDecoder] per call (`accept` per chunk, then `finish` to flush residue).
- *
- * @param TReq the provider's wire request type.
- * @param TResp the provider's wire response (chunk) type.
+ * Base class for HTTP providers. A provider implements [toWireCall] and [newDecoder];
+ * [stream] is `final` and guarantees a trailing [ModelEvent.Finished].
  */
-abstract class ChatModel<TReq, TResp>(
+abstract class ChatModel(
     val config: ModelConfig,
-    protected val transport: Transport,
+    protected val transport: ModelTransport,
 ) : LanguageModel {
 
-    protected abstract val adapter: WireAdapter<TReq, TResp>
+    protected abstract fun toWireCall(req: ModelRequest): WireCall
 
-    /** Translates the unified request into the provider's wire format. */
-    protected abstract fun toWire(req: ChatRequest): TReq
+    protected abstract fun newDecoder(): WireDecoder
 
-    /** Creates a fresh stateful decoder for one [generate] call. */
-    protected abstract fun newDecoder(): WireDecoder<TResp>
+    protected open fun newDecoder(request: ModelRequest): WireDecoder = newDecoder()
 
-    final override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
-        val decoder = newDecoder()
-        transport.stream(config, toWire(request), adapter).collect { chunk ->
-            decoder.accept(chunk).forEach { emit(it) }
+    final override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
+        val decoder = newDecoder(request)
+        var finished = false
+        try {
+            transport.call(toWireCall(request)).collect { frame ->
+                decoder.accept(frame).forEach { event ->
+                    if (event is ModelEvent.Finished) finished = true
+                    emit(event)
+                }
+            }
+            decoder.finish().forEach { event ->
+                if (event is ModelEvent.Finished) finished = true
+                emit(event)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            if (!finished) {
+                emit(
+                    ModelEvent.Finished(
+                        ModelResponse.Failed(
+                            error = failure.toModelError(),
+                        ),
+                    ),
+                )
+                finished = true
+            } else {
+                throw failure
+            }
         }
-        decoder.finish().forEach { emit(it) }
+        if (!finished) {
+            emit(
+                ModelEvent.Finished(
+                    ModelResponse.Failed(
+                        error = AgentError.ModelError(
+                            message = "model stream ended without a terminal response",
+                            retriable = false,
+                        ),
+                    ),
+                ),
+            )
+        }
     }
+}
+
+private fun Throwable.toModelError(): AgentError.ModelError = when (this) {
+    is AgentFrameworkException -> error as? AgentError.ModelError
+        ?: AgentError.ModelError(error.message, retriable = false, cause = this)
+    else -> AgentError.ModelError(
+        message = message ?: "model call failed",
+        retriable = false,
+        cause = this,
+    )
 }

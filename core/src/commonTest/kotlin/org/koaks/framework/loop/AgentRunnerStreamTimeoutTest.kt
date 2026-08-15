@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.koaks.framework.model.AgentError
-import org.koaks.framework.model.ChatRequest
+import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.model.ModelCapabilities
 import org.koaks.framework.model.ModelEvent
@@ -21,7 +21,7 @@ class AgentRunnerStreamTimeoutTest {
         val model = object : LanguageModel {
             override val capabilities = ModelCapabilities()
 
-            override fun generate(request: ChatRequest): Flow<ModelEvent> = flow {
+            override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
                 emit(ModelEvent.TextDelta("partial"))
                 throw StreamIdleTimeoutException(idleTimeoutMs = 60_000)
             }

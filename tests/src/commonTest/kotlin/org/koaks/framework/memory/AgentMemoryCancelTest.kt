@@ -6,6 +6,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.koaks.framework.loop.FakeLanguageModel
 import org.koaks.framework.loop.agent
+import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Usage
 import kotlin.test.Test
@@ -23,10 +24,10 @@ class AgentMemoryCancelTest {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val model = FakeLanguageModel(
-            ArrayDeque(listOf(listOf(ModelEvent.TextDelta("partial"), ModelEvent.Completed(Usage.ZERO)))),
+            ArrayDeque(listOf(listOf(ModelEvent.TextDelta("partial"), done(Usage.ZERO)))),
             beforeEmit = { entered.complete(Unit); release.await() }, // blocks before any terminal
         )
-        val mem = WindowMemory(50)
+        val mem = WindowMemory(50, retention = TurnRetention.CompletedOnly)
         val a = agent {
             id = "agent-29"
             name = "mem-cancel"
@@ -40,6 +41,6 @@ class AgentMemoryCancelTest {
         job.cancel()
         job.join()
 
-        assertEquals(0, mem.load(org.koaks.framework.model.Message.user("")).size, "a cancelled turn must leave history untouched")
+        assertEquals(0, mem.stored().size, "a cancelled turn must leave history untouched")
     }
 }

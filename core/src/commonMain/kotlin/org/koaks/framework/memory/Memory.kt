@@ -1,13 +1,10 @@
 package org.koaks.framework.memory
 
 import kotlin.jvm.JvmInline
-import org.koaks.framework.model.Message
-import org.koaks.framework.model.Usage
+import org.koaks.framework.model.ModelItem
+import org.koaks.framework.model.ProviderCheckpoint
+import org.koaks.framework.model.takeIfValidFor
 
-/**
- * A conversation thread identifier. Carried as the memory key by `Agent.run`/`stream`;
- * replaces the old hand-passed `memoryId`.
- */
 @JvmInline
 value class ThreadId(val value: String) {
     init {
@@ -28,22 +25,23 @@ value class MemoryProviderId(val value: String) {
  *
  * Strict data-flow contract:
  *  - [load] returns the view fed to the model; recall/filtering happens here.
- *  - [commit] faithfully appends one successful atomic Turn.
+ *  - [commit] faithfully appends one successful-or-interrupted atomic Turn.
  *  - The agent loop never touches memory; Runtime alone calls load/commit.
+ *  - Runtime repairs the loaded transcript and validates [MemoryView.checkpoint]
+ *    against the *repaired* view before handing it to the model.
  */
 interface ThreadMemory : AutoCloseable {
-    suspend fun load(query: Message): List<Message>
-    suspend fun commit(messages: List<Message>, usage: Usage = Usage.ZERO)
+    val retention: TurnRetention get() = TurnRetention.Interrupted
+    suspend fun load(query: List<ModelItem>): MemoryView
+    suspend fun commit(turn: ConversationTurn)
     override fun close() {}
 }
 
-/** Stable memory policy carried by an Agent and bound by Runtime when a Thread is created. */
 interface MemoryProvider {
     val id: MemoryProviderId
     suspend fun open(thread: ThreadId): ThreadMemory
 }
 
-/** Factory-backed provider for application-defined ThreadMemory implementations. */
 class FixedMemoryProvider(
     override val id: MemoryProviderId,
     private val opener: suspend (ThreadId) -> ThreadMemory,
@@ -61,14 +59,32 @@ fun memoryProvider(
     open: suspend (ThreadId) -> ThreadMemory,
 ): MemoryProvider = memoryProvider(MemoryProviderId(id), open)
 
-/** No persistence — every run starts empty. */
 object NoMemory : ThreadMemory {
-    override suspend fun load(query: Message): List<Message> = emptyList()
-    override suspend fun commit(messages: List<Message>, usage: Usage) {}
+    override suspend fun load(query: List<ModelItem>): MemoryView = MemoryView.EMPTY
+    override suspend fun commit(turn: ConversationTurn) {}
 }
 
-/** Explicit opt-out provider for `memory { none() }`; distinct from using the Runtime default. */
 object NoMemoryProvider : MemoryProvider {
     override val id: MemoryProviderId = MemoryProviderId("none")
     override suspend fun open(thread: ThreadId): ThreadMemory = NoMemory
+}
+
+fun shouldRetain(turn: ConversationTurn, retention: TurnRetention, sideEffects: Boolean): Boolean =
+    when (retention) {
+        TurnRetention.Interrupted -> true
+        TurnRetention.InterruptedIfSideEffects ->
+            turn.status is TurnStatus.Completed || sideEffects
+        TurnRetention.CompletedOnly -> turn.status is TurnStatus.Completed
+    }
+
+fun turnHasSideEffects(turn: ConversationTurn): Boolean =
+    turn.items.any { it is ModelItem.ToolResult && !it.isError }
+
+/** Runtime-facing helper: repair + drop a checkpoint whose basis no longer matches. */
+fun MemoryView.forOnlineUse(): MemoryView {
+    val repaired = repairTranscript(transcript)
+    return MemoryView(
+        transcript = repaired,
+        checkpoint = checkpoint.takeIfValidFor(repaired),
+    )
 }

@@ -32,11 +32,11 @@ class StructuredOutputTest {
         // capabilities.jsonMode = false (default) → prompt fallback path.
         val model = FakeLanguageModel(
             // Loop step: a plain answer.
-            listOf(ModelEvent.TextDelta("It's warm in NYC."), ModelEvent.Completed(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("It's warm in NYC."), done(Usage.ZERO)),
             // Finalization step: fenced JSON.
             listOf(
                 ModelEvent.TextDelta("```json\n{\"city\":\"NYC\",\"tempC\":21}\n```"),
-                ModelEvent.Completed(Usage.ZERO),
+                done(Usage.ZERO),
             ),
         )
         val a = agent {
@@ -56,11 +56,11 @@ class StructuredOutputTest {
         val model = FakeLanguageModel(
             ArrayDeque(
                 listOf(
-                    listOf(ModelEvent.TextDelta("answer"), ModelEvent.Completed(Usage.ZERO)),
-                    listOf(ModelEvent.TextDelta("{\"city\":\"LA\",\"tempC\":30}"), ModelEvent.Completed(Usage.ZERO)),
+                    listOf(ModelEvent.TextDelta("answer"), done(Usage.ZERO)),
+                    listOf(ModelEvent.TextDelta("{\"city\":\"LA\",\"tempC\":30}"), done(Usage.ZERO)),
                 )
             ),
-            capabilities = ModelCapabilities(jsonMode = true),
+            capabilities = ModelCapabilities(jsonObject = org.koaks.framework.model.Support.Supported),
         )
         val a = agent {
             id = "agent-26"

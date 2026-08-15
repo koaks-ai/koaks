@@ -7,6 +7,7 @@ import org.koaks.framework.loop.FakeLanguageModel
 import org.koaks.framework.loop.NoArgs
 import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.tool
+import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
@@ -29,8 +30,8 @@ class ResourceRegistryTest {
         model {
             custom(
                 FakeLanguageModel(
-                    listOf(ModelEvent.ToolCallCompleted(ToolCall("c1", "incr", "{}")), ModelEvent.Completed(Usage.ZERO)),
-                    listOf(ModelEvent.TextDelta("done"), ModelEvent.Completed(Usage.ZERO)),
+                    listOf(ModelEvent.ToolCallCompleted(ToolCall("c1", "incr", "{}")), done(Usage.ZERO)),
+                    listOf(ModelEvent.TextDelta("done"), done(Usage.ZERO)),
                 ),
             )
         }

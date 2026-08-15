@@ -9,22 +9,23 @@ import org.koaks.framework.memory.MemoryProvider
 import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.middleware.AgentListener
 import org.koaks.framework.middleware.Hook
-import org.koaks.framework.model.ChatRequest
+import org.koaks.framework.model.ClientActionHandler
 import org.koaks.framework.model.LanguageModel
-import org.koaks.framework.model.Message
+import org.koaks.framework.model.ModelItem
+import org.koaks.framework.model.ModelRequest
+import org.koaks.framework.model.OutputFormat
+import org.koaks.framework.model.Role
+import org.koaks.framework.model.Support
+import org.koaks.framework.model.rejectIfUnsupported
 import org.koaks.framework.policy.ErrorPolicy
 import org.koaks.framework.policy.RunBudget
 import org.koaks.framework.policy.TerminationPolicy
 import org.koaks.framework.skill.SkillDescriptor
 import org.koaks.framework.tool.ToolRegistry
-import org.koaks.framework.transport.Transport
+import org.koaks.framework.transport.ModelTransport
 import org.koaks.runtime.AgentRuntime
 import org.koaks.runtime.acb.AgentHandle
 
-/**
- * Immutable Agent definition. Every public execution method delegates to an
- * [AgentRuntime]; the loop-only execution hooks are internal and used by the runtime.
- */
 class Agent internal constructor(
     val id: AgentId,
     val name: String,
@@ -38,7 +39,8 @@ class Agent internal constructor(
     val runBudget: RunBudget,
     private val preparation: AgentPreparation,
     internal val memoryProvider: MemoryProvider?,
-    private val transport: Transport?,
+    internal val clientActionHandlers: List<ClientActionHandler>,
+    private val transport: ModelTransport?,
     private val ownsTransport: Boolean,
 ) : AutoCloseable {
 
@@ -46,45 +48,68 @@ class Agent internal constructor(
 
     private val runner = AgentRunner(this)
 
-    /** Descriptors of the fixed Skills loaded by [prepare]; empty before preparation. */
     val skillDescriptors: List<SkillDescriptor>
         get() = preparation.skillDescriptors
 
-    /**
-     * Resolves Skill sources and lazy tools exactly once, validates all contributions,
-     * and fixes the effective Skill contributions before the first model call.
-     */
     suspend fun prepare() {
         preparation.await()
     }
 
-    /** Runtime-managed streaming execution using the process-wide default runtime. */
     fun stream(input: String, thread: ThreadId? = null): Flow<AgentEvent> =
         AgentRuntime.default.stream(this, input, thread = thread)
 
     fun stream(input: String, thread: String): Flow<AgentEvent> =
         stream(input, ThreadId(thread))
 
-    /** Runtime-managed foreground execution using the process-wide default runtime. */
     suspend fun run(input: String, thread: ThreadId? = null): AgentResult =
         AgentRuntime.default.run(this, input, thread = thread)
 
     suspend fun run(input: String, thread: String): AgentResult =
         run(input, ThreadId(thread))
 
-    /** Runtime-managed background execution using the process-wide default runtime. */
     fun spawn(input: String, thread: ThreadId? = null): AgentHandle =
         AgentRuntime.default.spawn(this, input, thread = thread)
 
     fun spawn(input: String, thread: String): AgentHandle =
         spawn(input, ThreadId(thread))
 
-    internal fun executeStream(input: String, context: List<Message>): Flow<AgentEvent> = flow {
-        emitAll(runner.stream(initialMessages(input, context)))
+    fun resume(thread: ThreadId): Flow<AgentEvent> =
+        AgentRuntime.default.resume(this, thread)
+
+    fun resume(thread: String): Flow<AgentEvent> = resume(ThreadId(thread))
+
+    suspend fun resumeRun(thread: ThreadId): AgentResult =
+        AgentRuntime.default.resumeRun(this, thread)
+
+    suspend fun resumeRun(thread: String): AgentResult = resumeRun(ThreadId(thread))
+
+    internal fun executeStream(
+        input: String?,
+        context: List<ModelItem>,
+        turn: TurnBuilder,
+        checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null,
+    ): Flow<AgentEvent> = flow {
+        val prepared = preparation.await()
+        emitAll(runner.stream(initialItems(input, context), prepared.instructions.resolve(), turn, checkpoint))
     }
 
-    internal fun executeStructuredStream(input: String, context: List<Message>, spec: OutputSpec): Flow<AgentEvent> = flow {
-        emitAll(runner.streamStructured(initialMessages(input, context), spec))
+    internal fun executeStructuredStream(
+        input: String?,
+        context: List<ModelItem>,
+        spec: OutputSpec,
+        turn: TurnBuilder,
+        checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null,
+    ): Flow<AgentEvent> = flow {
+        val prepared = preparation.await()
+        emitAll(
+            runner.streamStructured(
+                initialItems(input, context),
+                prepared.instructions.resolve(),
+                spec,
+                turn,
+                checkpoint,
+            ),
+        )
     }
 
     suspend fun runStructured(input: String, spec: OutputSpec, thread: ThreadId? = null): AgentResult =
@@ -93,18 +118,44 @@ class Agent internal constructor(
     suspend fun runStructured(input: String, spec: OutputSpec, thread: String): AgentResult =
         runStructured(input, spec, ThreadId(thread))
 
-    /** Builds system instructions + runtime-owned history/context + current user input. */
-    private suspend fun initialMessages(input: String, context: List<Message>): List<Message> = buildList {
-        preparation.await().instructions.resolve()?.let { add(Message.system(it)) }
-        addAll(context)
-        add(Message.user(input))
+    private fun initialItems(input: String?, context: List<ModelItem>): List<ModelItem> {
+        val items = buildList {
+            addAll(context)
+            if (!input.isNullOrEmpty()) add(ModelItem.user(input))
+        }
+        return applyPrefill(items)
     }
 
-    internal fun toRequest(state: AgentState): ChatRequest = ChatRequest(
-        messages = state.messages,
-        tools = tools.toSchemas(),
-        stream = true,
-    )
+    private fun applyPrefill(items: List<ModelItem>): List<ModelItem> {
+        val last = items.lastOrNull() as? ModelItem.Message ?: return items
+        if (last.role != Role.ASSISTANT) return items
+        if (model.capabilities.assistantPrefill == Support.Supported) return items
+        return items + ModelItem.user(
+            "Continue the interrupted assistant reply. Do not repeat text already written.",
+        )
+    }
+
+    internal fun toRequest(
+        state: AgentState,
+        idempotencyKey: String,
+        outputFormat: OutputFormat = OutputFormat.Text,
+    ): ModelRequest {
+        when (outputFormat) {
+            OutputFormat.JsonObject ->
+                model.capabilities.rejectIfUnsupported("json object", model.capabilities.jsonObject, "outputFormat")
+            is OutputFormat.JsonSchema ->
+                model.capabilities.rejectIfUnsupported("json schema", model.capabilities.jsonSchema, "outputFormat")
+            OutputFormat.Text -> Unit
+        }
+        return ModelRequest(
+            instructions = state.instructions,
+            items = state.items,
+            tools = tools.toSchemas(),
+            outputFormat = outputFormat,
+            checkpoint = state.checkpoint,
+            idempotencyKey = idempotencyKey,
+        )
+    }
 
     override fun close() {
         if (ownsTransport) transport?.close()
