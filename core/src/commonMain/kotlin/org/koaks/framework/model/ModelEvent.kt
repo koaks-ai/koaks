@@ -8,6 +8,9 @@ sealed interface ModelEvent {
 
     data class Started(val responseId: String?) : ModelEvent
 
+    /** Provider-native continuation state became available before terminal completion. */
+    data class CheckpointUpdated(val checkpoint: ProviderCheckpoint) : ModelEvent
+
     data class TextDelta(val text: String, val itemRef: ItemRef? = null) : ModelEvent
 
     data class ReasoningDelta(val text: String, val itemRef: ItemRef? = null) : ModelEvent

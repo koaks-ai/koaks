@@ -1,6 +1,7 @@
 package org.koaks.runtime.observe
 
 import org.koaks.framework.model.AgentError
+import org.koaks.framework.model.IncompleteReason
 import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.TerminationReason
 import org.koaks.framework.loop.AgentId
@@ -37,6 +38,14 @@ sealed interface RuntimeEvent {
     data class Suspended(val runId: RunId, val agentId: AgentId, val threadId: ThreadId?, val turnId: TurnId?) : RuntimeEvent
     data class Resumed(val runId: RunId, val agentId: AgentId, val threadId: ThreadId?, val turnId: TurnId?) : RuntimeEvent
     data class Finished(val runId: RunId, val agentId: AgentId, val threadId: ThreadId?, val turnId: TurnId?, val usage: Usage) : RuntimeEvent
+    data class Incomplete(
+        val runId: RunId,
+        val agentId: AgentId,
+        val threadId: ThreadId?,
+        val turnId: TurnId?,
+        val reason: IncompleteReason,
+        val usage: Usage,
+    ) : RuntimeEvent
     data class Terminated(val runId: RunId, val agentId: AgentId, val threadId: ThreadId?, val turnId: TurnId?, val reason: TerminationReason) : RuntimeEvent
     data class Failed(val runId: RunId, val agentId: AgentId, val threadId: ThreadId?, val turnId: TurnId?, val error: AgentError) : RuntimeEvent
     data class Cancelled(val runId: RunId, val agentId: AgentId, val threadId: ThreadId?, val turnId: TurnId?) : RuntimeEvent

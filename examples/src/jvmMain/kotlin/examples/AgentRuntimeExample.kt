@@ -190,6 +190,7 @@ fun main() = runBlocking {
 private fun printResult(label: String, result: AgentResult) {
     when (result) {
         is AgentResult.Completed -> println("[$label] ${result.text.take(280)}")
+        is AgentResult.Incomplete -> println("[$label] incomplete (${result.reason}): ${result.text.take(280)}")
         is AgentResult.Terminated -> println("[$label] stopped (${result.reason}): ${result.text.take(280)}")
         is AgentResult.Failed -> println("[$label] failed: ${result.error.message}")
     }

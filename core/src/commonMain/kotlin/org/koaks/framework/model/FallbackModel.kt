@@ -103,7 +103,7 @@ internal fun ModelRequest.withoutForeignNativeIds(): ModelRequest {
 
 private fun ModelItem.stripNativeId(): ModelItem = when (this) {
     is ModelItem.Message -> copy(nativeId = null)
-    is ModelItem.ToolCall -> copy(nativeId = null)
+    is ModelItem.ToolCall -> copy(nativeId = null, nativeItemId = null)
     is ModelItem.ToolResult -> copy(nativeId = null)
     is ModelItem.ReasoningSummary -> copy(nativeId = null)
     is ModelItem.ProviderItem -> this

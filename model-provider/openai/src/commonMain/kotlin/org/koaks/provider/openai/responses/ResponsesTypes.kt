@@ -4,7 +4,8 @@ package org.koaks.provider.openai
  * How OpenAI Responses carries conversation state across model calls.
  *
  * - [ServerStored]: `store=true` and `previous_response_id` from a checkpoint.
- * - [Replayable]: `store=false`, `include=reasoning.encrypted_content`, items round-trip.
+ * - [Replayable]: `store=false`, `include=reasoning.encrypted_content`, full items round-trip.
+ *   Must not send `previous_response_id`.
  * - [Conversation]: stateless full transcript, no server-side response chaining.
  */
 enum class ResponsesStateMode {

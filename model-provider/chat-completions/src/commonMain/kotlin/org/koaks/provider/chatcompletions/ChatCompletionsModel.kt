@@ -11,6 +11,7 @@ import org.koaks.framework.model.ProviderId
 import org.koaks.framework.model.Role
 import org.koaks.framework.model.Support
 import org.koaks.framework.model.ensureDroppable
+import org.koaks.framework.model.rawFor
 import org.koaks.framework.provider.ChatModel
 import org.koaks.framework.provider.ModelConfig
 import org.koaks.framework.provider.WireDecoder
@@ -68,7 +69,7 @@ open class ChatCompletionsModel(
         }
         return ChatCompletionsRequest(
             model = config.modelName,
-            messages = req.toChatMessages(),
+            messages = req.toChatMessages(providerId),
             tools = req.tools.takeIf { it.isNotEmpty() }?.map { it.toChatTool() },
             parallelToolCalls = if (req.tools.isNotEmpty()) parallel else null,
             stream = true,
@@ -87,7 +88,7 @@ open class ChatCompletionsModel(
     }
 }
 
-fun ModelRequest.toChatMessages(): List<ChatMessage> {
+fun ModelRequest.toChatMessages(providerId: ProviderId): List<ChatMessage> {
     val out = mutableListOf<ChatMessage>()
     instructions?.takeIf { it.isNotBlank() }?.let {
         out += ChatMessage(role = "system", content = it)
@@ -109,7 +110,7 @@ fun ModelRequest.toChatMessages(): List<ChatMessage> {
             }
             is ModelItem.ToolCall -> {
                 val last = out.lastOrNull()
-                val native = item.nativeId?.raw ?: item.ref.value
+                val native = item.nativeId.rawFor(providerId) ?: item.ref.value
                 val call = ChatReqToolCall(
                     id = native,
                     function = ChatReqFunction(item.name, item.arguments),
@@ -125,7 +126,7 @@ fun ModelRequest.toChatMessages(): List<ChatMessage> {
             is ModelItem.ToolResult -> {
                 val callId = items.filterIsInstance<ModelItem.ToolCall>()
                     .firstOrNull { it.ref == item.callRef }
-                    ?.let { it.nativeId?.raw ?: it.ref.value }
+                    ?.let { it.nativeId.rawFor(providerId) ?: it.ref.value }
                     ?: item.callRef.value
                 out += ChatMessage(role = "tool", content = item.output, toolCallId = callId)
             }

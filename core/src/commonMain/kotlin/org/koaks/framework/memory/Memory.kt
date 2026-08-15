@@ -1,5 +1,6 @@
 package org.koaks.framework.memory
 
+import kotlinx.datetime.Clock
 import kotlin.jvm.JvmInline
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ProviderCheckpoint
@@ -81,10 +82,10 @@ fun turnHasSideEffects(turn: ConversationTurn): Boolean =
     turn.items.any { it is ModelItem.ToolResult && !it.isError }
 
 /** Runtime-facing helper: repair + drop a checkpoint whose basis no longer matches. */
-fun MemoryView.forOnlineUse(): MemoryView {
+fun MemoryView.forOnlineUse(nowEpochMs: Long = Clock.System.now().toEpochMilliseconds()): MemoryView {
     val repaired = repairTranscript(transcript)
     return MemoryView(
         transcript = repaired,
-        checkpoint = checkpoint.takeIfValidFor(repaired),
+        checkpoint = checkpoint.takeIfValidFor(repaired, nowEpochMs),
     )
 }

@@ -9,6 +9,7 @@ class AgentRunException(
     companion object {
         private fun messageFor(result: AgentResult): String = when (result) {
             is AgentResult.Failed -> result.error.message
+            is AgentResult.Incomplete -> "agent run incomplete: ${result.reason}"
             is AgentResult.Terminated -> "agent run terminated: ${result.reason}"
             is AgentResult.Completed -> "agent run completed"
         }

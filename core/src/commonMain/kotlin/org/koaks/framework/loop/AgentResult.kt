@@ -1,6 +1,7 @@
 package org.koaks.framework.loop
 
 import org.koaks.framework.model.AgentError
+import org.koaks.framework.model.IncompleteReason
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.TerminationReason
@@ -18,6 +19,15 @@ sealed interface AgentResult {
         override val usage: Usage,
     ) : AgentResult {
         override val error: AgentError? get() = null
+    }
+
+    data class Incomplete(
+        override val message: ModelItem.Message,
+        override val usage: Usage,
+        val reason: IncompleteReason,
+    ) : AgentResult {
+        override val error: AgentError? get() = null
+        override val isSuccess: Boolean get() = false
     }
 
     data class Terminated(

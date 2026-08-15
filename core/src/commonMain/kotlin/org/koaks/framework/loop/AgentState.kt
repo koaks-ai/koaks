@@ -35,6 +35,20 @@ data class AgentState(
 
     fun withCheckpoint(checkpoint: ProviderCheckpoint?): AgentState = copy(checkpoint = checkpoint)
 
+    /** Merges one terminal model response and advances exactly one model step. */
+    fun completeModelStep(output: List<ModelItem>): AgentState {
+        val merged = items.toMutableList()
+        for (item in output) {
+            val index = merged.indexOfFirst { it.ref == item.ref }
+            if (index >= 0) merged[index] = item else merged += item
+        }
+        return copy(
+            items = merged,
+            globalStep = globalStep + 1,
+            localStep = localStep + 1,
+        )
+    }
+
     fun appendToolResults(calls: List<ToolCall>, outcomes: List<ToolOutcome>): AgentState {
         val results = calls.mapIndexed { i, call ->
             when (val o = outcomes[i]) {

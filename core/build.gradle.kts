@@ -14,6 +14,7 @@ kotlin {
                 api(libs.serialization.json)
                 implementation(libs.kaml)
                 api(libs.okio)
+                implementation(libs.kotlinx.datetime)
             }
         }
         val jvmMain by getting {
@@ -64,4 +65,3 @@ mavenPublishing {
         name.set("koaks-core")
     }
 }
-

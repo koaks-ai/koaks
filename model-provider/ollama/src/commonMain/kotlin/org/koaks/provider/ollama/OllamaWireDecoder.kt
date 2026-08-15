@@ -24,6 +24,7 @@ class OllamaWireDecoder : WireDecoder {
 
     private val toolCalls = mutableListOf<ToolCall>()
     private val text = StringBuilder()
+    private val textRef = ItemRef.generate("msg")
     private val output = mutableListOf<ModelItem>()
     private var usage: Usage = Usage.ZERO
     private var failed: AgentError.ModelError? = null
@@ -75,7 +76,7 @@ class OllamaWireDecoder : WireDecoder {
         message.thinking?.let { if (it.isNotEmpty()) events += ModelEvent.ReasoningDelta(it) }
         if (message.content.isNotEmpty()) {
             text.append(message.content)
-            events += ModelEvent.TextDelta(message.content)
+            events += ModelEvent.TextDelta(message.content, textRef)
         }
 
         message.toolCalls?.forEach { tc ->
@@ -103,7 +104,7 @@ class OllamaWireDecoder : WireDecoder {
         if (finished) return emptyList()
         if (failed != null) return finishFailed()
         val events = mutableListOf<ModelEvent>()
-        if (text.isNotEmpty()) output += ModelItem.assistant(text.toString())
+        if (text.isNotEmpty()) output += ModelItem.assistant(text.toString(), ref = textRef)
         toolCalls.forEach { call ->
             output += call.toItem()
             events += ModelEvent.ToolCallCompleted(call)

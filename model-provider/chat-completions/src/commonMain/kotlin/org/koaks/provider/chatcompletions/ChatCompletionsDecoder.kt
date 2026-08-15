@@ -26,6 +26,7 @@ class ChatCompletionsDecoder(
 
     private val toolCalls = LinkedHashMap<Int, ToolAcc>()
     private val text = StringBuilder()
+    private val textRef = ItemRef.generate("msg")
     private val output = mutableListOf<ModelItem>()
     private var usage: Usage = Usage.ZERO
     private var responseId: String? = null
@@ -85,7 +86,7 @@ class ChatCompletionsDecoder(
         payload.content?.let {
             if (it.isNotEmpty()) {
                 text.append(it)
-                events += ModelEvent.TextDelta(it)
+                events += ModelEvent.TextDelta(it, textRef)
             }
         }
         payload.toolCalls?.forEach { tc ->
@@ -109,7 +110,7 @@ class ChatCompletionsDecoder(
         if (failed != null) return finishFailed()
         val events = mutableListOf<ModelEvent>()
         if (text.isNotEmpty()) {
-            output += ModelItem.assistant(text.toString())
+            output += ModelItem.assistant(text.toString(), ref = textRef)
         }
         toolCalls.entries.sortedBy { it.key }.forEach { (_, acc) ->
             if (acc.name.isEmpty() && acc.args.isEmpty() && acc.id == null) return@forEach

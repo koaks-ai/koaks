@@ -1,12 +1,18 @@
 package org.koaks.provider.openai
 
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.koaks.framework.model.Annotation
 import org.koaks.framework.model.ContentPart
 import org.koaks.framework.model.ItemRef
 import org.koaks.framework.model.ModelCapabilities
@@ -16,6 +22,7 @@ import org.koaks.framework.model.OutputFormat
 import org.koaks.framework.model.ProviderId
 import org.koaks.framework.model.Role
 import org.koaks.framework.model.Support
+import org.koaks.framework.model.rawFor
 import org.koaks.framework.provider.ChatModel
 import org.koaks.framework.provider.ModelConfig
 import org.koaks.framework.provider.RetryBudget
@@ -25,7 +32,9 @@ import org.koaks.framework.provider.timeouts
 import org.koaks.framework.transport.Framing
 import org.koaks.framework.transport.HttpMethod
 import org.koaks.framework.transport.ModelTransport
+import org.koaks.framework.transport.TransportException
 import org.koaks.framework.transport.WireCall
+import org.koaks.framework.transport.WireFrame
 import org.koaks.framework.utils.json.JsonUtil
 
 class OpenAIResponsesModel(
@@ -66,18 +75,62 @@ class OpenAIResponsesModel(
         )
     }
 
+    override fun wireFrames(request: ModelRequest): Flow<WireFrame> {
+        if (params.background != true) return super.wireFrames(request)
+        return flow {
+            val completed = withTimeoutOrNull(config.requestTimeoutMs) {
+                var call = toWireCall(request)
+                while (true) {
+                    val frame = transport.call(call).firstOrNull()
+                        ?: throw TransportException("background response returned no frame")
+                    emit(frame)
+                    if (frame is WireFrame.HttpError) return@withTimeoutOrNull
+                    val body = frame as? WireFrame.Body
+                        ?: throw TransportException("background response expected a JSON body")
+                    val response = runCatching {
+                        JsonUtil.json.parseToJsonElement(body.text).jsonObject
+                    }.getOrElse { throw TransportException("invalid background response JSON", cause = it) }
+                    val id = response["id"]?.jsonPrimitive?.content
+                        ?: throw TransportException("background response is missing id")
+                    when (val status = response["status"]?.jsonPrimitive?.content) {
+                        "queued", "in_progress" -> {
+                            delay(params.backgroundPollIntervalMs)
+                            call = retrieveCall(id)
+                        }
+                        "completed", "incomplete", "failed", "cancelled" -> return@withTimeoutOrNull
+                        else -> throw TransportException("unknown background response status: $status")
+                    }
+                }
+            }
+            if (completed == null) {
+                throw TransportException("background response did not finish within ${config.requestTimeoutMs}ms")
+            }
+        }
+    }
+
+    private fun retrieveCall(responseId: String): WireCall = WireCall(
+        method = HttpMethod.GET,
+        url = "${config.baseUrl.trimEnd('/')}/$responseId",
+        headers = config.authHeaders(),
+        expect = Framing.Json,
+        timeouts = config.timeouts(),
+        retry = config.retry,
+        rateLimit = config.rateLimit,
+    )
+
     internal fun toWire(req: ModelRequest): ResponsesRequest {
         val checkpoint = req.checkpoint
             ?.takeIf { it.providerId == ProviderId.OpenAIResponses }
             ?.let { codec.decode(it) }
-        val usePrevious = checkpoint != null && params.stateMode != ResponsesStateMode.Conversation
-        val inputItems = if (usePrevious) {
+        val chainStored = params.stateMode == ResponsesStateMode.ServerStored && checkpoint != null
+        val inputItems = if (chainStored) {
             req.items.drop(req.checkpoint!!.basis.itemCount.coerceAtMost(req.items.size))
         } else {
             req.items
         }
         val include = when (params.stateMode) {
-            ResponsesStateMode.Replayable -> listOf("reasoning.encrypted_content")
+            ResponsesStateMode.Replayable ->
+                (params.include.orEmpty() + "reasoning.encrypted_content").distinct()
             ResponsesStateMode.ServerStored, ResponsesStateMode.Conversation -> params.include
         }
         return ResponsesRequest(
@@ -86,7 +139,7 @@ class OpenAIResponsesModel(
             instructions = req.instructions,
             tools = encodeTools(req),
             text = req.outputFormat.toTextFormat(),
-            previousResponseId = if (usePrevious) checkpoint?.responseId else null,
+            previousResponseId = if (chainStored) checkpoint?.responseId else null,
             store = params.stateMode == ResponsesStateMode.ServerStored,
             stream = params.background != true,
             include = include,
@@ -150,28 +203,37 @@ private fun ModelItem.toInputElement(calls: Map<ItemRef, ModelItem.ToolCall>): J
         put(
             "content",
             buildJsonArray {
-                if (content.isEmpty() && text.isNotEmpty()) {
-                    add(textPart(role, text))
-                } else {
-                    content.filterIsInstance<ContentPart.Text>().forEach { add(textPart(role, it.text)) }
-                    if (content.none { it is ContentPart.Text } && text.isNotEmpty()) add(textPart(role, text))
+                val texts = content.filterIsInstance<ContentPart.Text>().map { it.text }
+                    .ifEmpty { text.takeIf { it.isNotEmpty() }?.let(::listOf).orEmpty() }
+                texts.forEachIndexed { index, value ->
+                    add(textPart(role, value, if (index == 0) annotations else emptyList()))
+                }
+                refusal?.let { value ->
+                    add(
+                        buildJsonObject {
+                            put("type", JsonPrimitive("refusal"))
+                            put("refusal", JsonPrimitive(value))
+                        },
+                    )
                 }
             },
         )
-        refusal?.let { put("refusal", JsonPrimitive(it)) }
     }
     is ModelItem.ToolCall -> buildJsonObject {
+        val callId = wireCallId()
         put("type", JsonPrimitive(ResponsesItemTypes.FUNCTION_CALL))
         put("name", JsonPrimitive(name))
         put("arguments", JsonPrimitive(arguments))
-        put("call_id", JsonPrimitive(nativeId?.raw ?: ref.value))
-        nativeId?.raw?.let { put("id", JsonPrimitive(it)) }
+        put("call_id", JsonPrimitive(callId))
+        nativeItemId.rawFor(ProviderId.OpenAIResponses)?.let { put("id", JsonPrimitive(it)) }
     }
     is ModelItem.ToolResult -> buildJsonObject {
-        put("type", JsonPrimitive(ResponsesItemTypes.FUNCTION_CALL_OUTPUT))
         val call = calls[callRef]
-        put("call_id", JsonPrimitive(call?.nativeId?.raw ?: nativeId?.raw ?: callRef.value))
+        val callId = call?.wireCallId() ?: callRef.value
+        put("type", JsonPrimitive(ResponsesItemTypes.FUNCTION_CALL_OUTPUT))
+        put("call_id", JsonPrimitive(callId))
         put("output", JsonPrimitive(output))
+        nativeId.rawFor(ProviderId.OpenAIResponses)?.let { put("id", JsonPrimitive(it)) }
     }
     is ModelItem.ReasoningSummary -> buildJsonObject {
         put("type", JsonPrimitive(ResponsesItemTypes.REASONING))
@@ -202,9 +264,40 @@ private fun ModelItem.ProviderItem.fallbackProviderItem(): JsonObject = buildJso
     put("content", JsonPrimitive(displayText))
 }
 
-private fun textPart(role: Role, text: String): JsonObject = buildJsonObject {
+private fun ModelItem.ToolCall.wireCallId(): String =
+    nativeId.rawFor(ProviderId.OpenAIResponses) ?: ref.value
+
+private fun textPart(role: Role, text: String, annotations: List<Annotation>): JsonObject = buildJsonObject {
     put("type", JsonPrimitive(if (role == Role.ASSISTANT) "output_text" else "input_text"))
     put("text", JsonPrimitive(text))
+    if (role == Role.ASSISTANT && annotations.isNotEmpty()) {
+        put("annotations", buildJsonArray { annotations.forEach { add(it.toJson()) } })
+    }
+}
+
+private fun Annotation.toJson(): JsonObject = when (this) {
+    is Annotation.UrlCitation -> buildJsonObject {
+        put("type", JsonPrimitive("url_citation"))
+        put("url", JsonPrimitive(url))
+        title?.let { put("title", JsonPrimitive(it)) }
+        startIndex?.let { put("start_index", JsonPrimitive(it)) }
+        endIndex?.let { put("end_index", JsonPrimitive(it)) }
+    }
+    is Annotation.FileCitation -> buildJsonObject {
+        put("type", JsonPrimitive("file_citation"))
+        put("file_id", JsonPrimitive(fileId))
+        filename?.let { put("filename", JsonPrimitive(it)) }
+        startIndex?.let { put("start_index", JsonPrimitive(it)) }
+        endIndex?.let { put("end_index", JsonPrimitive(it)) }
+    }
+    is Annotation.Generic -> runCatching {
+        JsonUtil.json.parseToJsonElement(payload).jsonObject
+    }.getOrElse {
+        buildJsonObject {
+            put("type", JsonPrimitive(kind))
+            put("payload", JsonPrimitive(payload))
+        }
+    }
 }
 
 private fun Role.wireName(): String = when (this) {
@@ -236,11 +329,16 @@ data class ResponsesParams(
     val reasoning: JsonObject? = null,
     val truncation: String? = null,
     val background: Boolean? = null,
+    val backgroundPollIntervalMs: Long = 2_000,
     val include: List<String>? = null,
     val stateMode: ResponsesStateMode = ResponsesStateMode.Replayable,
     val persistCheckpoint: Boolean = false,
     val serverTools: List<JsonObject> = emptyList(),
-)
+) {
+    init {
+        require(backgroundPollIntervalMs > 0) { "backgroundPollIntervalMs must be positive" }
+    }
+}
 
 val DEFAULT_RESPONSES_CAPABILITIES: ModelCapabilities = ModelCapabilities(
     parallelToolCalls = Support.Supported,

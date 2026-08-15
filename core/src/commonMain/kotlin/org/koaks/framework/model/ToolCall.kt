@@ -5,7 +5,9 @@ import kotlinx.serialization.Serializable
 /**
  * A single tool invocation requested by the model, used by the agent loop to dispatch
  * [org.koaks.framework.tool.Tool] execution. [id] is the core [ItemRef] value used to
- * correlate the call with its result; [nativeId] is the provider-assigned wire id.
+ * correlate the call with its result; [nativeId] is the pairing wire id (`call_id` /
+ * Chat Completions `tool_call_id`); [nativeItemId] is the Responses output-item id
+ * (`fc_...`) when it differs from [nativeId].
  */
 @Serializable
 data class ToolCall(
@@ -13,12 +15,14 @@ data class ToolCall(
     val name: String,
     val arguments: String,
     val nativeId: ProviderScopedId? = null,
+    val nativeItemId: ProviderScopedId? = null,
 ) {
     val ref: ItemRef get() = ItemRef(id)
 
     fun toItem(): ModelItem.ToolCall = ModelItem.ToolCall(
         ref = ref,
         nativeId = nativeId,
+        nativeItemId = nativeItemId,
         name = name,
         arguments = arguments,
     )
@@ -29,4 +33,5 @@ fun ModelItem.ToolCall.toDispatchCall(): ToolCall = ToolCall(
     name = name,
     arguments = arguments,
     nativeId = nativeId,
+    nativeItemId = nativeItemId,
 )

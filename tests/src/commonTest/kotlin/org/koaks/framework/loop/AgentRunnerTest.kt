@@ -1,8 +1,15 @@
 package org.koaks.framework.loop
 
+import okio.ByteString.Companion.encodeUtf8
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
+import org.koaks.framework.model.IncompleteReason
+import org.koaks.framework.model.ModelItem
+import org.koaks.framework.model.ModelResponse
 import org.koaks.framework.model.ModelEvent
+import org.koaks.framework.model.ProviderId
+import org.koaks.framework.model.ProviderScopedId
+import org.koaks.framework.model.ReplayPolicy
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.TerminationReason
@@ -136,6 +143,81 @@ class AgentRunnerTest {
         assertEquals(5, result.usage.totalTokens)
         assertTrue(result.isSuccess)
         assertTrue(result is AgentResult.Completed)
+    }
+
+    @Test
+    fun next_request_contains_the_complete_model_output_before_tool_results() = runTest {
+        val call = ToolCall(
+            id = "call_core",
+            name = "noop",
+            arguments = "{}",
+            nativeId = ProviderScopedId(ProviderId.OpenAIResponses, "call_native"),
+            nativeItemId = ProviderScopedId(ProviderId.OpenAIResponses, "fc_native"),
+        )
+        val providerItem = ModelItem.ProviderItem(
+            providerId = ProviderId.OpenAIResponses,
+            kind = "reasoning",
+            displayText = "reasoning",
+            replay = ReplayPolicy.Required,
+            payload = "opaque".encodeUtf8(),
+        )
+        val model = FakeLanguageModel(
+            listOf(
+                ModelEvent.ItemAdded(providerItem),
+                ModelEvent.ToolCallCompleted(call),
+                done(Usage(totalTokens = 2)),
+            ),
+            listOf(ModelEvent.TextDelta("done"), done(Usage(totalTokens = 3))),
+        )
+        val a = agentWith("runner-complete-output", model) {
+            tool<NoArgs>(name = "noop", description = "no-op") { "ok" }
+        }
+
+        val result = a.run("hi")
+
+        assertTrue(result is AgentResult.Completed)
+        assertEquals(2, model.requests.size)
+        val second = model.requests[1].items
+        val providerIndex = second.indexOfFirst { it.ref == providerItem.ref }
+        val callIndex = second.indexOfFirst { it is ModelItem.ToolCall && it.ref == call.ref }
+        val resultIndex = second.indexOfFirst { it is ModelItem.ToolResult && it.callRef == call.ref }
+        assertTrue(providerIndex >= 0)
+        assertTrue(callIndex >= 0)
+        assertTrue(resultIndex > callIndex)
+        assertEquals(null, (second[resultIndex] as ModelItem.ToolResult).nativeId)
+        assertEquals(5, result.usage.totalTokens)
+    }
+
+    @Test
+    fun incomplete_response_is_a_distinct_terminal_and_does_not_execute_tools() = runTest {
+        var executed = false
+        val call = ToolCall("call_1", "noop", "{}")
+        val model = FakeLanguageModel(
+            listOf(
+                ModelEvent.TextDelta("partial"),
+                ModelEvent.ToolCallCompleted(call),
+                ModelEvent.Finished(
+                    ModelResponse.Incomplete(
+                        reason = IncompleteReason.MaxOutputTokens,
+                        usage = Usage(totalTokens = 7),
+                    ),
+                ),
+            ),
+        )
+        val a = agentWith("runner-incomplete", model) {
+            tool<NoArgs>(name = "noop", description = "no-op") {
+                executed = true
+                "ok"
+            }
+        }
+
+        val result = a.run("hi")
+
+        assertTrue(result is AgentResult.Incomplete)
+        assertEquals(IncompleteReason.MaxOutputTokens, result.reason)
+        assertEquals("partial", result.text)
+        assertEquals(7, result.usage.totalTokens)
+        assertFalse(executed)
     }
 
     @Test

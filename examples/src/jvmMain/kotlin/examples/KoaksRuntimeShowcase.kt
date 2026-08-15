@@ -919,6 +919,7 @@ private object Console {
             is RuntimeEvent.Suspended -> "PAUSE   run=${event.runId.value} state=SUSPENDED"
             is RuntimeEvent.Resumed -> "RESUME  run=${event.runId.value} state=RUNNING"
             is RuntimeEvent.Finished -> "EXIT    run=${event.runId.value} state=FINISHED tokens=${event.usage.totalTokens}"
+            is RuntimeEvent.Incomplete -> "PARTIAL run=${event.runId.value} reason=${event.reason} tokens=${event.usage.totalTokens}"
             is RuntimeEvent.Terminated -> "STOP    run=${event.runId.value} reason=${event.reason}"
             is RuntimeEvent.Failed -> "FAIL    run=${event.runId.value} error=${event.error.message}"
             is RuntimeEvent.Cancelled -> "CANCEL  run=${event.runId.value}"
@@ -929,7 +930,7 @@ private object Console {
         }
         val color = when (event) {
             is RuntimeEvent.Failed, is RuntimeEvent.Cancelled, is RuntimeEvent.CircuitOpen -> ::red
-            is RuntimeEvent.Waiting, is RuntimeEvent.Suspended, is RuntimeEvent.Retrying -> ::yellow
+            is RuntimeEvent.Waiting, is RuntimeEvent.Suspended, is RuntimeEvent.Retrying, is RuntimeEvent.Incomplete -> ::yellow
             is RuntimeEvent.Finished -> ::green
             else -> ::magenta
         }

@@ -40,6 +40,10 @@ data class ProviderScopedId(
     val raw: String,
 )
 
+/** Returns the native id only when it belongs to [providerId]. */
+fun ProviderScopedId?.rawFor(providerId: ProviderId): String? =
+    this?.takeIf { it.providerId == providerId }?.raw
+
 fun newIdempotencyKey(): String = "koaks_${randomToken()}"
 
 internal fun randomToken(): String {

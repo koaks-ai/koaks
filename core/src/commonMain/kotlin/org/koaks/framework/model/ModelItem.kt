@@ -27,6 +27,7 @@ sealed interface ModelItem {
         override val nativeId: ProviderScopedId? = null,
         val name: String,
         val arguments: String,
+        val nativeItemId: ProviderScopedId? = null,
     ) : ModelItem
 
     data class ToolResult(

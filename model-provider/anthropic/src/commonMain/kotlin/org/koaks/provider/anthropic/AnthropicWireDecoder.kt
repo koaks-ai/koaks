@@ -20,7 +20,7 @@ class AnthropicWireDecoder : WireDecoder {
     private class ToolAcc(val id: String, val name: String, val args: StringBuilder = StringBuilder(), val ref: ItemRef = ItemRef.generate("call"))
     private class ThinkingAcc(
         var text: StringBuilder = StringBuilder(),
-        var signature: String? = null,
+        val signature: StringBuilder = StringBuilder(),
         var redacted: String? = null,
         val kind: String,
         val ref: ItemRef = ItemRef.generate("think"),
@@ -30,6 +30,7 @@ class AnthropicWireDecoder : WireDecoder {
     private val thinking = LinkedHashMap<Int, ThinkingAcc>()
     private val output = mutableListOf<ModelItem>()
     private val text = StringBuilder()
+    private val textRef = ItemRef.generate("msg")
     private var promptTokens = 0
     private var completionTokens = 0
     private var cachedInput = 0
@@ -87,7 +88,7 @@ class AnthropicWireDecoder : WireDecoder {
                     "text_delta" -> delta.text?.let {
                         if (it.isNotEmpty()) {
                             text.append(it)
-                            events += ModelEvent.TextDelta(it)
+                            events += ModelEvent.TextDelta(it, textRef)
                         }
                     }
                     "thinking_delta" -> delta.thinking?.let {
@@ -95,7 +96,7 @@ class AnthropicWireDecoder : WireDecoder {
                         if (it.isNotEmpty()) events += ModelEvent.ReasoningDelta(it)
                     }
                     "signature_delta" -> delta.signature?.let { sig ->
-                        chunk.index?.let { idx -> thinking[idx]?.signature = sig }
+                        chunk.index?.let { idx -> thinking[idx]?.signature?.append(sig) }
                     }
                     "input_json_delta" -> {
                         val index = chunk.index ?: return events
@@ -117,7 +118,7 @@ class AnthropicWireDecoder : WireDecoder {
                     val block: AnthropicContentBlock = if (acc.kind == "redacted_thinking") {
                         AnthropicContentBlock.RedactedThinking(acc.redacted ?: "")
                     } else {
-                        AnthropicContentBlock.Thinking(acc.text.toString(), acc.signature)
+                        AnthropicContentBlock.Thinking(acc.text.toString(), acc.signature.toString().ifBlank { null })
                     }
                     val item = ModelItem.ProviderItem(
                         ref = acc.ref,
@@ -140,7 +141,7 @@ class AnthropicWireDecoder : WireDecoder {
         if (finished) return emptyList()
         if (failed != null) return finishFailed()
         val events = mutableListOf<ModelEvent>()
-        if (text.isNotEmpty()) output += ModelItem.assistant(text.toString())
+        if (text.isNotEmpty()) output += ModelItem.assistant(text.toString(), ref = textRef)
         toolCalls.entries.sortedBy { it.key }.forEach { (_, acc) ->
             val call = ToolCall(
                 id = acc.ref.value,

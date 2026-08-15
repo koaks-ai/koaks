@@ -24,6 +24,7 @@ class OpenAIResponsesConfig(
     var reasoning: JsonObject? = null
     var truncation: String? = null
     var background: Boolean? = null
+    var backgroundPollIntervalMs: Long = 2_000
     var streamIdleTimeoutMs: Long = DEFAULT_STREAM_IDLE_TIMEOUT_MS
     var stateMode: ResponsesStateMode = ResponsesStateMode.Replayable
     var persistCheckpoint: Boolean = false
@@ -73,6 +74,7 @@ class OpenAIResponsesConfig(
         reasoning = reasoning,
         truncation = truncation,
         background = background,
+        backgroundPollIntervalMs = backgroundPollIntervalMs,
         include = include,
         stateMode = stateMode,
         persistCheckpoint = persistCheckpoint,

@@ -14,7 +14,6 @@ import kotlinx.coroutines.test.runTest
 import org.koaks.framework.provider.RetryBudget
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -61,10 +60,10 @@ class KtorTransportTest {
             respondError(HttpStatusCode.InternalServerError)
         }
         val transport = KtorTransport(HttpClient(engine) { install(HttpTimeout) })
-        assertFailsWith<TransportException> {
-            transport.call(call(retry = RetryBudget(maxRetries = 2, initialBackoffMs = 1))).toList()
-        }
+        val frames = transport.call(call(retry = RetryBudget(maxRetries = 2, initialBackoffMs = 1))).toList()
         assertEquals(3, calls)
+        val error = assertIs<WireFrame.HttpError>(frames.single())
+        assertEquals(500, error.status)
         transport.close()
     }
 

@@ -11,6 +11,7 @@ import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.ModelResponse
 import org.koaks.framework.transport.ModelTransport
 import org.koaks.framework.transport.WireCall
+import org.koaks.framework.transport.WireFrame
 
 /**
  * Base class for HTTP providers. A provider implements [toWireCall] and [newDecoder];
@@ -27,11 +28,15 @@ abstract class ChatModel(
 
     protected open fun newDecoder(request: ModelRequest): WireDecoder = newDecoder()
 
+    /** Provider-owned request orchestration; defaults to one transport call. */
+    protected open fun wireFrames(request: ModelRequest): Flow<WireFrame> =
+        transport.call(toWireCall(request))
+
     final override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
         val decoder = newDecoder(request)
         var finished = false
         try {
-            transport.call(toWireCall(request)).collect { frame ->
+            wireFrames(request).collect { frame ->
                 decoder.accept(frame).forEach { event ->
                     if (event is ModelEvent.Finished) finished = true
                     emit(event)

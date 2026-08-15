@@ -119,6 +119,38 @@ class ConformanceKitTest {
     }
 
     @Test
+    fun checkpoint_basis_covers_semantic_content_and_expiration() {
+        val user = ModelItem.user("before", ref = ItemRef("user_1"))
+        val call = ModelItem.ToolCall(ref = ItemRef("call_1"), name = "tool", arguments = "{\"x\":1}")
+        val result = ModelItem.ToolResult(ref = ItemRef("result_1"), callRef = call.ref, output = "one")
+        val provider = ModelItem.ProviderItem(
+            ref = ItemRef("provider_1"),
+            providerId = ProviderId.OpenAIResponses,
+            kind = "reasoning",
+            displayText = "reasoning",
+            replay = ReplayPolicy.Required,
+            payload = "payload-one".encodeUtf8(),
+        )
+        val items = listOf(user, call, result, provider)
+        val checkpoint = ProviderCheckpoint(
+            providerId = ProviderId.OpenAIResponses,
+            codecVersion = 1,
+            basis = TranscriptBasis.of(items),
+            scope = CheckpointScope.CrossTurn,
+            payload = "checkpoint".encodeUtf8(),
+            expiresAtEpochMs = 100,
+        )
+
+        assertTrue(checkpoint.basis.digest.startsWith("sha256:"))
+        assertNull(checkpoint.takeIfValidFor(items.map { if (it.ref == user.ref) ModelItem.user("after", user.ref) else it }, 50))
+        assertNull(checkpoint.takeIfValidFor(items.map { if (it.ref == call.ref) call.copy(arguments = "{\"x\":2}") else it }, 50))
+        assertNull(checkpoint.takeIfValidFor(items.map { if (it.ref == result.ref) result.copy(output = "two") else it }, 50))
+        assertNull(checkpoint.takeIfValidFor(items.map { if (it.ref == provider.ref) provider.copy(payload = "payload-two".encodeUtf8()) else it }, 50))
+        assertNull(checkpoint.takeIfValidFor(items, 100))
+        assertEquals(checkpoint, checkpoint.takeIfValidFor(items, 99))
+    }
+
+    @Test
     fun item_ref_is_stable_across_turns_and_not_call_index() {
         val first = ItemRef.generate("call")
         val second = ItemRef.generate("call")
@@ -190,7 +222,8 @@ class ConformanceKitTest {
             ),
         )
         val online = repairTranscript(stored)
-        val messages = ModelRequest(instructions = null, items = online, idempotencyKey = "k").toChatMessages()
+        val messages = ModelRequest(instructions = null, items = online, idempotencyKey = "k")
+            .toChatMessages(ProviderId.OpenAI)
         assertTrue(messages.any { it.role == "assistant" && it.toolCalls.orEmpty().any { call -> call.id == "call_1" } })
         assertTrue(messages.any { it.role == "tool" && it.toolCallId == "call_1" })
         val encoded = toInput(online).toString()
@@ -212,7 +245,7 @@ class ConformanceKitTest {
             items = listOf(ModelItem.user("hi"), item),
             idempotencyKey = "k",
         )
-        val error = assertFailsWith<AgentFrameworkException> { request.toChatMessages() }
+        val error = assertFailsWith<AgentFrameworkException> { request.toChatMessages(ProviderId.OpenAI) }
         assertTrue(error.error is AgentError.PreparationError)
         assertTrue(error.message!!.contains("Required"))
     }

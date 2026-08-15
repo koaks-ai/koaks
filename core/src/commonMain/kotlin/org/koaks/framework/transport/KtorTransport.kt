@@ -53,9 +53,22 @@ class KtorTransport(
             call.rateLimit?.let { limiterFor(it).acquire() }
             var emittedAny = false
             try {
-                execute(call) { frame ->
+                val httpError = execute(call) { frame ->
                     emittedAny = true
                     emit(frame)
+                }
+                if (httpError != null) {
+                    if (attempt < call.retry.maxRetries && httpError.status.isRetriableStatus()) {
+                        val backoff = call.retry.initialBackoffMs * (1L shl attempt)
+                        logger.warn {
+                            "transport retry ${attempt + 1}/${call.retry.maxRetries} " +
+                                "after ${backoff}ms: HTTP ${httpError.status}"
+                        }
+                        attempt++
+                        delay(backoff.milliseconds)
+                        continue
+                    }
+                    emit(httpError)
                 }
                 return@flow
             } catch (e: CancellationException) {
@@ -76,7 +89,8 @@ class KtorTransport(
     private suspend fun execute(
         call: WireCall,
         onFrame: suspend (WireFrame) -> Unit,
-    ) {
+    ): WireFrame.HttpError? {
+        var httpError: WireFrame.HttpError? = null
         val stmt = engineClient.prepareRequest(call.url) {
             method = call.method.toKtor()
             contentType(ContentType.Application.Json)
@@ -97,15 +111,11 @@ class KtorTransport(
         stmt.execute { response ->
             if (!response.status.isSuccess()) {
                 val err = response.bodyAsText()
-                val frame = WireFrame.HttpError(
+                httpError = WireFrame.HttpError(
                     status = response.status.value,
                     contentType = response.contentType()?.toString(),
                     body = err,
                 )
-                if (response.status.value.isRetriableStatus()) {
-                    throw TransportException("HTTP ${response.status.value}: $err", response.status.value)
-                }
-                onFrame(frame)
                 return@execute
             }
             when (call.expect) {
@@ -124,6 +134,7 @@ class KtorTransport(
                 )
             }
         }
+        return httpError
     }
 
     override fun close() {

@@ -1,11 +1,17 @@
 package org.koaks.framework.memory
 
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.koaks.framework.loop.AgentEvent
+import org.koaks.framework.loop.AgentResult
 import org.koaks.framework.loop.FakeLanguageModel
 import org.koaks.framework.loop.agent
 import org.koaks.framework.model.AgentError
+import org.koaks.framework.model.IncompleteReason
 import org.koaks.framework.loop.done
 import org.koaks.framework.loop.fail
 import org.koaks.framework.model.ModelEvent
@@ -14,6 +20,7 @@ import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.ErrorPolicy
 import org.koaks.framework.policy.Recovery
 import org.koaks.runtime.AgentRuntime
+import org.koaks.runtime.observe.RuntimeEvent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -139,5 +146,51 @@ class AgentMemoryTest {
         AgentRuntime().use { runtime -> runtime.run(a, "q1") }
 
         assertEquals(0, opens)
+    }
+
+    @Test
+    fun incomplete_result_commits_an_interrupted_resumable_turn() = runTest {
+        val model = FakeLanguageModel(
+            listOf(
+                ModelEvent.TextDelta("partial"),
+                ModelEvent.Finished(
+                    org.koaks.framework.model.ModelResponse.Incomplete(
+                        reason = IncompleteReason.MaxOutputTokens,
+                        usage = Usage(totalTokens = 4),
+                    ),
+                ),
+            ),
+        )
+        val mem = RecordingMemory()
+        val a = agent {
+            id = "agent-incomplete-memory"
+            name = "t"
+            model { custom(model) }
+            memory { custom("recording") { mem } }
+        }
+
+        AgentRuntime().use { runtime ->
+            val runtimeEvent = async(start = CoroutineStart.UNDISPATCHED) {
+                runtime.events.filterIsInstance<RuntimeEvent.Incomplete>().first()
+            }
+            val result = runtime.run(a, "q", thread = "u")
+
+            assertTrue(result is AgentResult.Incomplete)
+            assertEquals(IncompleteReason.MaxOutputTokens, result.reason)
+            assertEquals(IncompleteReason.MaxOutputTokens, runtimeEvent.await().reason)
+        }
+
+        val turn = mem.turns.single()
+        val status = turn.status as TurnStatus.Interrupted
+        assertEquals(InterruptReason.Incomplete(IncompleteReason.MaxOutputTokens), status.reason)
+        assertEquals("partial", turn.items.filterIsInstance<org.koaks.framework.model.ModelItem.Message>().last().text)
+    }
+}
+
+private class RecordingMemory : ThreadMemory {
+    val turns = mutableListOf<ConversationTurn>()
+    override suspend fun load(query: List<org.koaks.framework.model.ModelItem>): MemoryView = MemoryView.EMPTY
+    override suspend fun commit(turn: ConversationTurn) {
+        turns += turn
     }
 }

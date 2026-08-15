@@ -1,6 +1,7 @@
 package org.koaks.provider.anthropic
 
 import org.koaks.framework.model.ModelEvent
+import org.koaks.framework.model.ModelItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -120,5 +121,51 @@ class AnthropicWireDecoderTest {
         assertEquals("toolu_a", completed[0].call.nativeId?.raw)
         assertEquals("second", completed[1].call.name)
         assertEquals("toolu_b", completed[1].call.nativeId?.raw)
+    }
+
+    @Test
+    fun concatenates_fragmented_thinking_signature_for_exact_replay() {
+        val decoder = AnthropicWireDecoder()
+        val events = buildList {
+            addAll(
+                decoder.acceptChunk(
+                    AnthropicChatResponse(
+                        type = "content_block_start",
+                        index = 0,
+                        contentBlock = AnthropicChatResponse.ContentBlock(type = "thinking"),
+                    ),
+                ),
+            )
+            addAll(decoder.acceptChunk(thinkingDelta("reason")))
+            addAll(
+                decoder.acceptChunk(
+                    AnthropicChatResponse(
+                        type = "content_block_delta",
+                        index = 0,
+                        delta = AnthropicChatResponse.Delta(type = "signature_delta", signature = "sig-"),
+                    ),
+                ),
+            )
+            addAll(
+                decoder.acceptChunk(
+                    AnthropicChatResponse(
+                        type = "content_block_delta",
+                        index = 0,
+                        delta = AnthropicChatResponse.Delta(type = "signature_delta", signature = "tail"),
+                    ),
+                ),
+            )
+            addAll(decoder.acceptChunk(AnthropicChatResponse(type = "content_block_stop", index = 0)))
+            addAll(decoder.finish())
+        }
+
+        val providerItem = events.filterIsInstance<ModelEvent.ItemAdded>()
+            .map { it.item }
+            .filterIsInstance<ModelItem.ProviderItem>()
+            .single()
+        val replay = toAnthropicMessages(listOf(ModelItem.user("q"), providerItem))
+        val thinking = replay.last().content.filterIsInstance<AnthropicContentBlock.Thinking>().single()
+        assertEquals("reason", thinking.thinking)
+        assertEquals("sig-tail", thinking.signature)
     }
 }

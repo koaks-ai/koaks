@@ -23,6 +23,7 @@ import org.koaks.framework.model.ModelResponse
 import org.koaks.framework.model.ProviderId
 import org.koaks.framework.model.ProviderScopedId
 import org.koaks.framework.model.ReplayPolicy
+import org.koaks.framework.model.Role
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.TranscriptBasis
 import org.koaks.framework.model.Usage
@@ -46,19 +47,26 @@ class ResponsesDecoder(
         val ref: ItemRef = ItemRef.generate("call"),
     )
 
+    private class MessageAcc(
+        var nativeItemId: String? = null,
+        var role: Role = Role.ASSISTANT,
+        val text: StringBuilder = StringBuilder(),
+        val refusal: StringBuilder = StringBuilder(),
+        val annotations: MutableList<Annotation> = mutableListOf(),
+        val ref: ItemRef = ItemRef.generate("msg"),
+    )
+
     private val tools = LinkedHashMap<Int, ToolAcc>()
+    private val messages = LinkedHashMap<Int, MessageAcc>()
     private val output = mutableListOf<ModelItem>()
-    private val seenRefs = HashSet<String>()
-    private val text = StringBuilder()
-    private val refusal = StringBuilder()
-    private val annotations = mutableListOf<Annotation>()
+    private val seenKeys = HashSet<String>()
+    private val emittedCallRefs = HashSet<String>()
     private var usage: Usage = Usage.ZERO
     private var responseId: String? = null
     private var failed: AgentError.ModelError? = null
     private var incomplete: IncompleteReason? = null
     private var finished = false
     private var started = false
-    private var textRef: ItemRef = ItemRef.generate("msg")
 
     override fun accept(frame: WireFrame): List<ModelEvent> {
         return when (frame) {
@@ -80,7 +88,21 @@ class ResponsesDecoder(
 
     private fun acceptCompletedJson(text: String): List<ModelEvent> {
         val obj = runCatching { JsonUtil.json.parseToJsonElement(text).jsonObject }.getOrElse { return emptyList() }
-        return dispatch("response.completed", wrapResponse(obj))
+        val event = when (obj.str("status")) {
+            "queued" -> "response.queued"
+            "in_progress" -> "response.in_progress"
+            "completed" -> "response.completed"
+            "incomplete" -> "response.incomplete"
+            "failed" -> "response.failed"
+            "cancelled" -> "response.cancelled"
+            else -> obj.str("type")
+        }
+        val wrapped = wrapResponse(obj)
+        val eventStartsResponse = event == "response.created" ||
+            event == "response.queued" ||
+            event == "response.in_progress"
+        val startedEvents = if (started || eventStartsResponse) emptyList() else dispatch("response.created", wrapped)
+        return startedEvents + dispatch(event, wrapped)
     }
 
     private fun wrapResponse(obj: JsonObject): JsonObject =
@@ -95,27 +117,30 @@ class ResponsesDecoder(
                     started = true
                     events += ModelEvent.Started(responseId)
                 }
+                currentCheckpoint()?.let { events += ModelEvent.CheckpointUpdated(it) }
             }
             "response.output_text.delta" -> {
                 val delta = obj.str("delta").orEmpty()
                 if (delta.isNotEmpty()) {
-                    text.append(delta)
-                    events += ModelEvent.TextDelta(delta, textRef)
+                    val acc = messageAccFor(obj.int("output_index"), obj.str("item_id"))
+                    acc.text.append(delta)
+                    events += ModelEvent.TextDelta(delta, acc.ref)
                 }
             }
-            "response.refusal.delta" -> obj.str("delta")?.let { refusal.append(it) }
+            "response.refusal.delta" -> obj.str("delta")?.let { delta ->
+                messageAccFor(obj.int("output_index"), obj.str("item_id")).refusal.append(delta)
+            }
             "response.reasoning_summary_text.delta", "response.reasoning.delta" -> {
                 val delta = obj.str("delta").orEmpty()
                 if (delta.isNotEmpty()) events += ModelEvent.ReasoningDelta(delta)
             }
             "response.function_call_arguments.delta" -> {
                 val index = obj.int("output_index") ?: 0
-                val acc = tools.getOrPut(index) { ToolAcc() }
-                obj.str("item_id")?.let { acc.nativeItemId = it }
+                val acc = accFor(index = index, itemId = obj.str("item_id"))
                 val fragment = obj.str("delta").orEmpty()
                 acc.args.append(fragment)
                 events += ModelEvent.ToolCallDelta(
-                    id = acc.callId ?: acc.nativeItemId ?: acc.ref.value,
+                    id = acc.ref.value,
                     index = index,
                     argumentsDelta = fragment,
                     itemRef = acc.ref,
@@ -125,40 +150,44 @@ class ResponsesDecoder(
                 val item = obj.obj("item") ?: return events
                 when (item.str("type")) {
                     ResponsesItemTypes.FUNCTION_CALL, ResponsesItemTypes.CUSTOM_TOOL_CALL -> {
-                        val index = obj.int("output_index") ?: tools.size
-                        val acc = tools.getOrPut(index) { ToolAcc() }
-                        item.str("call_id")?.let { acc.callId = it }
-                        item.str("id")?.let { acc.nativeItemId = it }
-                        item.str("name")?.let { acc.name.append(it) }
-                        item.str("arguments")?.let { acc.args.append(it) }
+                        val acc = accFor(
+                            index = obj.int("output_index"),
+                            callId = item.str("call_id"),
+                            itemId = item.str("id"),
+                        )
+                        if (acc.name.isEmpty()) item.str("name")?.let { acc.name.append(it) }
+                        if (acc.args.isEmpty()) {
+                            item.str("arguments")?.takeIf { it.isNotEmpty() }?.let { acc.args.append(it) }
+                        }
                     }
-                    ResponsesItemTypes.MESSAGE -> item.str("id")?.let {
-                        textRef = ItemRef.generate("msg")
-                    }
+                    ResponsesItemTypes.MESSAGE -> messageAccFor(
+                        index = obj.int("output_index"),
+                        itemId = item.str("id"),
+                        role = item.role(),
+                    )
                     else -> Unit
                 }
             }
             "response.output_item.done" -> {
                 val item = obj.obj("item") ?: return events
-                mapOutputItem(item)?.let { mapped ->
-                    if (seenRefs.add(mapped.ref.value)) {
-                        output += mapped
-                        events += ModelEvent.ItemAdded(mapped)
-                        if (mapped is ModelItem.ToolCall) {
-                            events += ModelEvent.ToolCallCompleted(mapped.toDispatchCall())
-                        }
-                    }
+                mapOutputItem(item, obj.int("output_index"))?.let { mapped ->
+                    events += emitMapped(mapped)
                 }
             }
             "response.output_text.annotation.added" -> {
-                obj.obj("annotation")?.let { annotations += mapAnnotation(it) }
+                obj.obj("annotation")?.let {
+                    messageAccFor(obj.int("output_index"), obj.str("item_id")).annotations += mapAnnotation(it)
+                }
             }
             "response.completed" -> {
                 ingestTerminal(obj)
             }
             "response.incomplete" -> {
                 ingestTerminal(obj)
-                incomplete = mapIncomplete(obj)
+            }
+            "response.cancelled" -> {
+                ingestTerminal(obj)
+                incomplete = IncompleteReason.Cancelled
             }
             "response.failed", "error" -> {
                 failed = decodeModelError(obj)
@@ -177,40 +206,21 @@ class ResponsesDecoder(
         if (finished) return emptyList()
         if (failed != null) return finishFailed()
         val events = mutableListOf<ModelEvent>()
-        flushAssistantIfMissing()
+        messages.entries.sortedBy { it.key }.forEach { (_, acc) ->
+            if (acc.text.isEmpty() && acc.refusal.isEmpty()) return@forEach
+            events += emitMapped(acc.toItem())
+        }
         tools.entries.sortedBy { it.key }.forEach { (_, acc) ->
-            if (output.any { it.ref == acc.ref }) return@forEach
             if (acc.name.isEmpty() && acc.args.isEmpty()) return@forEach
-            val call = acc.toCall()
-            output += call.toItem()
-            events += ModelEvent.ToolCallCompleted(call)
+            events += emitMapped(acc.toItem())
         }
         finished = true
         events += ModelEvent.Finished(terminalResponse())
         return events
     }
 
-    private fun flushAssistantIfMissing() {
-        if (text.isEmpty() && refusal.isEmpty()) return
-        if (output.any { it is ModelItem.Message && it.role == org.koaks.framework.model.Role.ASSISTANT }) return
-        output += ModelItem.assistant(
-            text = text.toString(),
-            ref = textRef,
-            nativeId = responseId?.let { ProviderScopedId(ProviderId.OpenAIResponses, it) },
-            refusal = refusal.toString().ifBlank { null },
-            annotations = annotations.toList(),
-        )
-    }
-
     private fun terminalResponse(): ModelResponse {
-        val checkpoint = responseId?.let {
-            codec.encode(
-                responseId = it,
-                mode = mode,
-                basis = TranscriptBasis.of(basisItems + output),
-                scope = if (persistCheckpoint) CheckpointScope.CrossTurn else CheckpointScope.InRun,
-            )
-        }
+        val checkpoint = currentCheckpoint()
         return when {
             incomplete != null -> ModelResponse.Incomplete(
                 id = responseId,
@@ -238,48 +248,113 @@ class ResponsesDecoder(
         val response = obj.obj("response") ?: obj
         readResponseId(response)
         response.obj("usage")?.let { usage = mapUsage(it) }
-        (response["output"] as? JsonArray)?.forEach { el ->
-            val item = el as? JsonObject ?: return@forEach
-            mapOutputItem(item)?.let { mapped ->
-                if (seenRefs.add(mapped.ref.value)) output += mapped
-            }
+        (response["output"] as? JsonArray)?.forEachIndexed { index, el ->
+            val item = el as? JsonObject ?: return@forEachIndexed
+            mapOutputItem(item, index)?.let { mapped -> remember(mapped) }
         }
         if (response.str("status") == "incomplete") {
             incomplete = mapIncomplete(response)
         }
     }
 
-    private fun mapOutputItem(item: JsonObject): ModelItem? {
+    private fun accFor(
+        index: Int? = null,
+        callId: String? = null,
+        itemId: String? = null,
+    ): ToolAcc {
+        tools.values.firstOrNull { acc ->
+            (callId != null && acc.callId == callId) || (itemId != null && acc.nativeItemId == itemId)
+        }?.let { acc ->
+            callId?.let { acc.callId = it }
+            itemId?.let { acc.nativeItemId = it }
+            return acc
+        }
+        val key = index ?: (tools.keys.maxOrNull()?.plus(1) ?: 0)
+        return tools.getOrPut(key) { ToolAcc() }.also { acc ->
+            callId?.let { acc.callId = it }
+            itemId?.let { acc.nativeItemId = it }
+        }
+    }
+
+    private fun messageAccFor(
+        index: Int? = null,
+        itemId: String? = null,
+        role: Role? = null,
+    ): MessageAcc {
+        messages.values.firstOrNull { itemId != null && it.nativeItemId == itemId }?.let { acc ->
+            itemId?.let { acc.nativeItemId = it }
+            role?.let { acc.role = it }
+            return acc
+        }
+        val key = index ?: (messages.keys.maxOrNull()?.plus(1) ?: 0)
+        return messages.getOrPut(key) { MessageAcc() }.also { acc ->
+            itemId?.let { acc.nativeItemId = it }
+            role?.let { acc.role = it }
+        }
+    }
+
+    private fun seenKey(item: ModelItem): String {
+        val native = item.nativeId?.raw
+        return when (item) {
+            is ModelItem.ToolCall -> "call:${native ?: item.ref.value}"
+            is ModelItem.ToolResult -> "result:${item.callRef.value}:${native ?: item.ref.value}"
+            is ModelItem.Message -> "msg:${item.role}:${native ?: item.ref.value}"
+            is ModelItem.ReasoningSummary -> "reason:${native ?: item.ref.value}"
+            is ModelItem.ProviderItem -> "prov:${item.kind}:${native ?: item.ref.value}"
+        }
+    }
+
+    private fun remember(item: ModelItem): Boolean {
+        if (!seenKeys.add(seenKey(item))) return false
+        output += item
+        return true
+    }
+
+    private fun emitMapped(mapped: ModelItem): List<ModelEvent> {
+        val events = mutableListOf<ModelEvent>()
+        if (remember(mapped)) {
+            events += ModelEvent.ItemAdded(mapped)
+            currentCheckpoint()?.let { events += ModelEvent.CheckpointUpdated(it) }
+        }
+        if (mapped is ModelItem.ToolCall && emittedCallRefs.add(mapped.ref.value)) {
+            events += ModelEvent.ToolCallCompleted(mapped.toDispatchCall())
+        }
+        return events
+    }
+
+    private fun mapOutputItem(item: JsonObject, outputIndex: Int? = null): ModelItem? {
         val type = item.str("type") ?: return null
         val native = item.str("id")?.let { ProviderScopedId(ProviderId.OpenAIResponses, it) }
         return when (type) {
             ResponsesItemTypes.MESSAGE -> {
-                val role = when (item.str("role")) {
-                    "user" -> org.koaks.framework.model.Role.USER
-                    "system" -> org.koaks.framework.model.Role.SYSTEM
-                    else -> org.koaks.framework.model.Role.ASSISTANT
-                }
+                val acc = messageAccFor(outputIndex, item.str("id"), item.role())
                 val contentText = extractOutputText(item)
+                if (contentText.isNotEmpty()) {
+                    acc.text.clear()
+                    acc.text.append(contentText)
+                }
                 val anns = extractAnnotations(item)
-                val refText = item.str("refusal")
-                ModelItem.Message(
-                    ref = ItemRef.generate("msg"),
-                    nativeId = native,
-                    role = role,
-                    content = if (contentText.isEmpty()) emptyList()
-                    else listOf(org.koaks.framework.model.ContentPart.Text(contentText)),
-                    refusal = refText,
-                    annotations = anns,
-                )
+                if (anns.isNotEmpty()) {
+                    acc.annotations.clear()
+                    acc.annotations += anns
+                }
+                extractRefusal(item)?.let { refusalText ->
+                    acc.refusal.clear()
+                    acc.refusal.append(refusalText)
+                }
+                acc.toItem()
             }
             ResponsesItemTypes.FUNCTION_CALL, ResponsesItemTypes.CUSTOM_TOOL_CALL -> {
-                val ref = ItemRef.generate("call")
-                ModelItem.ToolCall(
-                    ref = ref,
-                    nativeId = item.str("call_id")?.let { ProviderScopedId(ProviderId.OpenAIResponses, it) } ?: native,
-                    name = item.str("name").orEmpty(),
-                    arguments = item.str("arguments") ?: "{}",
+                val acc = accFor(
+                    index = outputIndex,
+                    callId = item.str("call_id"),
+                    itemId = item.str("id"),
                 )
+                if (acc.name.isEmpty()) item.str("name")?.let { acc.name.append(it) }
+                if (acc.args.isEmpty()) {
+                    item.str("arguments")?.takeIf { it.isNotEmpty() }?.let { acc.args.append(it) }
+                }
+                acc.toItem()
             }
             ResponsesItemTypes.FUNCTION_CALL_OUTPUT, ResponsesItemTypes.CUSTOM_TOOL_CALL_OUTPUT,
             ResponsesItemTypes.COMPUTER_CALL_OUTPUT, ResponsesItemTypes.LOCAL_SHELL_CALL_OUTPUT -> {
@@ -349,6 +424,14 @@ class ResponsesDecoder(
         }
     }
 
+    private fun extractRefusal(item: JsonObject): String? {
+        val content = item["content"] as? JsonArray ?: return item.str("refusal")
+        return content.mapNotNull { el ->
+            val part = el as? JsonObject ?: return@mapNotNull null
+            part.takeIf { it.str("type") == "refusal" }?.str("refusal")
+        }.joinToString("").ifBlank { null }
+    }
+
     private fun extractReasoningSummary(item: JsonObject): String {
         val summary = item["summary"] as? JsonArray ?: return item.str("content").orEmpty()
         return summary.mapNotNull { el ->
@@ -406,6 +489,15 @@ class ResponsesDecoder(
             ?: responseId
     }
 
+    private fun currentCheckpoint() = responseId?.let {
+        codec.encode(
+            responseId = it,
+            mode = mode,
+            basis = TranscriptBasis.of(basisItems + output),
+            scope = if (persistCheckpoint) CheckpointScope.CrossTurn else CheckpointScope.InRun,
+        )
+    }
+
     private fun decodeHttpError(frame: WireFrame.HttpError): AgentError.ModelError {
         val parsed = runCatching { JsonUtil.json.parseToJsonElement(frame.body).jsonObject }.getOrNull()
         val err = parsed?.obj("error") ?: parsed
@@ -430,7 +522,21 @@ class ResponsesDecoder(
         id = ref.value,
         name = name.toString(),
         arguments = args.toString().ifBlank { "{}" },
-        nativeId = (callId ?: nativeItemId)?.let { ProviderScopedId(ProviderId.OpenAIResponses, it) },
+        nativeId = callId?.let { ProviderScopedId(ProviderId.OpenAIResponses, it) }
+            ?: nativeItemId?.let { ProviderScopedId(ProviderId.OpenAIResponses, it) },
+        nativeItemId = nativeItemId?.let { ProviderScopedId(ProviderId.OpenAIResponses, it) },
+    )
+
+    private fun ToolAcc.toItem(): ModelItem.ToolCall = toCall().toItem()
+
+    private fun MessageAcc.toItem(): ModelItem.Message = ModelItem.Message(
+        ref = ref,
+        nativeId = nativeItemId?.let { ProviderScopedId(ProviderId.OpenAIResponses, it) },
+        role = role,
+        content = if (text.isEmpty()) emptyList()
+        else listOf(org.koaks.framework.model.ContentPart.Text(text.toString())),
+        refusal = refusal.toString().ifBlank { null },
+        annotations = annotations.toList(),
     )
 }
 
@@ -442,3 +548,9 @@ private fun JsonObject.int(key: String): Int? =
 
 private fun JsonObject.obj(key: String): JsonObject? =
     this[key] as? JsonObject
+
+private fun JsonObject.role(): Role = when (str("role")) {
+    "user" -> Role.USER
+    "system", "developer" -> Role.SYSTEM
+    else -> Role.ASSISTANT
+}

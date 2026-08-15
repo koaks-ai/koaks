@@ -36,3 +36,11 @@ tasks.register<JavaExec>("runRuntimeStressTest") {
     classpath(jvmMain.output.allOutputs, jvmMain.runtimeDependencyFiles)
     dependsOn(jvmMain.compileTaskProvider)
 }
+
+tasks.register<JavaExec>("runResponsesQuickStart") {
+    group = "application"
+    description = "Runs the OpenAI Responses API quickstart agent against a live model"
+    mainClass.set("examples.ResponsesQuickStartKt")
+    classpath(jvmMain.output.allOutputs, jvmMain.runtimeDependencyFiles)
+    dependsOn(jvmMain.compileTaskProvider)
+}

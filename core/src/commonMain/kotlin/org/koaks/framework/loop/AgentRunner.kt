@@ -21,6 +21,7 @@ import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.ModelResponse
 import org.koaks.framework.model.OutputFormat
 import org.koaks.framework.model.Support
+import org.koaks.framework.model.toDispatchCall
 import org.koaks.framework.model.newIdempotencyKey
 import org.koaks.framework.policy.Recovery
 import org.koaks.framework.policy.TerminationDecision
@@ -66,6 +67,7 @@ internal class AgentRunner(private val agent: Agent) {
             agent.listeners.forEach { it.onStep(state) }
 
             var emittedText = false
+            var terminalResponse: ModelResponse? = null
             try {
                 val source = modelSource(
                     state,
@@ -83,11 +85,11 @@ internal class AgentRunner(private val agent: Agent) {
                         is ModelEvent.ReasoningDelta -> out(AgentEvent.ReasoningDelta(event.text))
                         is ModelEvent.ToolCallCompleted -> out(AgentEvent.ToolCallRequested(event.call))
                         is ModelEvent.Finished -> {
-                            when (val response = event.response) {
-                                is ModelResponse.Failed -> throw ModelFailure(response.error)
-                                is ModelResponse.Completed, is ModelResponse.Incomplete -> {
-                                    state = state.addUsage(response.usage).withCheckpoint(response.checkpoint)
-                                }
+                            val response = event.response
+                            terminalResponse = response
+                            state = state.addUsage(response.usage).withCheckpoint(response.checkpoint)
+                            if (response is ModelResponse.Failed) {
+                                throw ModelFailure(response.error)
                             }
                         }
                         else -> logger.debug { "AgentRunner: ignoring model event: $event" }
@@ -106,7 +108,7 @@ internal class AgentRunner(private val agent: Agent) {
                             delay(r.delayMs.milliseconds)
                             continue
                         }
-                        out(AgentEvent.Failed(error, state.usage + turn.usage()))
+                        out(AgentEvent.Failed(error, state.usage))
                         return LoopRun(state)
                     }
                     is Recovery.Substitute -> {
@@ -115,7 +117,7 @@ internal class AgentRunner(private val agent: Agent) {
                         continue
                     }
                     is Recovery.Propagate -> {
-                        out(AgentEvent.Failed(error, state.usage + turn.usage()))
+                        out(AgentEvent.Failed(error, state.usage))
                         return LoopRun(state)
                     }
                 }
@@ -123,16 +125,21 @@ internal class AgentRunner(private val agent: Agent) {
             retries = 0
             stepKey = newIdempotencyKey()
 
-            val assistant = turn.assistantMessage()
-            if (state.items.none { it.ref == assistant.ref }) {
-                state = state.append(assistant)
-            } else {
-                state = state.copy(globalStep = state.globalStep + 1, localStep = state.localStep + 1)
-            }
+            val response = checkNotNull(terminalResponse) { "model stream ended without a terminal response" }
+            val modelOutput = turn.reconciledOutput(response)
+            state = state.completeModelStep(modelOutput)
+            val assistant = modelOutput.filterIsInstance<ModelItem.Message>()
+                .lastOrNull { it.role == org.koaks.framework.model.Role.ASSISTANT }
+                ?: turn.assistantMessage()
             out(AgentEvent.StepCompleted(state.step))
 
-            val calls = turn.consumeToolCalls()
-            val actionResults = dispatchClientActions(turn)
+            if (response is ModelResponse.Incomplete) {
+                out(AgentEvent.Incomplete(assistant, state.usage, response.reason))
+                return LoopRun(state)
+            }
+
+            val calls = modelOutput.filterIsInstance<ModelItem.ToolCall>().map { it.toDispatchCall() }
+            val actionResults = dispatchClientActions(modelOutput)
             if (actionResults.isNotEmpty()) {
                 actionResults.forEach { turn.append(it) }
                 state = state.appendAll(actionResults)
@@ -231,6 +238,7 @@ internal class AgentRunner(private val agent: Agent) {
     private fun resultFrom(events: List<AgentEvent>): AgentResult {
         when (val terminal = events.filterIsInstance<AgentEvent.Terminal>().lastOrNull()) {
             is AgentEvent.Completed -> return AgentResult.Completed(terminal.message, terminal.usage)
+            is AgentEvent.Incomplete -> return AgentResult.Incomplete(terminal.message, terminal.usage, terminal.reason)
             is AgentEvent.Terminated -> return AgentResult.Terminated(terminal.message, terminal.usage, terminal.reason)
             null -> {}
         }
@@ -269,6 +277,7 @@ internal class AgentRunner(private val agent: Agent) {
                 is AgentEvent.TextDelta,
                 is AgentEvent.ReasoningDelta,
                 is AgentEvent.Completed,
+                is AgentEvent.Incomplete,
                 -> Unit
                 else -> emit(event)
             }
@@ -289,6 +298,7 @@ internal class AgentRunner(private val agent: Agent) {
         val finalizationState = loop.state.copy(items = convo)
         val request = agent.toRequest(finalizationState, newIdempotencyKey(), format).copy(tools = emptyList())
 
+        var finalizationResponse: ModelResponse? = null
         try {
             modelSource(finalizationState, request, ModelCallPhase.StructuredFinalization)
                 .collect { event ->
@@ -297,8 +307,11 @@ internal class AgentRunner(private val agent: Agent) {
                     when (event) {
                         is ModelEvent.TextDelta -> emitStructuredEvent(AgentEvent.TextDelta(event.text), emit)
                         is ModelEvent.ReasoningDelta -> emitStructuredEvent(AgentEvent.ReasoningDelta(event.text), emit)
-                        is ModelEvent.Finished -> if (event.response is ModelResponse.Failed) {
-                            throw ModelFailure(event.response.error)
+                        is ModelEvent.Finished -> {
+                            finalizationResponse = event.response
+                            if (event.response is ModelResponse.Failed) {
+                                throw ModelFailure(event.response.error)
+                            }
                         }
                         else -> Unit
                     }
@@ -307,14 +320,21 @@ internal class AgentRunner(private val agent: Agent) {
             throw c
         } catch (t: Throwable) {
             val error = if (t is ModelFailure) t.error else t.toAgentError()
-            val usage = base.usage + turn.usage()
+            val usage = base.usage + (finalizationResponse?.usage ?: org.koaks.framework.model.Usage.ZERO)
             emitStructuredEvent(AgentEvent.Failed(error, usage), emit)
             return AgentResult.Failed(error, usage)
         }
-        val text = turn.assistantMessage().text
-        val usage = base.usage + turn.usage()
+        val finalResponse = checkNotNull(finalizationResponse) { "structured model stream ended without a terminal response" }
+        val finalAssistant = turn.reconciledOutput(finalResponse).filterIsInstance<ModelItem.Message>()
+            .lastOrNull { it.role == org.koaks.framework.model.Role.ASSISTANT }
+            ?: turn.assistantMessage()
+        val usage = base.usage + finalResponse.usage
         emitStructuredEvent(AgentEvent.StepCompleted(loop.state.step + 1), emit)
-        val message = ModelItem.assistant(text)
+        if (finalResponse is ModelResponse.Incomplete) {
+            emitStructuredEvent(AgentEvent.Incomplete(finalAssistant, usage, finalResponse.reason), emit)
+            return AgentResult.Incomplete(finalAssistant, usage, finalResponse.reason)
+        }
+        val message = ModelItem.assistant(finalAssistant.text)
         turn.collapseToFinalAssistant(message, dropRefs = setOfNotNull(formatInstruction?.ref))
         emitStructuredEvent(AgentEvent.Completed(message, usage), emit)
         return AgentResult.Completed(message, usage)
@@ -352,9 +372,9 @@ internal class AgentRunner(private val agent: Agent) {
         return source
     }
 
-    private suspend fun dispatchClientActions(turn: TurnBuilder): List<ModelItem> {
+    private suspend fun dispatchClientActions(output: List<ModelItem>): List<ModelItem> {
         if (agent.clientActionHandlers.isEmpty()) return emptyList()
-        val pending = turn.lastResponse()?.output.orEmpty().filterIsInstance<ModelItem.ProviderItem>()
+        val pending = output.filterIsInstance<ModelItem.ProviderItem>()
             .filter { it.kind in CLIENT_ACTION_KINDS }
         if (pending.isEmpty()) return emptyList()
         val results = mutableListOf<ModelItem>()

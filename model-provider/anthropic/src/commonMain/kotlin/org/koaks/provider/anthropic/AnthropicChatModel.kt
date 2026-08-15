@@ -9,6 +9,7 @@ import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.ProviderId
 import org.koaks.framework.model.Role
+import org.koaks.framework.model.rawFor
 import org.koaks.framework.model.ensureDroppable
 import org.koaks.framework.provider.ChatModel
 import org.koaks.framework.provider.ModelConfig
@@ -91,7 +92,7 @@ fun toAnthropicMessages(items: List<ModelItem>): List<AnthropicMessage> {
                 while (i < nonSystem.size && nonSystem[i] is ModelItem.ToolResult) {
                     val result = nonSystem[i] as ModelItem.ToolResult
                     val call = items.filterIsInstance<ModelItem.ToolCall>().firstOrNull { it.ref == result.callRef }
-                    val toolUseId = call?.nativeId?.raw ?: result.callRef.value
+                    val toolUseId = call?.nativeId.rawFor(ProviderId.Anthropic) ?: result.callRef.value
                     blocks += AnthropicContentBlock.ToolResult(
                         toolUseId = toolUseId,
                         content = result.output,
@@ -156,7 +157,7 @@ private fun consumeAssistantTurn(
             }
             is ModelItem.ToolCall -> {
                 blocks += AnthropicContentBlock.ToolUse(
-                    id = item.nativeId?.raw ?: item.ref.value,
+                    id = item.nativeId.rawFor(ProviderId.Anthropic) ?: item.ref.value,
                     name = item.name,
                     input = JsonUtil.json.parseToJsonElement(item.arguments.ifBlank { "{}" }),
                 )

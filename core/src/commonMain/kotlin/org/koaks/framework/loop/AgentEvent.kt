@@ -1,6 +1,7 @@
 package org.koaks.framework.loop
 
 import org.koaks.framework.model.AgentError
+import org.koaks.framework.model.IncompleteReason
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
@@ -26,6 +27,12 @@ sealed interface AgentEvent {
     data class Completed(
         override val message: ModelItem.Message,
         override val usage: Usage,
+    ) : Terminal
+
+    data class Incomplete(
+        override val message: ModelItem.Message,
+        override val usage: Usage,
+        val reason: IncompleteReason,
     ) : Terminal
 
     data class Terminated(

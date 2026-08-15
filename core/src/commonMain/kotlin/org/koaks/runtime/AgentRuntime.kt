@@ -679,6 +679,27 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                         emit(RuntimeEvent.Finished(acb.runId, agent.id, thread, turnId, result.usage))
                     }
                 }
+                is AgentResult.Incomplete -> if (acb.beginCommitting()) {
+                    withContext(NonCancellable) {
+                        turnCommitted = commitTurn(
+                            threadMemory,
+                            turnContext,
+                            completed = false,
+                            InterruptReason.Incomplete(result.reason),
+                        )
+                        acb.markFinished(result.usage)
+                        emit(
+                            RuntimeEvent.Incomplete(
+                                acb.runId,
+                                agent.id,
+                                thread,
+                                turnId,
+                                result.reason,
+                                result.usage,
+                            ),
+                        )
+                    }
+                }
                 is AgentResult.Terminated -> if (acb.beginCommitting()) {
                     withContext(NonCancellable) {
                         turnCommitted = commitTurn(threadMemory, turnContext, completed = false, InterruptReason.Policy(result.reason.toString()))
@@ -863,6 +884,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
 
         return when (val term = terminal) {
             is AgentEvent.Completed -> AgentResult.Completed(term.message, usage)
+            is AgentEvent.Incomplete -> AgentResult.Incomplete(term.message, usage, term.reason)
             is AgentEvent.Terminated -> AgentResult.Terminated(term.message, usage, term.reason)
             null -> {
                 val error = lastFailure ?: AgentError.ModelError("agent produced no terminal event", retriable = false)

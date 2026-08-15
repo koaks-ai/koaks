@@ -26,6 +26,7 @@ class TurnBuilder(
     private val items = seed.toMutableList()
     private val text = StringBuilder()
     private var textRef: ItemRef? = null
+    private val streamedTextRefs = HashSet<ItemRef>()
     private val pendingToolCalls = LinkedHashMap<String, ToolCallBuilder>()
     private var usage: Usage = Usage.ZERO
     private var checkpoint: ProviderCheckpoint? = null
@@ -35,41 +36,45 @@ class TurnBuilder(
     fun observe(event: ModelEvent) {
         when (event) {
             is ModelEvent.Started -> responseId = event.responseId
+            is ModelEvent.CheckpointUpdated -> checkpoint = event.checkpoint
             is ModelEvent.TextDelta -> {
+                if (text.isNotEmpty() && event.itemRef != null && event.itemRef != textRef) {
+                    flushPartialText()
+                }
                 if (textRef == null) textRef = event.itemRef ?: ItemRef.generate("msg")
+                streamedTextRefs += requireNotNull(textRef)
                 text.append(event.text)
             }
             is ModelEvent.ReasoningDelta -> Unit
             is ModelEvent.ItemAdded -> {
                 flushPartialText()
-                items += event.item
+                upsert(event.item)
             }
             is ModelEvent.ToolCallDelta -> {
-                val key = event.id.ifBlank { "idx-${event.index ?: 0}" }
+                val key = event.itemRef?.value ?: event.id.ifBlank { "idx-${event.index ?: 0}" }
                 pendingToolCalls.getOrPut(key) { ToolCallBuilder() }
                     .mergeDelta(event.id.ifBlank { null }, event.nameDelta, event.argumentsDelta)
             }
             is ModelEvent.ToolCallCompleted -> {
                 flushPartialText()
-                val key = event.call.id.ifBlank { "idx-${pendingToolCalls.size}" }
+                val key = event.call.ref.value.ifBlank { event.call.id.ifBlank { "idx-${pendingToolCalls.size}" } }
                 pendingToolCalls.getOrPut(key) { ToolCallBuilder() }.mergeComplete(event.call)
-                items += event.call.toItem()
+                upsert(event.call.toItem())
             }
             is ModelEvent.ProviderEvent -> Unit
             is ModelEvent.Finished -> {
-                val hadTextDeltas = text.isNotEmpty()
                 flushPartialText()
                 finished = event.response
-                usage = event.response.usage
-                checkpoint = event.response.checkpoint
+                usage += event.response.usage
+                event.response.checkpoint?.let { checkpoint = it }
                 responseId = event.response.id ?: responseId
-                mergeResponseOutput(event.response, skipMessages = hadTextDeltas)
+                mergeResponseOutput(event.response)
             }
         }
     }
 
     fun append(item: ModelItem) {
-        items += item
+        upsert(item)
     }
 
     fun addUsage(delta: Usage) {
@@ -103,6 +108,11 @@ class TurnBuilder(
 
     fun lastResponse(): ModelResponse? = finished
 
+    /** Returns terminal output reconciled with stream-hook transformations. */
+    fun reconciledOutput(response: ModelResponse): List<ModelItem> = response.output.map { item ->
+        items.firstOrNull { it.ref == item.ref } ?: item
+    }
+
     fun snapshotTurn(status: TurnStatus): ConversationTurn = ConversationTurn(
         id = turnId,
         status = status,
@@ -132,29 +142,47 @@ class TurnBuilder(
     }
 
     fun interruptedTurn(reason: InterruptReason): ConversationTurn {
+        val partialText = text.toString().ifEmpty { null }
+        val partialItem = if (partialText != null) {
+            textRef ?: ItemRef.generate("msg").also { textRef = it }
+        } else {
+            null
+        }
         flushPartialText()
         val pending = PendingWork(
             unresolvedCalls = unresolvedCallRefs(items),
-            partialText = text.toString().ifEmpty { null },
-            partialItem = textRef,
+            partialText = partialText,
+            partialItem = partialItem,
         )
         return snapshotTurn(TurnStatus.Interrupted(reason, pending))
     }
 
     private fun flushPartialText() {
         if (text.isEmpty()) return
-        val existing = textRef?.let { ref -> items.any { it.ref == ref } } == true
-        if (!existing) {
-            items += ModelItem.assistant(text.toString(), ref = textRef ?: ItemRef.generate("msg"))
-        }
+        upsert(ModelItem.assistant(text.toString(), ref = textRef ?: ItemRef.generate("msg")))
         text.clear()
         textRef = null
     }
 
-    private fun mergeResponseOutput(response: ModelResponse, skipMessages: Boolean = false) {
-        for (item in response.output) {
-            if (skipMessages && item is ModelItem.Message) continue
-            if (items.none { it.ref == item.ref }) items += item
+    private fun mergeResponseOutput(response: ModelResponse) {
+        response.output.forEach(::upsert)
+    }
+
+    private fun upsert(item: ModelItem) {
+        val index = items.indexOfFirst { it.ref == item.ref }
+        if (index < 0) {
+            items += item
+            return
+        }
+        val existing = items[index]
+        items[index] = if (
+            item is ModelItem.Message &&
+            existing is ModelItem.Message &&
+            item.ref in streamedTextRefs
+        ) {
+            item.copy(content = existing.content)
+        } else {
+            item
         }
     }
 }

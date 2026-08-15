@@ -1,6 +1,7 @@
 package org.koaks.framework.memory
 
 import org.koaks.framework.model.ItemRef
+import org.koaks.framework.model.IncompleteReason
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ProviderCheckpoint
 import org.koaks.framework.model.Usage
@@ -8,6 +9,7 @@ import org.koaks.framework.model.Usage
 sealed interface InterruptReason {
     data object Cancelled : InterruptReason
     data object Failed : InterruptReason
+    data class Incomplete(val reason: IncompleteReason) : InterruptReason
     data class Policy(val detail: String) : InterruptReason
 }
 
