@@ -7,6 +7,7 @@ kotlin {
         val commonTest by getting {
             dependencies {
                 implementation(project(":core"))
+                implementation(project(":model-provider:chat-completions"))
                 implementation(project(":model-provider:qwen"))
                 implementation(project(":model-provider:ollama"))
                 implementation(project(":model-provider:openai"))
