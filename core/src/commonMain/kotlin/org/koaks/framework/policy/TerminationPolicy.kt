@@ -53,3 +53,8 @@ fun interface TerminationPolicy {
             }
     }
 }
+
+/** Async counterpart used by interop layers whose policy decision may cross a process or Promise boundary. */
+fun interface SuspendTerminationPolicy {
+    suspend fun evaluate(state: AgentState): TerminationDecision
+}

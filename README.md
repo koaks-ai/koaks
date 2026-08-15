@@ -40,6 +40,11 @@
 The current published group is `org.koaks`. Pick the `koaks-core` runtime plus
 the provider module(s) you need.
 
+For Node.js 20+ and Electron main/utility processes, the ESM-only
+`@koaks/node` facade can be built as a local tarball with
+`./gradlew :interop:node:npmPack`. Its API, lifecycle guidance, and Electron
+examples are documented in [`interop/node/npm/README.md`](/interop/node/npm/README.md).
+
 For snapshot versions, add the Central snapshot repository:
 
 ```kotlin

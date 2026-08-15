@@ -11,6 +11,8 @@ import org.koaks.framework.memory.ThreadMemory
 import org.koaks.framework.memory.WindowMemoryProvider
 import org.koaks.framework.policy.ErrorPolicy
 import org.koaks.framework.policy.RunBudget
+import org.koaks.framework.policy.SuspendErrorPolicy
+import org.koaks.framework.policy.SuspendTerminationPolicy
 import org.koaks.framework.policy.TerminationPolicy
 import org.koaks.framework.skill.SkillPlan
 import org.koaks.framework.skill.SkillsScope
@@ -53,7 +55,9 @@ class AgentBuilder {
     private val hooks = mutableListOf<Hook>()
     private val listeners = mutableListOf<AgentListener>()
     private var termination: TerminationPolicy = TerminationPolicy.maxSteps(Int.MAX_VALUE)
+    private var suspendTermination: SuspendTerminationPolicy? = null
     private var errorPolicy: ErrorPolicy = ErrorPolicy.PROPAGATE
+    private var suspendErrorPolicy: SuspendErrorPolicy? = null
     private var memoryProvider: MemoryProvider? = null
     private var runBudget: RunBudget = RunBudget.UNLIMITED
     private val clientActionHandlers = mutableListOf<org.koaks.framework.model.ClientActionHandler>()
@@ -99,6 +103,11 @@ class AgentBuilder {
 
     fun terminate(policy: TerminationPolicy) {
         termination = policy
+        suspendTermination = null
+    }
+
+    fun terminateAsync(policy: SuspendTerminationPolicy) {
+        suspendTermination = policy
     }
 
     /** Sets the whole-run global guard: caps total steps / tokens across the run. */
@@ -108,6 +117,11 @@ class AgentBuilder {
 
     fun onError(policy: ErrorPolicy) {
         errorPolicy = policy
+        suspendErrorPolicy = null
+    }
+
+    fun onErrorAsync(policy: SuspendErrorPolicy) {
+        suspendErrorPolicy = policy
     }
 
     fun clientAction(handler: org.koaks.framework.model.ClientActionHandler) {
@@ -134,7 +148,9 @@ class AgentBuilder {
             hooks = hooks.toList(),
             listeners = listeners.toList(),
             termination = termination,
+            suspendTermination = suspendTermination,
             errorPolicy = errorPolicy,
+            suspendErrorPolicy = suspendErrorPolicy,
             runBudget = runBudget,
             preparation = preparation,
             memoryProvider = memoryProvider,

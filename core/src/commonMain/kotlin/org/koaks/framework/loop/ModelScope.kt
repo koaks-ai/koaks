@@ -72,6 +72,9 @@ class ModelSelection internal constructor(
         models.singleOrNull() ?: FallbackModel(models)
 }
 
+/** Materializes this selection for adapters that need a provider-neutral model instance. */
+fun ModelSelection.toLanguageModel(): LanguageModel = toModel()
+
 internal data class TransportInfo(
     val transport: ModelTransport?,
     val ownsTransport: Boolean,

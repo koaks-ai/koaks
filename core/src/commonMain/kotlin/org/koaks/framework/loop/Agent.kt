@@ -19,6 +19,8 @@ import org.koaks.framework.model.Support
 import org.koaks.framework.model.rejectIfUnsupported
 import org.koaks.framework.policy.ErrorPolicy
 import org.koaks.framework.policy.RunBudget
+import org.koaks.framework.policy.SuspendErrorPolicy
+import org.koaks.framework.policy.SuspendTerminationPolicy
 import org.koaks.framework.policy.TerminationPolicy
 import org.koaks.framework.skill.SkillDescriptor
 import org.koaks.framework.tool.ToolRegistry
@@ -35,7 +37,9 @@ class Agent internal constructor(
     val hooks: List<Hook>,
     val listeners: List<AgentListener>,
     val termination: TerminationPolicy,
+    internal val suspendTermination: SuspendTerminationPolicy?,
     val errorPolicy: ErrorPolicy,
+    internal val suspendErrorPolicy: SuspendErrorPolicy?,
     val runBudget: RunBudget,
     private val preparation: AgentPreparation,
     internal val memoryProvider: MemoryProvider?,

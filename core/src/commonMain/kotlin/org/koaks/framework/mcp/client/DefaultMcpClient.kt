@@ -1,10 +1,9 @@
 package org.koaks.framework.mcp.client
 
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -32,13 +31,13 @@ class DefaultMcpClient(
     private val mcpUrl: String,
     private val mcpClientConfig: McpClientConfig,
     private val customHeaders: Map<String, String> = emptyMap(),
-) : McpClient, McpToolGateway {
+) : McpClient, McpToolGateway, AutoCloseable {
 
     private val logger = KotlinLogging.logger {}
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    private var httpClient = KtorHttpClient(
+    private val httpClient = KtorHttpClient(
         HttpClientConfig(
             baseUrl = mcpUrl,
             customHeaders = customHeaders
@@ -46,19 +45,21 @@ class DefaultMcpClient(
     )
 
     private val transport = HttpMcpTransport(httpClient)
+    private val initializationMutex = Mutex()
+    private val closed = MutableStateFlow(false)
+    private var initializedSuccessfully = false
 
-    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-
-    init {
-        scope.launch {
-            val initResponse = initialize(InitRequest(id = mcpClientConfig.id))
-            if (initResponse.error == null) {
-                initialized(InitializedRequest())
-                logger.info { "MCP client initialized successfully, @$mcpUrl" }
-            } else {
-                logger.error { "MCP client initialization failed: ${initResponse.error}" }
-            }
+    private suspend fun ensureInitialized() = initializationMutex.withLock {
+        check(!closed.value) { "MCP client is closed" }
+        if (initializedSuccessfully) return@withLock
+        val initResponse = initialize(InitRequest(id = mcpClientConfig.id))
+        val initError = initResponse.error
+        check(initError == null) {
+            "MCP client initialization failed: ${initError?.message ?: "unknown error"}"
         }
+        initialized(InitializedRequest())
+        initializedSuccessfully = true
+        logger.info { "MCP client initialized successfully, @$mcpUrl" }
     }
 
     override suspend fun initialize(request: InitRequest): InitResponse {
@@ -74,7 +75,7 @@ class DefaultMcpClient(
             },
             onFailure = {
                 logger.error { "failed to initialize mcp server, url: $mcpUrl, error:${it.message}" }
-                InitResponse()
+                throw it
             }
         )
     }
@@ -103,6 +104,7 @@ class DefaultMcpClient(
     }
 
     override suspend fun listTools(): List<McpTool> {
+        ensureInitialized()
         return transport.request<JsonElement, ListToolsResult>(
             method = "tools/list",
             params = null,
@@ -115,6 +117,7 @@ class DefaultMcpClient(
         name: String,
         arguments: JsonElement
     ): ToolResponse {
+        ensureInitialized()
         val args = arguments as? JsonObject ?: JsonObject(emptyMap())
         return transport.request(
             method = "tools/call",
@@ -141,6 +144,11 @@ class DefaultMcpClient(
 
     override suspend fun sendLog(level: String, message: String) {
         TODO("Not yet implemented")
+    }
+
+    override fun close() {
+        if (!closed.compareAndSet(expect = false, update = true)) return
+        httpClient.close()
     }
 
 }

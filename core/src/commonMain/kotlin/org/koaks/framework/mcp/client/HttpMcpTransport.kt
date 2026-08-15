@@ -1,9 +1,9 @@
 package org.koaks.framework.mcp.client
 
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onEach
 import kotlinx.serialization.KSerializer
@@ -18,7 +18,6 @@ import org.koaks.framework.net.KtorHttpClient
 
 class HttpMcpTransport(
     private val httpClient: KtorHttpClient,
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.Default)
 ) : McpTransport {
 
     private val logger = KotlinLogging.logger {}
@@ -28,10 +27,9 @@ class HttpMcpTransport(
         encodeDefaults = true
     }
 
-    private var counter = 0
+    private val counter = MutableStateFlow(0)
 
-    // todo: need make it thread safety
-    private fun nextId(): Int =  ++counter
+    private fun nextId(): Int = counter.getAndUpdate { it + 1 } + 1
 
     override suspend fun <Req, Res> request(
         method: String,

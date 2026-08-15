@@ -38,3 +38,8 @@ fun interface ErrorPolicy {
         }
     }
 }
+
+/** Async counterpart used by interop layers whose recovery decision may cross a Promise boundary. */
+fun interface SuspendErrorPolicy {
+    suspend fun decide(error: AgentError, state: AgentState): Recovery
+}

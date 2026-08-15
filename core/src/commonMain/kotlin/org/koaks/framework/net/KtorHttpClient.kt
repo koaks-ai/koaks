@@ -37,7 +37,7 @@ import org.koaks.framework.utils.json.JsonUtil
 
 class KtorHttpClient(
     private val config: HttpClientConfig
-) {
+) : AutoCloseable {
 
     private val logger = KotlinLogging.logger {}
 
@@ -181,5 +181,9 @@ class KtorHttpClient(
             is IOException -> HttpClientException("network error.", exception)
             else -> HttpClientException("unexpected error: ${exception.message}", exception)
         }
+    }
+
+    override fun close() {
+        ktorClient.close()
     }
 }

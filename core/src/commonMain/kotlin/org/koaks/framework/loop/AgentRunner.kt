@@ -101,7 +101,9 @@ internal class AgentRunner(private val agent: Agent) {
                     is CancellationException -> throw t
                     else -> t.toAgentError()
                 }
-                when (val r = agent.errorPolicy.decide(error, state)) {
+                val recovery = agent.suspendErrorPolicy?.decide(error, state)
+                    ?: agent.errorPolicy.decide(error, state)
+                when (val r = recovery) {
                     is Recovery.Retry -> {
                         if (!emittedText && retries < r.maxRetries) {
                             retries++
@@ -396,9 +398,9 @@ private val CLIENT_ACTION_KINDS = setOf(
     "custom_tool_call",
 )
 
-private fun Agent.terminationDecision(state: AgentState): TerminationDecision =
+private suspend fun Agent.terminationDecision(state: AgentState): TerminationDecision =
     when (val budgetDecision = runBudget.evaluate(state)) {
-        TerminationDecision.Continue -> termination.evaluate(state)
+        TerminationDecision.Continue -> suspendTermination?.evaluate(state) ?: termination.evaluate(state)
         is TerminationDecision.Stop -> budgetDecision
     }
 
