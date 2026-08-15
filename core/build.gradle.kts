@@ -13,7 +13,7 @@ kotlin {
                 api(libs.serialization.core)
                 api(libs.serialization.json)
                 implementation(libs.kaml)
-                implementation(libs.okio)
+                api(libs.okio)
             }
         }
         val jvmMain by getting {
