@@ -8,7 +8,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.koaks.framework.memory.InterruptReason
 import org.koaks.framework.middleware.ModelCallPhase
 import org.koaks.framework.middleware.StepContext
@@ -35,8 +38,8 @@ internal class AgentRunner(private val agent: Agent) {
 
     internal data class LoopRun(val state: AgentState)
 
-    fun stream(initial: List<ModelItem>, instructions: String?, turn: TurnBuilder, checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null): Flow<AgentEvent> = flow {
-        runLoop(initial, instructions, turn, checkpoint) { emit(it) }
+    fun stream(initial: List<ModelItem>, instructions: String?, turn: TurnBuilder, checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null): Flow<AgentEvent> = channelFlow {
+        runLoop(initial, instructions, turn, checkpoint) { send(it) }
     }
 
     private suspend fun runLoop(
@@ -46,9 +49,12 @@ internal class AgentRunner(private val agent: Agent) {
         checkpoint: org.koaks.framework.model.ProviderCheckpoint?,
         emit: suspend (AgentEvent) -> Unit,
     ): LoopRun {
+        val outputMutex = Mutex()
         suspend fun out(event: AgentEvent) {
-            agent.listeners.forEach { it.onAgentEvent(event) }
-            emit(event)
+            outputMutex.withLock {
+                agent.listeners.forEach { it.onAgentEvent(event) }
+                emit(event)
+            }
         }
 
         var state = AgentState(items = initial, instructions = instructions, checkpoint = checkpoint, activeAgentName = agent.name)
@@ -167,7 +173,7 @@ internal class AgentRunner(private val agent: Agent) {
                             try {
                                 hookLoop@ for (hook in agent.hooks) {
                                     entered++
-                                    when (val decision = hook.onToolCall(ToolContext(current, state))) {
+                                    when (val decision = hook.onToolCall(ToolContext(current, state, exec?.identity))) {
                                         ToolDecision.Proceed -> {}
                                         is ToolDecision.ProceedWith -> current = decision.call.copy(id = call.id)
                                         is ToolDecision.Deny -> {
@@ -182,11 +188,16 @@ internal class AgentRunner(private val agent: Agent) {
                                         }
                                     }
                                 }
-                                var outcome = denied ?: agent.tools.call(current.name, current.arguments) {
-                                    exec?.markSideEffect()
-                                }
+                                var outcome = denied ?: agent.tools.call(
+                                    call = current,
+                                    execution = exec?.identity,
+                                    reportProgress = { progress ->
+                                        out(AgentEvent.ToolProgress(current.id, progress))
+                                    },
+                                    onSideEffect = { exec?.markSideEffect() },
+                                )
                                 for (hook in agent.hooks.take(entered).asReversed()) {
-                                    outcome = hook.onToolResult(ToolContext(current, state), outcome)
+                                    outcome = hook.onToolResult(ToolContext(current, state, exec?.identity), outcome)
                                 }
                                 outcome
                             } catch (c: CancellationException) {

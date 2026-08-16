@@ -20,6 +20,7 @@ object Tracing : AgentListener {
         when (event) {
             is AgentEvent.ToolCallRequested -> logger.info { "tool call requested: ${event.call.name} args=${event.call.arguments}" }
             is AgentEvent.ToolResult -> logger.info { "tool result (isError=${event.isError}): ${event.callId}" }
+            is AgentEvent.ToolProgress -> logger.debug { "tool progress: ${event.callId} ${event.progress}" }
             is AgentEvent.StepCompleted -> logger.info { "step completed: ${event.step}" }
             is AgentEvent.Completed -> logger.info { "completed, usage=${event.usage}" }
             is AgentEvent.Incomplete -> logger.info { "incomplete, reason=${event.reason}, usage=${event.usage}" }

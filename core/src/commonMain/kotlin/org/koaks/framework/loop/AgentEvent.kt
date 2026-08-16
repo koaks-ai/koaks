@@ -17,6 +17,8 @@ sealed interface AgentEvent {
 
     data class ToolResult(val callId: String, val output: String, val isError: Boolean) : AgentEvent
 
+    data class ToolProgress(val callId: String, val progress: org.koaks.framework.tool.ToolProgress) : AgentEvent
+
     data class StepCompleted(val step: Int) : AgentEvent
 
     sealed interface Terminal : AgentEvent {

@@ -2,6 +2,8 @@ package org.koaks.framework.tool
 
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonElement
+import org.koaks.framework.loop.ExecutionIdentity
 
 /**
  * A callable unit of functionality an agent can invoke.
@@ -46,3 +48,29 @@ interface Tool<In> {
     /** Performs the tool logic. The returned string is fed back to the model. */
     suspend fun execute(input: In): String
 }
+
+/** Optional richer execution contract; ordinary [Tool] implementations remain valid. */
+interface ContextualTool<In> : Tool<In> {
+    suspend fun execute(input: In, context: ToolInvocationContext): String
+}
+
+class ToolInvocationContext internal constructor(
+    val callId: String,
+    val toolName: String,
+    val execution: ExecutionIdentity?,
+    private val reporter: suspend (ToolProgress) -> Unit,
+) {
+    suspend fun reportProgress(progress: ToolProgress) = reporter(progress)
+}
+
+sealed interface ToolProgress {
+    data class Output(val text: String, val stream: ToolOutputStream = ToolOutputStream.Stdout) : ToolProgress
+    data class Status(val message: String) : ToolProgress
+    data class Custom(val kind: String, val payload: JsonElement) : ToolProgress {
+        init {
+            require(kind.isNotBlank()) { "custom tool progress kind must not be blank" }
+        }
+    }
+}
+
+enum class ToolOutputStream { Stdout, Stderr }

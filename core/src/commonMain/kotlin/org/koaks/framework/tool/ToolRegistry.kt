@@ -4,6 +4,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.AgentFrameworkException
+import org.koaks.framework.model.ToolCall
+import org.koaks.framework.loop.ExecutionIdentity
 import org.koaks.framework.tool.schema.SerialDescriptorToJsonSchema
 import org.koaks.framework.utils.json.JsonUtil
 
@@ -84,7 +86,18 @@ class ToolRegistry {
         onSideEffect: () -> Unit = {},
     ): ToolOutcome {
         val tool = tools[name] ?: return ToolOutcome.Failure(AgentError.ToolNotFound(name))
-        return invoke(tool, argsJson, onSideEffect)
+        return invoke(tool, argsJson, onSideEffect, context = null)
+    }
+
+    suspend fun call(
+        call: ToolCall,
+        execution: ExecutionIdentity?,
+        reportProgress: suspend (ToolProgress) -> Unit,
+        onSideEffect: () -> Unit = {},
+    ): ToolOutcome {
+        val tool = tools[call.name] ?: return ToolOutcome.Failure(AgentError.ToolNotFound(call.name))
+        val context = ToolInvocationContext(call.id, call.name, execution, reportProgress)
+        return invoke(tool, call.arguments, onSideEffect, context)
     }
 
     private suspend fun discoverLazyTools(): List<Tool<*>> = buildList {
@@ -133,12 +146,17 @@ class ToolRegistry {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private suspend fun <In> invoke(tool: Tool<In>, argsJson: String, onSideEffect: () -> Unit): ToolOutcome {
+    private suspend fun <In> invoke(
+        tool: Tool<In>,
+        argsJson: String,
+        onSideEffect: () -> Unit,
+        context: ToolInvocationContext?,
+    ): ToolOutcome {
         // Passthrough tools (e.g. MCP adapters) receive the raw arguments string directly.
         if (tool.acceptsRawJson) {
             return try {
                 if (tool.hasSideEffects) onSideEffect()
-                ToolOutcome.Success((tool as Tool<String>).execute(argsJson), tool.returnDirectly)
+                ToolOutcome.Success(execute(tool as Tool<String>, argsJson, context), tool.returnDirectly)
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                 throw e
             } catch (e: AgentFrameworkException) {
@@ -170,7 +188,7 @@ class ToolRegistry {
 
         return try {
             if (tool.hasSideEffects) onSideEffect()
-            ToolOutcome.Success(tool.execute(input), tool.returnDirectly)
+            ToolOutcome.Success(execute(tool, input, context), tool.returnDirectly)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (e: AgentFrameworkException) {
@@ -186,4 +204,12 @@ class ToolRegistry {
             )
         }
     }
+
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun <In> execute(tool: Tool<In>, input: In, context: ToolInvocationContext?): String =
+        if (context != null && tool is ContextualTool<*>) {
+            (tool as ContextualTool<In>).execute(input, context)
+        } else {
+            tool.execute(input)
+        }
 }

@@ -2,6 +2,7 @@ package org.koaks.framework.middleware
 
 import kotlinx.coroutines.flow.Flow
 import org.koaks.framework.loop.AgentState
+import org.koaks.framework.loop.ExecutionIdentity
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.ToolCall
@@ -18,7 +19,11 @@ data class StepContext(
     val phase: ModelCallPhase = ModelCallPhase.Normal,
 )
 
-data class ToolContext(val call: ToolCall, val state: AgentState)
+data class ToolContext(
+    val call: ToolCall,
+    val state: AgentState,
+    val execution: ExecutionIdentity? = null,
+)
 
 /**
  * Typed interception point for agent model/tool calls.

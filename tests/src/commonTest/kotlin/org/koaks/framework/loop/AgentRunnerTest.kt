@@ -13,6 +13,9 @@ import org.koaks.framework.model.ReplayPolicy
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.TerminationReason
+import org.koaks.framework.tool.ContextualTool
+import org.koaks.framework.tool.ToolInvocationContext
+import org.koaks.framework.tool.ToolProgress
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -80,6 +83,37 @@ class AgentRunnerTest {
         assertTrue(toolReqIdx >= 0, "expected a ToolCallRequested")
         assertTrue(firstTextIdx < toolReqIdx, "text must be emitted before the tool call (tee)")
         assertTrue(events.any { it is AgentEvent.Completed })
+    }
+
+    @Test
+    fun contextual_tool_receives_call_identity_and_streams_progress() = runTest {
+        var invocation: ToolInvocationContext? = null
+        val model = FakeLanguageModel(
+            listOf(ModelEvent.ToolCallCompleted(ToolCall("call-42", "contextual", "{}")), done(Usage.ZERO)),
+            listOf(ModelEvent.TextDelta("done"), done(Usage.ZERO)),
+        )
+        val a = agentWith("runner-contextual-tool", model) {
+            tool(object : ContextualTool<NoArgs> {
+                override val name = "contextual"
+                override val description = "contextual tool"
+                override val inputSerializer = NoArgs.serializer()
+                override suspend fun execute(input: NoArgs): String = error("contextual path was not used")
+                override suspend fun execute(input: NoArgs, context: ToolInvocationContext): String {
+                    invocation = context
+                    context.reportProgress(ToolProgress.Output("working"))
+                    return "ok"
+                }
+            })
+        }
+
+        val events = a.stream("hi").toList()
+
+        assertEquals("call-42", invocation?.callId)
+        assertEquals("contextual", invocation?.toolName)
+        val progress = events.filterIsInstance<AgentEvent.ToolProgress>().single()
+        assertEquals("call-42", progress.callId)
+        assertEquals(ToolProgress.Output("working"), progress.progress)
+        assertTrue(events.any { it is AgentEvent.ToolResult && it.callId == "call-42" })
     }
 
     @Test
