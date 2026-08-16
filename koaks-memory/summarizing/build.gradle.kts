@@ -8,6 +8,7 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 implementation(project(":core"))
+                implementation(libs.kotlinx.datetime)
             }
         }
     }
