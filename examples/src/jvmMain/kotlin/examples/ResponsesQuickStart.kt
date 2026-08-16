@@ -6,6 +6,7 @@ import kotlinx.serialization.json.buildJsonObject
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.tool
+import org.koaks.framework.tool.ToolProgress
 import org.koaks.provider.openai.responses.ResponsesStateMode
 import org.koaks.provider.openai.responses.openaiResponses
 import java.time.ZoneId
@@ -100,6 +101,15 @@ private class ResponsesConsolePrinter {
             is AgentEvent.ToolResult -> {
                 val label = if (event.isError) red("[tool error]") else green("[tool result]")
                 println("$label ${event.output}")
+            }
+            is AgentEvent.ToolProgress -> {
+                endInlineSection()
+                val value = when (val progress = event.progress) {
+                    is ToolProgress.Output -> "${progress.stream.name.lowercase()}: ${progress.text}"
+                    is ToolProgress.Status -> progress.message
+                    is ToolProgress.Custom -> "${progress.kind}: ${progress.payload}"
+                }
+                println("${blue("[tool progress]")} ${event.callId} $value")
             }
             is AgentEvent.Completed -> {
                 endInlineSection()

@@ -6,6 +6,9 @@ import org.koaks.framework.annotation.Param
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.tool
+import org.koaks.framework.tool.ContextualTool
+import org.koaks.framework.tool.ToolInvocationContext
+import org.koaks.framework.tool.ToolProgress
 import org.koaks.provider.anthropic.anthropic
 import org.koaks.provider.openai.openai
 
@@ -55,12 +58,7 @@ fun main() = runBlocking {
                 "当前系统所在时区的本地时间：${now.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)}"
             }
 
-            tool<WeatherInput>(
-                name = "get_weather",
-                description = "获取指定城市的天气信息",
-            ) { input ->
-                getWeather(input.city)
-            }
+            tool(WeatherTool)
         }
 
         terminateAfter(maxSteps = 50)
@@ -75,6 +73,19 @@ fun main() = runBlocking {
 }
 
 private fun getWeather(city: String): String = "$city 天气: 晴天，适合出门。"
+
+private data object WeatherTool : ContextualTool<WeatherInput> {
+    override val name = "get_weather"
+    override val description = "获取指定城市的天气信息"
+    override val inputSerializer = WeatherInput.serializer()
+
+    override suspend fun execute(input: WeatherInput): String = getWeather(input.city)
+
+    override suspend fun execute(input: WeatherInput, context: ToolInvocationContext): String {
+        context.reportProgress(ToolProgress.Status("正在查询 ${input.city} 的天气"))
+        return execute(input)
+    }
+}
 
 @Serializable
 data object NoInput
@@ -108,6 +119,11 @@ private class ConsoleEventPrinter {
             is AgentEvent.ToolResult -> {
                 val label = if (event.isError) red("[tool error]") else green("[tool result]")
                 println("$label ${event.output}")
+            }
+
+            is AgentEvent.ToolProgress -> {
+                endInlineSection()
+                printToolProgress(event.callId, event.progress)
             }
 
             is AgentEvent.Completed -> {
@@ -152,6 +168,15 @@ private class ConsoleEventPrinter {
     private enum class Section(val title: String) {
         REASONING(dim("======== Reasoning ========")), ASSISTANT(bold("======== Text ========")),
     }
+}
+
+private fun printToolProgress(callId: String, progress: ToolProgress) {
+    val value = when (progress) {
+        is ToolProgress.Output -> "${progress.stream.name.lowercase()}: ${progress.text}"
+        is ToolProgress.Status -> progress.message
+        is ToolProgress.Custom -> "${progress.kind}: ${progress.payload}"
+    }
+    println("${blue("[tool progress]")} $callId $value")
 }
 
 private fun bold(text: String): String = "\u001B[1m$text\u001B[0m"

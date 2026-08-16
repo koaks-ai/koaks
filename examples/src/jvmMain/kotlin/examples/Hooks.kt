@@ -89,11 +89,13 @@ fun main() = runBlocking {
             onToolCall {
                 // before: gate the side-effecting tool on human approval (suspends).
                 before { ctx ->
-                    when {
-                        ctx.call.name != "send_notification" -> Proceed
-                        approval.await() -> Proceed
-                        else -> Deny("notification was not approved")
-                    }
+                    if (ctx.call.name != "send_notification") return@before Proceed
+                    val execution = ctx.execution
+                    println(
+                        "[approval] run=${execution?.runId ?: "direct"} " +
+                            "correlation=${execution?.correlationId ?: "-"} call=${ctx.call.id}",
+                    )
+                    if (approval.await()) Proceed else Deny("notification was not approved")
                 }
                 // after: keep noisy tool output from flooding the next model step.
                 after { _, outcome ->

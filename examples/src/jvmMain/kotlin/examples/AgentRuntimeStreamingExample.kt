@@ -3,6 +3,7 @@ package examples
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.agent
@@ -13,15 +14,18 @@ import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Usage
 import org.koaks.runtime.AgentRuntime
+import org.koaks.runtime.acb.RunEventPayload
 
 /**
  * Streaming the output of an AgentRuntime instance — WITHOUT any API keys.
  *
  * `run` is the foreground result path, `stream` is the foreground stdout path, and `spawn`
  * is the background process path returning an AgentHandle. The streaming flow is cold: each
- * collection creates one runtime-managed instance, and stopping collection cancels it.
+ * collection creates one runtime-managed instance, and stopping collection cancels its owned run.
  *
- * Events are delivered with downstream backpressure and are not retained for late collection.
+ * Consumer speed does not backpressure execution. For detached observation, use `spawn` and
+ * `handle.events()`: the bounded per-run journal supports late replay, reports history gaps, and
+ * cancelling an event collector does not cancel the run.
  */
 private class SlowEchoModel(private val chunks: List<String>) : LanguageModel {
     override val capabilities: ModelCapabilities = ModelCapabilities()
@@ -74,7 +78,25 @@ fun main() = runBlocking {
         // 3) Background path: spawn returns a controllable handle.
         // ------------------------------------------------------------------
         println("\n== 3) runtime.spawn: background handle ==")
-        val handle = rt.spawn(poemAgent(), "same task, background")
-        println("  result: ${handle.await().text}")
+        val handle = rt.spawn(
+            poemAgent(),
+            "same task, background",
+            correlationId = "desktop-request-42",
+        )
+        val backgroundResult = handle.await()
+
+        // Collection begins after completion to demonstrate bounded journal replay.
+        val retained = handle.events().toList()
+        check(retained.zipWithNext().all { (left, right) -> left.sequence < right.sequence })
+        val replayedText = retained.mapNotNull { envelope ->
+            val event = (envelope.payload as? RunEventPayload.Agent)?.event
+            (event as? AgentEvent.TextDelta)?.text
+        }.joinToString("")
+        val lifecycleCount = retained.count { it.payload is RunEventPayload.Lifecycle }
+
+        println("  result: ${backgroundResult.text}")
+        println("  correlation: ${handle.correlationId}")
+        println("  replayed text: $replayedText")
+        println("  retained events: ${retained.size} ($lifecycleCount lifecycle)")
     }
 }
