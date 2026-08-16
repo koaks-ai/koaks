@@ -58,13 +58,13 @@ repositories {
 ```kotlin
 // For Gradle projects — JVM or Kotlin Multiplatform — just add the artifact below.
 // Gradle resolves the right platform variant automatically.
-implementation("org.koaks:koaks-core:0.0.1-beta3")
-implementation("org.koaks:koaks-model-qwen:0.0.1-beta3")
+implementation("org.koaks:koaks-core:0.0.1-beta4")
+implementation("org.koaks:model-openai:0.0.1-beta4")
 
 // Optional add-ons:
-// implementation("org.koaks:koaks-model-ollama:0.0.1-beta3")
-// implementation("org.koaks:koaks-memory-summarizing:0.0.1-beta3")
-// implementation("org.koaks:koaks-memory-vector:0.0.1-beta3")
+// implementation("org.koaks:model-ollama:0.0.1-beta4")
+// implementation("org.koaks:memory-summarizing:0.0.1-beta4")
+// implementation("org.koaks:memory-vector:0.0.1-beta4")
 ```
 
 **Maven**
@@ -74,12 +74,12 @@ implementation("org.koaks:koaks-model-qwen:0.0.1-beta3")
 <dependency>
   <groupId>org.koaks</groupId>
   <artifactId>koaks-core-jvm</artifactId>
-  <version>0.0.1-beta3</version>
+  <version>0.0.1-beta4</version>
 </dependency>
 <dependency>
   <groupId>org.koaks</groupId>
   <artifactId>koaks-model-qwen-jvm</artifactId>
-  <version>0.0.1-beta3</version>
+  <version>0.0.1-beta4</version>
 </dependency>
 ```
 

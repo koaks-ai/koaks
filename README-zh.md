@@ -52,13 +52,13 @@ repositories {
 ```kotlin
 // 对于 Gradle 项目（无论 JVM 还是 Kotlin Multiplatform），只需添加如下依赖，
 // Gradle 会自动解析对应平台的变体。
-implementation("org.koaks:koaks-core:0.0.1-beta3")
-implementation("org.koaks:koaks-model-qwen:0.0.1-beta3")
+implementation("org.koaks:koaks-core:0.0.1-beta4")
+implementation("org.koaks:model-openai:0.0.1-beta4")
 
 // 可选模块：
-// implementation("org.koaks:koaks-model-ollama:0.0.1-beta3")
-// implementation("org.koaks:koaks-memory-summarizing:0.0.1-beta3")
-// implementation("org.koaks:koaks-memory-vector:0.0.1-beta3")
+// implementation("org.koaks:model-ollama:0.0.1-beta4")
+// implementation("org.koaks:memory-summarizing:0.0.1-beta4")
+// implementation("org.koaks:memory-vector:0.0.1-beta4")
 ```
 
 **Maven**
@@ -68,12 +68,12 @@ implementation("org.koaks:koaks-model-qwen:0.0.1-beta3")
 <dependency>
   <groupId>org.koaks</groupId>
   <artifactId>koaks-core-jvm</artifactId>
-  <version>0.0.1-beta3</version>
+  <version>0.0.1-beta4</version>
 </dependency>
 <dependency>
   <groupId>org.koaks</groupId>
   <artifactId>koaks-model-qwen-jvm</artifactId>
-  <version>0.0.1-beta3</version>
+  <version>0.0.1-beta4</version>
 </dependency>
 ```
 
