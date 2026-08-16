@@ -48,7 +48,30 @@ before(async () => {
       return;
     }
     response.writeHead(200, { "content-type": "text/event-stream" });
-    if (firstUser === "saved handle" && last?.role === "tool" && toolResults.length === 1) {
+    if (last?.content === "parallel tools") {
+      sendChunk(response, {
+        id: "parallel-tool-calls",
+        choices: [{
+          index: 0,
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id: "parallel-call-1",
+                type: "function",
+                function: { name: "parallel_tool", arguments: "{\"value\":1}" },
+              },
+              {
+                index: 1,
+                id: "parallel-call-2",
+                type: "function",
+                function: { name: "parallel_tool", arguments: "{\"value\":2}" },
+              },
+            ],
+          },
+        }],
+      });
+    } else if (firstUser === "saved handle" && last?.role === "tool" && toolResults.length === 1) {
       sendChunk(response, {
         id: "saved-handle-second-tool",
         choices: [{
@@ -97,6 +120,7 @@ before(async () => {
       "cross runtime",
       "publish progress",
       "subscribe progress",
+      "tool progress",
     ]).has(last.content)) {
       const toolNames = {
         "call tool": "double",
@@ -120,6 +144,7 @@ before(async () => {
         "cross runtime": "cross_runtime",
         "publish progress": "publish_progress",
         "subscribe progress": "subscribe_progress",
+        "tool progress": "progress_tool",
       };
       sendChunk(response, {
         id: "tool-call",
@@ -143,13 +168,16 @@ before(async () => {
         await new Promise((resolve) => setTimeout(resolve, 40));
       }
       const text = `reply:${last?.content ?? ""}`;
-      const split = last?.content === "second" ? 3 : text.length;
+      const split = last?.content === "second" || last?.content === "slow stream" ? 3 : text.length;
       for (let offset = 0; offset < text.length; offset += split) {
         sendChunk(response, {
           id: "text-response",
           choices: [{ index: 0, delta: { content: text.slice(offset, offset + split) } }],
           usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
         });
+        if (last?.content === "slow stream" && offset === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
       }
     }
     response.write("data: [DONE]\n\n");
@@ -241,6 +269,223 @@ test("ESM facade runs, streams, reuses thread memory, and closes idempotently", 
   await replacement.close();
   await replacement.close();
   await runtime.close();
+  await runtime.close();
+});
+
+test("spawn handle exposes ordered lifecycle and agent events", async () => {
+  const runtime = createRuntime({ runEventBufferCapacity: 64 });
+  const agent = await runtime.createAgent({
+    id: "handle-events",
+    model: { type: "openai", apiKey: "test", model: "fixture", baseUrl },
+  });
+  const handle = await agent.spawn("timeline", { correlationId: "app-run-9" });
+  assert.throws(
+    () => handle.events({ afterSequence: -1 }),
+    (error) => error?.code === "configuration_error",
+  );
+  const events = [];
+  for await (const event of handle.events()) events.push(event);
+
+  assert.equal((await handle.result()).text, "reply:timeline");
+  assert.ok(events.some((event) => event.kind === "agent" && event.event.type === "text_delta"));
+  assert.ok(events.some((event) => event.kind === "lifecycle" && event.event.type === "finished"));
+  assert.deepEqual(events.map((event) => event.sequence), events.map((event) => event.sequence).toSorted((a, b) => a - b));
+  assert.ok(events.every((event) => event.correlationId === "app-run-9"));
+  await handle.release();
+  await runtime.close();
+});
+
+test("JS tools receive call identity and report correlated progress", async () => {
+  const runtime = createRuntime();
+  let toolContext;
+  const agent = await runtime.createAgent({
+    id: "tool-progress",
+    model: { type: "openai", apiKey: "test", model: "fixture", baseUrl },
+    tools: [{
+      name: "progress_tool",
+      inputSchema: { type: "object" },
+      execute: async (_arguments, context) => {
+        toolContext = context;
+        await context.reportProgress({ type: "output", text: "working", stream: "stdout" });
+        await context.reportProgress({ type: "status", message: "almost done" });
+        return "ok";
+      },
+    }],
+  });
+  const events = [];
+  for await (const event of agent.stream("tool progress", { correlationId: "progress-run" })) events.push(event);
+
+  const requested = events.find((event) => event.type === "tool_call_requested");
+  const progress = events.filter((event) => event.type === "tool_progress");
+  assert.equal(toolContext.callId, requested.call.id);
+  assert.equal(toolContext.toolName, "progress_tool");
+  assert.equal(toolContext.correlationId, "progress-run");
+  assert.equal(toolContext.runtime.correlationId, "progress-run");
+  assert.equal(progress.length, 2);
+  assert.ok(progress.every((event) => event.callId === requested.call.id));
+  await runtime.close();
+});
+
+test("parallel same-name tools retain distinct call and execution identities", async () => {
+  const runtime = createRuntime();
+  const contexts = [];
+  const agent = await runtime.createAgent({
+    id: "parallel-tool-identities",
+    model: { type: "openai", apiKey: "test", model: "fixture", baseUrl },
+    tools: [{
+      name: "parallel_tool",
+      inputSchema: { type: "object" },
+      execute: async ({ value }, context) => {
+        contexts.push(context);
+        await context.reportProgress({ type: "status", message: `running ${value}` });
+        return String(value);
+      },
+    }],
+  });
+  const events = [];
+  for await (const event of agent.stream("parallel tools")) events.push(event);
+
+  assert.equal(contexts.length, 2);
+  assert.equal(new Set(contexts.map((context) => context.callId)).size, 2);
+  assert.equal(new Set(contexts.map((context) => context.executionId)).size, 2);
+  const progressCallIds = new Set(events.filter((event) => event.type === "tool_progress").map((event) => event.callId));
+  assert.deepEqual(progressCallIds, new Set(contexts.map((context) => context.callId)));
+  await runtime.close();
+});
+
+test("stopping agent.stream cancels its active Handle without execution backpressure", async () => {
+  const runtime = createRuntime();
+  const agent = await runtime.createAgent({
+    id: "stream-owner",
+    model: { type: "openai", apiKey: "test", model: "fixture", baseUrl },
+  });
+
+  for await (const event of agent.stream("slow stream")) {
+    if (event.type === "text_delta") break;
+  }
+
+  assert.equal((await runtime.runs()).at(-1).state, "cancelled");
+  await runtime.close();
+});
+
+test("summarizing memory keeps raw turns and persists only its projection checkpoint", async () => {
+  const runtime = createRuntime();
+  const rawTurns = [];
+  let summaryState;
+  const compactionEvents = [];
+  const memory = {
+    type: "summarizing",
+    id: "durable-summary",
+    model: { type: "openai", apiKey: "test", model: "fixture", baseUrl },
+    maxTokens: 1,
+    keepRecentTurns: 1,
+    delegate: {
+      type: "custom",
+      id: "raw-history",
+      open: async () => ({
+        load: async () => ({ transcript: rawTurns.flatMap((turn) => turn.items) }),
+        commit: async (turn) => { rawTurns.push(turn); },
+      }),
+    },
+    stateStore: {
+      load: async () => summaryState,
+      save: async (_threadId, checkpoint) => { summaryState = checkpoint; },
+      delete: async () => { summaryState = undefined; },
+    },
+    onCompaction: (event) => { compactionEvents.push(event); },
+  };
+  const agent = await runtime.createAgent({
+    id: "durable-summary-agent",
+    model: { type: "openai", apiKey: "test", model: "fixture", baseUrl },
+    memory,
+  });
+
+  await agent.run("memory one", { threadId: "summary-thread" });
+  await agent.run("memory two", { threadId: "summary-thread" });
+
+  assert.equal(rawTurns.length, 2);
+  assert.equal(typeof summaryState.basis.digest, "string");
+  assert.equal(summaryState.summary.role, "system");
+  assert.ok(compactionEvents.some((event) => event.type === "started"));
+  assert.ok(compactionEvents.some((event) => event.type === "completed"));
+  await runtime.close();
+});
+
+test("summarizing state Store errors retain their JS type and do not duplicate raw turns", async () => {
+  class SummaryStoreError extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "SummaryStoreError";
+    }
+  }
+
+  const runtime = createRuntime();
+  const rawTurns = [];
+  const agent = await runtime.createAgent({
+    id: "summary-store-error",
+    model: { type: "openai", apiKey: "test", model: "fixture", baseUrl },
+    memory: {
+      type: "summarizing",
+      id: "failing-summary-store",
+      model: { type: "openai", apiKey: "test", model: "fixture", baseUrl },
+      maxTokens: 1,
+      keepRecentTurns: 1,
+      delegate: {
+        type: "custom",
+        id: "raw-before-summary-failure",
+        open: async () => ({
+          load: async () => ({ transcript: rawTurns.flatMap((turn) => turn.items) }),
+          commit: async (turn) => { rawTurns.push(turn); },
+        }),
+      },
+      stateStore: {
+        load: async () => undefined,
+        save: async () => { throw new SummaryStoreError("summary store unavailable"); },
+        delete: async () => {},
+      },
+    },
+  });
+
+  await agent.run("summary error one", { threadId: "summary-error-thread" });
+  await assert.rejects(
+    agent.run("summary error two", { threadId: "summary-error-thread" }),
+    (error) => error?.code === "SummaryStoreError" && /summary store unavailable/.test(error.message),
+  );
+  assert.equal(rawTurns.length, 2);
+  await runtime.close();
+});
+
+test("pending Tool Hooks enter waiting and receive an aborted signal on run cancellation", async () => {
+  const runtime = createRuntime();
+  let hookStartedResolve;
+  const hookStarted = new Promise((resolve) => { hookStartedResolve = resolve; });
+  let hookExecution;
+  const agent = await runtime.createAgent({
+    id: "hook-cancellation",
+    model: { type: "openai", apiKey: "test", model: "fixture", baseUrl },
+    mcp: [{
+      type: "gateway",
+      listTools: async () => [{ name: "mcp_echo", description: "Echo", inputSchema: { type: "object" } }],
+      callTool: async () => "unused",
+    }],
+    hooks: [{
+      beforeTool: async (_context, execution) => {
+        hookExecution = execution;
+        hookStartedResolve();
+        return await new Promise((resolve) => {
+          execution.signal.addEventListener("abort", () => resolve({ action: "proceed" }), { once: true });
+        });
+      },
+    }],
+  });
+  const handle = await agent.spawn("call mcp", { correlationId: "cancel-hook" });
+  await hookStarted;
+
+  assert.equal((await handle.snapshot()).state, "waiting");
+  await handle.cancel("approval dismissed");
+  await assert.rejects(handle.result(), (error) => error?.code === "cancelled");
+  assert.equal(hookExecution.signal.aborted, true);
+  await handle.release();
   await runtime.close();
 });
 
@@ -784,6 +1029,7 @@ test("provider unions, callbacks, skills, custom memory, and MCP gateway adapt c
   let called = 0;
   let modelEvents = 0;
   let toolHooks = 0;
+  let hookExecution;
   let observations = 0;
   const mcp = await runtime.createAgent({
     id: "mcp",
@@ -798,18 +1044,21 @@ test("provider unions, callbacks, skills, custom memory, and MCP gateway adapt c
     }],
     hooks: [{
       afterModelEvent: async () => { modelEvents++; return { action: "keep" }; },
-      beforeTool: async () => { toolHooks++; return { action: "proceed" }; },
+      beforeTool: async (_context, execution) => { toolHooks++; hookExecution = execution; return { action: "proceed" }; },
       afterTool: async () => null,
     }],
     listeners: [() => { observations++; }],
   });
   await mcp.prepare();
-  const mcpResult = await mcp.run("call mcp");
+  const mcpResult = await mcp.run("call mcp", { correlationId: "hook-run" });
   assert.equal(mcpResult.text, "tool=21");
   assert.equal(listed, 1);
   assert.equal(called, 1);
   assert.ok(modelEvents > 0);
   assert.equal(toolHooks, 1);
+  assert.equal(hookExecution.correlationId, "hook-run");
+  assert.equal(typeof hookExecution.runId, "string");
+  assert.equal(hookExecution.signal.aborted, false);
   assert.ok(observations > 0);
   await mcp.close();
 
