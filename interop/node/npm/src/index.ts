@@ -28,6 +28,8 @@ import type {
   OutputSchema,
   ReapOptions,
   RunHandle,
+  RunEvent,
+  RunEventStreamOptions,
   RunOptions,
   RunSnapshot,
   RuntimeEvent,
@@ -44,6 +46,18 @@ import type {
 
 export * from "./types.js";
 export { KoaksBridgeError, KoaksCancelledError, KoaksConfigError, KoaksError };
+
+export class KoaksEventHistoryGapError extends KoaksError {
+  readonly requestedAfter: number;
+  readonly oldestAvailable: number;
+
+  constructor(requestedAfter: number, oldestAvailable: number) {
+    super("event_history_gap", `Run events after ${requestedAfter} are unavailable; oldest retained is ${oldestAvailable}`);
+    this.name = "KoaksEventHistoryGapError";
+    this.requestedAfter = requestedAfter;
+    this.oldestAvailable = oldestAvailable;
+  }
+}
 
 interface AgentDescriptor {
   agentKey: string;
@@ -66,6 +80,7 @@ class RunHandleImpl implements RunHandle {
   readonly agentId: string;
   readonly threadId?: string;
   readonly turnId?: string;
+  readonly correlationId?: string;
   readonly parentRunId?: string;
   private readonly handleId: string;
   private abortListener: (() => void) | undefined;
@@ -82,6 +97,7 @@ class RunHandleImpl implements RunHandle {
     this.agentId = descriptor.agentId;
     if (descriptor.threadId !== undefined) this.threadId = descriptor.threadId;
     if (descriptor.turnId !== undefined) this.turnId = descriptor.turnId;
+    if (descriptor.correlationId !== undefined) this.correlationId = descriptor.correlationId;
     if (descriptor.parentRunId !== undefined) this.parentRunId = descriptor.parentRunId;
     if (signal !== undefined) {
       this.abortSignal = signal;
@@ -121,6 +137,21 @@ class RunHandleImpl implements RunHandle {
     return this.runtime.createStream<RunSnapshot>(
       "handle.updates",
       { handleId: this.handleId, executionId: currentToolExecutionId() },
+      options,
+    );
+  }
+
+  events(options: RunEventStreamOptions = {}): AsyncIterable<RunEvent> {
+    if (options.afterSequence !== undefined && (!Number.isSafeInteger(options.afterSequence) || options.afterSequence < 0)) {
+      throw new KoaksConfigError("afterSequence must be a non-negative safe integer");
+    }
+    return this.runtime.createStream<RunEvent>(
+      "handle.events",
+      {
+        handleId: this.handleId,
+        executionId: currentToolExecutionId(),
+        afterSequence: options.afterSequence,
+      },
       options,
     );
   }
@@ -172,7 +203,7 @@ class KoaksAgentImpl implements KoaksAgent {
   readonly name: string;
   readonly key: string;
   private closed = false;
-  private readonly streams = new Set<BoundedAsyncIterable<unknown>>();
+  private readonly streams = new Set<AsyncGenerator<AgentEvent, void, void>>();
 
   constructor(
     descriptor: AgentDescriptor,
@@ -206,11 +237,13 @@ class KoaksAgentImpl implements KoaksAgent {
     options: RunOptions = {},
   ): Promise<StructuredAgentResult<T>> {
     this.assertOpen();
-    const result = await this.runtime.runOperation<AgentResult>(
-      "agent.run_structured",
-      { agentKey: this.key, input, output, options },
-      options.signal,
-    );
+    const handle = await this.spawnStructured(input, output, options);
+    let result: AgentResult;
+    try {
+      result = await handle.result();
+    } finally {
+      await handle.release().catch(() => undefined);
+    }
     if (result.status !== "completed") return result;
     try {
       return { ...result, output: JSON.parse(result.text) as T };
@@ -221,11 +254,10 @@ class KoaksAgentImpl implements KoaksAgent {
 
   stream(input: string, options: StreamOptions = {}): AsyncIterable<AgentEvent> {
     this.assertOpen();
-    return this.runtime.createStream<AgentEvent>(
-      "agent.stream",
-      { agentKey: this.key, input, options },
+    return this.streamHandle(
+      () => this.spawn(input, options),
       options,
-      this.streams,
+      "agent stream collection stopped",
     );
   }
 
@@ -244,29 +276,52 @@ class KoaksAgentImpl implements KoaksAgent {
     return handle;
   }
 
+  async spawnStructured(input: string, output: OutputSchema, options: RunOptions = {}): Promise<RunHandle> {
+    this.assertOpen();
+    throwIfAborted(options.signal);
+    const descriptor = await this.runtime.client.request<HandleDescriptor>("agent.spawn_structured", {
+      agentKey: this.key,
+      input,
+      output,
+      options,
+    });
+    return this.runtime.createRunHandle(descriptor, options.signal);
+  }
+
+  async spawnResume(threadId: string, options: RunOptions = {}): Promise<RunHandle> {
+    this.assertOpen();
+    throwIfAborted(options.signal);
+    const descriptor = await this.runtime.client.request<HandleDescriptor>("agent.spawn_resume", {
+      agentKey: this.key,
+      threadId,
+      options,
+    });
+    return this.runtime.createRunHandle(descriptor, options.signal);
+  }
+
   resume(threadId: string, options: StreamOptions = {}): AsyncIterable<AgentEvent> {
     this.assertOpen();
-    return this.runtime.createStream<AgentEvent>(
-      "agent.resume",
-      { agentKey: this.key, threadId, options },
+    return this.streamHandle(
+      () => this.spawnResume(threadId, options),
       options,
-      this.streams,
+      "agent resume collection stopped",
     );
   }
 
   async resumeRun(threadId: string, options: RunOptions = {}): Promise<AgentResult> {
     this.assertOpen();
-    return await this.runtime.runOperation(
-      "agent.resume_run",
-      { agentKey: this.key, threadId, options },
-      options.signal,
-    );
+    const handle = await this.spawnResume(threadId, options);
+    try {
+      return await handle.result();
+    } finally {
+      await handle.release().catch(() => undefined);
+    }
   }
 
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
-    await Promise.all([...this.streams].map(async (stream) => { await stream.return(); }));
+    await Promise.all([...this.streams].map(async (stream) => { await stream.return(undefined); }));
     try {
       await this.runtime.client.request("agent.close", { agentKey: this.key });
     } finally {
@@ -278,12 +333,42 @@ class KoaksAgentImpl implements KoaksAgent {
   markReplaced(): void {
     if (this.closed) return;
     this.closed = true;
-    for (const stream of this.streams) void stream.return();
+    for (const stream of this.streams) void stream.return(undefined);
     this.runtime.deferAgentCallbacks(this.callbackIds);
   }
 
   belongsTo(runtime: KoaksRuntimeImpl): boolean {
     return this.runtime === runtime;
+  }
+
+  private streamHandle(
+    spawn: () => Promise<RunHandle>,
+    options: StreamOptions,
+    cancellationReason: string,
+  ): AsyncIterable<AgentEvent> {
+    const owner = this;
+    let stream!: AsyncGenerator<AgentEvent, void, void>;
+    stream = (async function* () {
+      let handle: RunHandle | undefined;
+      try {
+        handle = await spawn();
+        for await (const envelope of handle.events(options)) {
+          if (envelope.kind === "agent") {
+            yield envelope.event;
+          } else if (envelope.kind === "history_gap") {
+            throw new KoaksEventHistoryGapError(envelope.requestedAfter, envelope.oldestAvailable);
+          }
+        }
+      } finally {
+        owner.streams.delete(stream);
+        if (handle !== undefined) {
+          await handle.cancel(cancellationReason).catch(() => undefined);
+          await handle.release().catch(() => undefined);
+        }
+      }
+    })();
+    this.streams.add(stream);
+    return stream;
   }
 
   private assertOpen(): void {

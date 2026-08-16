@@ -41,8 +41,12 @@ import org.koaks.framework.model.TranscriptBasis
 import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.TerminationReason
 import org.koaks.runtime.acb.AcbSnapshot
+import org.koaks.runtime.acb.RunEventEnvelope
+import org.koaks.runtime.acb.RunEventPayload
 import org.koaks.runtime.observe.RuntimeEvent
 import org.koaks.runtime.observe.RuntimeMetrics
+import org.koaks.framework.tool.ToolOutputStream
+import org.koaks.framework.tool.ToolProgress
 import org.koaks.runtime.thread.ThreadSnapshot
 
 internal val nodeJson = Json {
@@ -82,7 +86,8 @@ internal fun failure(error: Throwable): String = nodeJson.encodeToString(
             buildJsonObject {
                 put("type", JsonPrimitive(error.bridgeErrorCode()))
                 put("message", JsonPrimitive(error.message ?: error::class.simpleName ?: "unknown error"))
-                error.stackTraceToString().takeIf { it.isNotBlank() }?.let { put("stack", JsonPrimitive(it)) }
+                val stack = (error as? NodeCallbackException)?.callbackStack ?: error.stackTraceToString()
+                stack.takeIf { it.isNotBlank() }?.let { put("stack", JsonPrimitive(it)) }
             },
         )
     },
@@ -91,12 +96,19 @@ internal fun failure(error: Throwable): String = nodeJson.encodeToString(
 internal fun Throwable.bridgeErrorCode(): String = when (this) {
     is kotlinx.coroutines.CancellationException -> "cancelled"
     is NodeBridgeException -> code
+    is NodeCallbackException -> callbackType
     is IllegalArgumentException -> "configuration_error"
     is org.koaks.runtime.AgentIdConflictException -> "agent_conflict"
     is org.koaks.runtime.context.ContextAccessException -> "context_access"
     is IllegalStateException -> "lifecycle_error"
     else -> "bridge_error"
 }
+
+internal class NodeCallbackException(
+    val callbackType: String,
+    message: String,
+    val callbackStack: String?,
+) : RuntimeException(message)
 
 internal fun Usage.toJson(): JsonObject = buildJsonObject {
     put("prompt_tokens", JsonPrimitive(promptTokens))
@@ -172,11 +184,25 @@ internal fun AgentEvent.toJson(): JsonObject = buildJsonObject {
         is AgentEvent.ReasoningDelta -> { put("type", JsonPrimitive("reasoning_delta")); put("text", JsonPrimitive(text)) }
         is AgentEvent.ToolCallRequested -> { put("type", JsonPrimitive("tool_call_requested")); put("call", call.toJson()) }
         is AgentEvent.ToolResult -> { put("type", JsonPrimitive("tool_result")); put("call_id", JsonPrimitive(callId)); put("output", JsonPrimitive(output)); put("is_error", JsonPrimitive(isError)) }
+        is AgentEvent.ToolProgress -> {
+            put("type", JsonPrimitive("tool_progress")); put("call_id", JsonPrimitive(callId)); put("progress", progress.toJson())
+        }
         is AgentEvent.StepCompleted -> { put("type", JsonPrimitive("step_completed")); put("step", JsonPrimitive(step)) }
         is AgentEvent.Completed -> { put("type", JsonPrimitive("completed")); put("message", message.toJson()); put("usage", usage.toJson()) }
         is AgentEvent.Incomplete -> { put("type", JsonPrimitive("incomplete")); put("message", message.toJson()); put("usage", usage.toJson()); put("reason", reason.toJson()) }
         is AgentEvent.Terminated -> { put("type", JsonPrimitive("terminated")); put("message", message.toJson()); put("usage", usage.toJson()); put("reason", reason.toJson()) }
         is AgentEvent.Failed -> { put("type", JsonPrimitive("failed")); put("error", error.toJson()); put("usage", usage.toJson()) }
+    }
+}
+
+private fun ToolProgress.toJson(): JsonObject = buildJsonObject {
+    when (this@toJson) {
+        is ToolProgress.Output -> {
+            put("type", JsonPrimitive("output")); put("text", JsonPrimitive(text))
+            put("stream", JsonPrimitive(if (stream == ToolOutputStream.Stdout) "stdout" else "stderr"))
+        }
+        is ToolProgress.Status -> { put("type", JsonPrimitive("status")); put("message", JsonPrimitive(message)) }
+        is ToolProgress.Custom -> { put("type", JsonPrimitive("custom")); put("kind", JsonPrimitive(kind)); put("payload", payload) }
     }
 }
 
@@ -344,9 +370,25 @@ internal fun AcbSnapshot.toJson(): JsonObject = buildJsonObject {
     put("run_id", JsonPrimitive(runId.value.toString())); put("agent_id", JsonPrimitive(agentId.value)); put("agent_name", JsonPrimitive(agentName))
     threadId?.let { put("thread_id", JsonPrimitive(it.value)) }; turnId?.let { put("turn_id", JsonPrimitive(it.value.toString())) }
     put("state", JsonPrimitive(state.name.lowercase())); put("priority", JsonPrimitive(priority)); parent?.let { put("parent", JsonPrimitive(it.value.toString())) }
+    correlationId?.let { put("correlation_id", JsonPrimitive(it)) }
     put("children", buildJsonArray { children.forEach { add(JsonPrimitive(it.value.toString())) } }); put("accepting_children", JsonPrimitive(acceptingChildren))
     put("usage", usage.toJson()); put("steps_completed", JsonPrimitive(stepsCompleted)); put("tool_calls", JsonPrimitive(toolCalls)); put("elapsed_ms", JsonPrimitive(elapsedMillis))
     error?.let { put("error", it.toJson()) }
+}
+
+internal fun RunEventEnvelope.toJson(): JsonObject = buildJsonObject {
+    put("run_id", JsonPrimitive(runId.value.toString())); put("agent_id", JsonPrimitive(agentId.value))
+    threadId?.let { put("thread_id", JsonPrimitive(it.value)) }; turnId?.let { put("turn_id", JsonPrimitive(it.value.toString())) }
+    correlationId?.let { put("correlation_id", JsonPrimitive(it)) }
+    put("sequence", JsonPrimitive(sequence)); put("timestamp_epoch_ms", JsonPrimitive(timestampEpochMillis))
+    when (val value = payload) {
+        is RunEventPayload.Agent -> { put("kind", JsonPrimitive("agent")); put("event", value.event.toJson()) }
+        is RunEventPayload.Lifecycle -> { put("kind", JsonPrimitive("lifecycle")); put("event", value.event.toJson()) }
+        is RunEventPayload.HistoryGap -> {
+            put("kind", JsonPrimitive("history_gap")); put("requested_after", JsonPrimitive(value.requestedAfter))
+            put("oldest_available", JsonPrimitive(value.oldestAvailable))
+        }
+    }
 }
 
 internal fun ThreadSnapshot.toJson(): JsonObject = buildJsonObject {

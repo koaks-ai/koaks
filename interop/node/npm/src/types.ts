@@ -85,6 +85,7 @@ export type AgentEvent =
   | { type: "reasoning_delta"; text: string }
   | { type: "tool_call_requested"; call: ToolCall }
   | { type: "tool_result"; callId: string; output: string; isError: boolean }
+  | { type: "tool_progress"; callId: string; progress: ToolProgress }
   | { type: "step_completed"; step: number }
   | { type: "completed"; message: ModelItem; usage: Usage }
   | { type: "incomplete"; message: ModelItem; usage: Usage; reason: Record<string, JsonValue> }
@@ -183,15 +184,25 @@ export type ModelSelection = ModelProvider | readonly [ModelProvider, ...ModelPr
 
 export interface ToolExecutionContext {
   readonly executionId: string;
+  readonly callId: string;
+  readonly toolName: string;
+  readonly correlationId?: string;
   readonly signal: AbortSignal;
   readonly runtime: ToolRuntimeContext;
+  reportProgress(progress: ToolProgress): Promise<void>;
 }
+
+export type ToolProgress =
+  | { type: "output"; text: string; stream?: "stdout" | "stderr" }
+  | { type: "status"; message: string }
+  | { type: "custom"; kind: string; payload: JsonValue };
 
 export interface ToolRuntimeContext {
   readonly runId: string;
   readonly agentId: string;
   readonly threadId?: string;
   readonly turnId?: string;
+  readonly correlationId?: string;
   readonly resources: ToolResources;
   readonly context: ToolContextStore;
   readonly ipc: ToolIpc;
@@ -305,6 +316,24 @@ export interface VectorStore {
   search(threadId: string, query: string, topK: number): ModelItem[] | Promise<ModelItem[]>;
 }
 
+export interface SummaryCheckpoint {
+  basis: { itemCount: number; digest: string };
+  summary: Extract<ModelItem, { type: "message" }>;
+  sourceTurnId: string;
+  createdAtEpochMs: number;
+}
+
+export interface SummaryStateStore {
+  load(threadId: string): SummaryCheckpoint | undefined | Promise<SummaryCheckpoint | undefined>;
+  save(threadId: string, checkpoint: SummaryCheckpoint): void | Promise<void>;
+  delete(threadId: string): void | Promise<void>;
+}
+
+export type CompactionEvent =
+  | { type: "started"; threadId: string; sourceTurnId: string; basis: { itemCount: number; digest: string } }
+  | { type: "completed"; threadId: string; sourceTurnId: string; checkpoint: SummaryCheckpoint }
+  | { type: "failed"; threadId: string; sourceTurnId: string; message: string };
+
 export type MemoryConfig =
   | { type: "none" }
   | { type: "window"; maxMessages?: number; retention?: TurnRetention }
@@ -317,6 +346,9 @@ export type MemoryConfig =
       maxTokens: number;
       keepRecentTurns?: number;
       retention?: TurnRetention;
+      delegate?: MemoryConfig;
+      stateStore?: SummaryStateStore;
+      onCompaction?(event: CompactionEvent): void;
     };
 
 export interface SkillDescriptor {
@@ -386,8 +418,17 @@ export type ToolDecision =
 export interface HookDefinition {
   beforeModel?(context: Record<string, JsonValue>): Record<string, JsonValue> | null | Promise<Record<string, JsonValue> | null>;
   afterModelEvent?(context: Record<string, JsonValue>): ModelEventDecision | Promise<ModelEventDecision>;
-  beforeTool?(context: Record<string, JsonValue>): ToolDecision | null | Promise<ToolDecision | null>;
-  afterTool?(context: Record<string, JsonValue>): Record<string, JsonValue> | null | Promise<Record<string, JsonValue> | null>;
+  beforeTool?(context: Record<string, JsonValue>, execution: HookExecutionContext): ToolDecision | null | Promise<ToolDecision | null>;
+  afterTool?(context: Record<string, JsonValue>, execution: HookExecutionContext): Record<string, JsonValue> | null | Promise<Record<string, JsonValue> | null>;
+}
+
+export interface HookExecutionContext {
+  readonly runId?: string;
+  readonly agentId?: string;
+  readonly threadId?: string;
+  readonly turnId?: string;
+  readonly correlationId?: string;
+  readonly signal: AbortSignal;
 }
 
 export type InstructionSegment =
@@ -453,6 +494,7 @@ export interface RunOptions {
   quota?: Quota;
   contextRefs?: string[];
   signal?: AbortSignal;
+  correlationId?: string;
 }
 
 export interface StreamOptions extends RunOptions {
@@ -474,6 +516,7 @@ export interface RunSnapshot {
   agentName: string;
   threadId?: string;
   turnId?: string;
+  correlationId?: string;
   state: "created" | "thread_queued" | "ready" | "running" | "waiting" | "suspended" | "committing" | "finished" | "failed" | "cancelled";
   priority: number;
   parent?: string;
@@ -585,6 +628,26 @@ export interface RuntimeOptions {
   defaultQuota?: Quota;
   defaultMemory?: MemoryConfig;
   highWaterMark?: number;
+  runEventBufferCapacity?: number;
+}
+
+interface RunEventBase {
+  runId: string;
+  agentId: string;
+  threadId?: string;
+  turnId?: string;
+  correlationId?: string;
+  sequence: number;
+  timestampEpochMs: number;
+}
+
+export type RunEvent =
+  | (RunEventBase & { kind: "agent"; event: AgentEvent })
+  | (RunEventBase & { kind: "lifecycle"; event: RuntimeEvent })
+  | (RunEventBase & { kind: "history_gap"; requestedAfter: number; oldestAvailable: number });
+
+export interface RunEventStreamOptions extends StreamOptions {
+  afterSequence?: number;
 }
 
 export interface RunHandle {
@@ -592,6 +655,7 @@ export interface RunHandle {
   readonly agentId: string;
   readonly threadId?: string;
   readonly turnId?: string;
+  readonly correlationId?: string;
   readonly parentRunId?: string;
   result(): Promise<AgentResult>;
   cancel(reason?: string): Promise<void>;
@@ -599,6 +663,7 @@ export interface RunHandle {
   resume(): Promise<void>;
   snapshot(): Promise<RunSnapshot>;
   updates(options?: StreamOptions): AsyncIterable<RunSnapshot>;
+  events(options?: RunEventStreamOptions): AsyncIterable<RunEvent>;
   release(): Promise<void>;
 }
 
@@ -615,6 +680,8 @@ export interface KoaksAgent {
   runStructured<T>(input: string, output: OutputSchema, options?: RunOptions): Promise<StructuredAgentResult<T>>;
   stream(input: string, options?: StreamOptions): AsyncIterable<AgentEvent>;
   spawn(input: string, options?: RunOptions): Promise<RunHandle>;
+  spawnStructured(input: string, output: OutputSchema, options?: RunOptions): Promise<RunHandle>;
+  spawnResume(threadId: string, options?: RunOptions): Promise<RunHandle>;
   resume(threadId: string, options?: StreamOptions): AsyncIterable<AgentEvent>;
   resumeRun(threadId: string, options?: RunOptions): Promise<AgentResult>;
   close(): Promise<void>;

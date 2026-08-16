@@ -93,6 +93,24 @@ export class KoaksBridgeError extends KoaksError {
   }
 }
 
+function callbackError(cause: unknown): { type: string; message: string; stack?: string } {
+  if (cause instanceof KoaksError) {
+    return {
+      type: cause.code,
+      message: cause.message,
+      ...(cause.stack === undefined ? {} : { stack: cause.stack }),
+    };
+  }
+  if (cause instanceof Error) {
+    return {
+      type: cause.name || "Error",
+      message: cause.message,
+      ...(cause.stack === undefined ? {} : { stack: cause.stack }),
+    };
+  }
+  return { type: "NonErrorThrow", message: String(cause) };
+}
+
 interface BridgeEnvelope {
   ok: boolean;
   value?: unknown;
@@ -132,11 +150,15 @@ export class CallbackRegistry {
   private readonly notifyHandlers = new Map<string, CallbackHandler>();
 
   readonly invoke = async (id: string, payloadJson: string): Promise<string> => {
-    const handler = this.invokeHandlers.get(id);
-    if (handler === undefined) throw new KoaksBridgeError("callback_not_found", `Unknown callback '${id}'`);
-    const payload = fromBridgeValue(JSON.parse(payloadJson)) as unknown;
-    const result = await handler(payload);
-    return JSON.stringify(toBridgeValue(result ?? null));
+    try {
+      const handler = this.invokeHandlers.get(id);
+      if (handler === undefined) throw new KoaksBridgeError("callback_not_found", `Unknown callback '${id}'`);
+      const payload = fromBridgeValue(JSON.parse(payloadJson)) as unknown;
+      const result = await handler(payload);
+      return JSON.stringify(toBridgeValue({ ok: true, value: result ?? null }));
+    } catch (cause) {
+      return JSON.stringify(toBridgeValue({ ok: false, error: callbackError(cause) }));
+    }
   };
 
   readonly notify = (id: string, payloadJson: string): void => {

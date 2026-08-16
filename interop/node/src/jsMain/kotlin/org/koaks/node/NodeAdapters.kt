@@ -62,9 +62,18 @@ import org.koaks.framework.skill.SkillResource
 import org.koaks.framework.skill.SkillResourceCursor
 import org.koaks.framework.skill.SkillResourceProvider
 import org.koaks.framework.tool.Tool
+import org.koaks.framework.tool.ContextualTool
+import org.koaks.framework.tool.ToolInvocationContext
 import org.koaks.framework.tool.ToolOutcome
 import org.koaks.framework.transport.KtorTransport
-import org.koaks.memory.summarizing.SummarizingMemory
+import org.koaks.memory.summarizing.SummarizingMemoryProvider
+import org.koaks.memory.summarizing.InMemoryAppendMemoryProvider
+import org.koaks.memory.summarizing.InMemorySummaryStateStore
+import org.koaks.memory.summarizing.SummaryStateStore
+import org.koaks.memory.summarizing.SummaryCheckpoint
+import org.koaks.memory.summarizing.CompactionEvent
+import org.koaks.memory.summarizing.CompactionObserver
+import org.koaks.framework.model.TranscriptBasis
 import org.koaks.memory.vector.VectorMemoryProvider
 import org.koaks.memory.vector.VectorStore
 import org.koaks.provider.anthropic.anthropic
@@ -82,7 +91,17 @@ internal class CallbackGateway(
 ) {
     suspend fun call(id: String, payload: JsonElement = JsonNull): JsonElement {
         val response = invoke(id, nodeJson.encodeToString(JsonElement.serializer(), payload)).await()
-        return if (response.isBlank()) JsonNull else nodeJson.parseToJsonElement(response)
+        if (response.isBlank()) return JsonNull
+        val decoded = nodeJson.parseToJsonElement(response)
+        val envelope = decoded as? JsonObject ?: return decoded
+        val ok = envelope.booleanOrNull("ok") ?: return decoded
+        if (ok) return envelope["value"] ?: JsonNull
+        val error = envelope.objectOrNull("error") ?: JsonObject(emptyMap())
+        throw NodeCallbackException(
+            callbackType = error.stringOrNull("type") ?: "callback_error",
+            message = error.stringOrNull("message") ?: "Node callback failed",
+            callbackStack = error.stringOrNull("stack"),
+        )
     }
 
     fun emit(id: String?, payload: JsonElement) {
@@ -292,7 +311,7 @@ private class NodeTool(
     config: JsonObject,
     private val callbacks: CallbackGateway,
     private val toolExecutions: ToolExecutionRegistry,
-) : Tool<String> {
+) : ContextualTool<String> {
     override val name: String = config.string("name")
     override val description: String = config.stringOrNull("description") ?: ""
     override val inputSerializer = String.serializer()
@@ -303,24 +322,31 @@ private class NodeTool(
     private val executeCallback = config.string("execute_callback_id")
     private val cancelCallback = config.stringOrNull("cancel_callback_id")
 
-    override suspend fun execute(input: String): String {
+    override suspend fun execute(input: String): String = executeNode(input, invocation = null)
+
+    override suspend fun execute(input: String, context: ToolInvocationContext): String = executeNode(input, context)
+
+    private suspend fun executeNode(input: String, invocation: ToolInvocationContext?): String {
         val coroutineContext = currentCoroutineContext()
         val runtimeContext = coroutineContext[RuntimeContext]
             ?: throw NodeBridgeException("lifecycle_error", "JS Tools require a runtime-managed execution")
         val executionContext = coroutineContext[AgentExecutionContext]
             ?: throw NodeBridgeException("lifecycle_error", "JS Tools require an Agent execution branch")
-        val execution = toolExecutions.open(runtimeContext, executionContext)
+        val execution = toolExecutions.open(runtimeContext, executionContext, invocation)
         return try {
             val response = executionContext.waiting {
                 callbacks.call(
                     executeCallback,
                     buildJsonObject {
                         put("execution_id", JsonPrimitive(execution.id))
+                        put("call_id", JsonPrimitive(invocation?.callId ?: execution.id))
+                        put("tool_name", JsonPrimitive(name))
                         put("arguments_json", JsonPrimitive(input))
                         put("run_id", JsonPrimitive(runtimeContext.runId.value.toString()))
                         put("agent_id", JsonPrimitive(runtimeContext.agentId.value))
                         runtimeContext.threadId?.let { put("thread_id", JsonPrimitive(it.value)) }
                         runtimeContext.turnId?.let { put("turn_id", JsonPrimitive(it.value.toString())) }
+                        runtimeContext.correlationId?.let { put("correlation_id", JsonPrimitive(it)) }
                     },
                 )
             }.jsonObject
@@ -355,14 +381,27 @@ internal fun buildMemory(config: JsonObject, callbacks: CallbackGateway, owned: 
         val scope = ModelScope().apply { transport(transport) }
         val model = scope.selectProvider(config.objectOrNull("model") ?: error("summarizing memory requires 'model'"))
             .toLanguageModel()
-        FixedMemoryProvider(MemoryProviderId(config.string("id"))) {
-            SummarizingMemory(
-                maxTokens = config.intOrNull("max_tokens") ?: error("summarizing memory requires 'max_tokens'"),
-                model = model,
-                keepRecentTurns = config.intOrNull("keep_recent_turns") ?: 2,
-                retention = config.retention(),
-            )
+        val id = MemoryProviderId(config.string("id"))
+        val delegate = config.objectOrNull("delegate")?.let { buildMemory(it, callbacks, owned) }
+            ?: InMemoryAppendMemoryProvider(MemoryProviderId("${id.value}-raw"), config.retention())
+        val stateStore: SummaryStateStore = if (config.stringOrNull("state_load_callback_id") == null) {
+            InMemorySummaryStateStore()
+        } else {
+            NodeSummaryStateStore(config, callbacks)
         }
+        val observer = config.stringOrNull("compaction_callback_id")?.let { callback ->
+            CompactionObserver { event -> callbacks.emit(callback, event.toJson()) }
+        } ?: CompactionObserver {}
+        SummarizingMemoryProvider(
+            id = id,
+            delegate = delegate,
+            stateStore = stateStore,
+            model = model,
+            maxTokens = config.intOrNull("max_tokens") ?: error("summarizing memory requires 'max_tokens'"),
+            keepRecentTurns = config.intOrNull("keep_recent_turns") ?: 2,
+            retention = config.retention(),
+            observer = observer,
+        )
     }
     else -> error("unknown memory type '${config.string("type")}'")
 }
@@ -390,6 +429,60 @@ private class NodeThreadMemory(config: JsonObject, private val callbacks: Callba
 
     override fun close() {
         callbacks.emit(closeCallback, JsonNull)
+    }
+}
+
+private class NodeSummaryStateStore(config: JsonObject, private val callbacks: CallbackGateway) : SummaryStateStore {
+    private val loadCallback = config.string("state_load_callback_id")
+    private val saveCallback = config.string("state_save_callback_id")
+    private val deleteCallback = config.string("state_delete_callback_id")
+
+    override suspend fun load(threadId: ThreadId): SummaryCheckpoint? = callbacks.call(
+        loadCallback,
+        buildJsonObject { put("thread_id", JsonPrimitive(threadId.value)) },
+    ).let { if (it is JsonNull) null else it.jsonObject.toSummaryCheckpoint() }
+
+    override suspend fun save(threadId: ThreadId, checkpoint: SummaryCheckpoint) {
+        callbacks.call(saveCallback, buildJsonObject {
+            put("thread_id", JsonPrimitive(threadId.value)); put("checkpoint", checkpoint.toJson())
+        })
+    }
+
+    override suspend fun delete(threadId: ThreadId) {
+        callbacks.call(deleteCallback, buildJsonObject { put("thread_id", JsonPrimitive(threadId.value)) })
+    }
+}
+
+private fun SummaryCheckpoint.toJson(): JsonObject = buildJsonObject {
+    put("basis", buildJsonObject {
+        put("item_count", JsonPrimitive(basis.itemCount)); put("digest", JsonPrimitive(basis.digest))
+    })
+    put("summary", summary.toJson()); put("source_turn_id", JsonPrimitive(sourceTurnId))
+    put("created_at_epoch_ms", JsonPrimitive(createdAtEpochMillis))
+}
+
+private fun JsonObject.toSummaryCheckpoint(): SummaryCheckpoint {
+    val basis = objectOrNull("basis") ?: error("summary checkpoint requires 'basis'")
+    val summary = objectOrNull("summary")?.toModelItem() as? ModelItem.Message
+        ?: error("summary checkpoint requires a message 'summary'")
+    return SummaryCheckpoint(
+        basis = TranscriptBasis(basis.intOrNull("item_count") ?: error("basis requires item_count"), basis.string("digest")),
+        summary = summary,
+        sourceTurnId = string("source_turn_id"),
+        createdAtEpochMillis = longOrNull("created_at_epoch_ms") ?: error("checkpoint requires created_at_epoch_ms"),
+    )
+}
+
+private fun CompactionEvent.toJson(): JsonObject = buildJsonObject {
+    put("thread_id", JsonPrimitive(threadId.value)); put("source_turn_id", JsonPrimitive(sourceTurnId))
+    when (this@toJson) {
+        is CompactionEvent.Started -> {
+            put("type", JsonPrimitive("started")); put("basis", buildJsonObject {
+                put("item_count", JsonPrimitive(basis.itemCount)); put("digest", JsonPrimitive(basis.digest))
+            })
+        }
+        is CompactionEvent.Completed -> { put("type", JsonPrimitive("completed")); put("checkpoint", checkpoint.toJson()) }
+        is CompactionEvent.Failed -> { put("type", JsonPrimitive("failed")); put("message", JsonPrimitive(message)) }
     }
 }
 
@@ -481,6 +574,9 @@ private class NodeHook(config: JsonObject, private val callbacks: CallbackGatewa
     private val afterModelEvent = config.stringOrNull("after_model_event_callback_id")
     private val beforeTool = config.stringOrNull("before_tool_callback_id")
     private val afterTool = config.stringOrNull("after_tool_callback_id")
+    private val beforeToolCancel = config.stringOrNull("before_tool_cancel_callback_id")
+    private val afterToolCancel = config.stringOrNull("after_tool_cancel_callback_id")
+    private var hookSequence = 0L
 
     override suspend fun onModelRequest(ctx: StepContext): ModelRequest {
         val id = beforeModel ?: return ctx.request
@@ -513,7 +609,7 @@ private class NodeHook(config: JsonObject, private val callbacks: CallbackGatewa
 
     override suspend fun onToolCall(ctx: ToolContext): ToolDecision {
         val id = beforeTool ?: return ToolDecision.Proceed
-        val response = callbacks.call(id, ctx.toJson())
+        val response = callToolHook(id, beforeToolCancel, ctx.toJson())
         if (response is JsonNull) return ToolDecision.Proceed
         val obj = response.jsonObject
         return when (obj.string("action")) {
@@ -526,8 +622,31 @@ private class NodeHook(config: JsonObject, private val callbacks: CallbackGatewa
 
     override suspend fun onToolResult(ctx: ToolContext, outcome: ToolOutcome): ToolOutcome {
         val id = afterTool ?: return outcome
-        val response = callbacks.call(id, buildJsonObject { put("context", ctx.toJson()); put("outcome", outcome.toJson()) })
+        val response = callToolHook(
+            id,
+            afterToolCancel,
+            buildJsonObject { put("context", ctx.toJson()); put("outcome", outcome.toJson()) },
+        )
         return if (response is JsonNull) outcome else response.jsonObject.toToolOutcome()
+    }
+
+    private suspend fun callToolHook(callback: String, cancelCallback: String?, payload: JsonObject): JsonElement {
+        val hookExecutionId = "hook-execution-${++hookSequence}"
+        val request = buildJsonObject {
+            payload.forEach { (key, value) -> put(key, value) }
+            put("hook_execution_id", JsonPrimitive(hookExecutionId))
+        }
+        val execution = currentCoroutineContext()[AgentExecutionContext]
+        return try {
+            if (execution == null) callbacks.call(callback, request)
+            else execution.waiting { callbacks.call(callback, request) }
+        } catch (cancelled: CancellationException) {
+            callbacks.emit(cancelCallback, buildJsonObject {
+                put("hook_execution_id", JsonPrimitive(hookExecutionId))
+                cancelled.message?.let { put("reason", JsonPrimitive(it)) }
+            })
+            throw cancelled
+        }
     }
 }
 
@@ -576,7 +695,17 @@ private fun StepContext.toJson() = buildJsonObject {
     put("state", state.toJson()); put("request", request.toJson()); put("phase", JsonPrimitive(if (phase == ModelCallPhase.Normal) "normal" else "structured_finalization"))
 }
 
-private fun ToolContext.toJson() = buildJsonObject { put("call", call.toJson()); put("state", state.toJson()) }
+private fun ToolContext.toJson() = buildJsonObject {
+    put("call", call.toJson()); put("state", state.toJson())
+    execution?.let { identity ->
+        put("execution", buildJsonObject {
+            put("run_id", JsonPrimitive(identity.runId)); put("agent_id", JsonPrimitive(identity.agentId))
+            identity.threadId?.let { put("thread_id", JsonPrimitive(it)) }
+            identity.turnId?.let { put("turn_id", JsonPrimitive(it)) }
+            identity.correlationId?.let { put("correlation_id", JsonPrimitive(it)) }
+        })
+    }
+}
 
 private fun ModelRequest.toJson() = buildJsonObject {
     instructions?.let { put("instructions", JsonPrimitive(it)) }; put("items", buildJsonArray { items.forEach { add(it.toJson()) } })

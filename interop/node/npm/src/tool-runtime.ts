@@ -26,16 +26,20 @@ export interface HandleDescriptor {
   agentId: string;
   threadId?: string;
   turnId?: string;
+  correlationId?: string;
   parentRunId?: string;
 }
 
 export interface ToolExecutionPayload {
   executionId: string;
+  callId: string;
+  toolName: string;
   argumentsJson: string;
   runId: string;
   agentId: string;
   threadId?: string;
   turnId?: string;
+  correlationId?: string;
 }
 
 export interface ToolRuntimeHost {
@@ -78,6 +82,7 @@ class ToolRuntimeContextImpl implements ToolRuntimeContext {
   readonly agentId: string;
   readonly threadId?: string;
   readonly turnId?: string;
+  readonly correlationId?: string;
   readonly resources: ToolResources;
   readonly context: ToolContextStore;
   readonly ipc: ToolIpc;
@@ -86,12 +91,13 @@ class ToolRuntimeContextImpl implements ToolRuntimeContext {
   constructor(
     private readonly host: ToolRuntimeHost,
     private readonly executionId: string,
-    metadata: Pick<ToolExecutionPayload, "runId" | "agentId" | "threadId" | "turnId">,
+    metadata: Pick<ToolExecutionPayload, "runId" | "agentId" | "threadId" | "turnId" | "correlationId">,
   ) {
     this.runId = metadata.runId;
     this.agentId = metadata.agentId;
     if (metadata.threadId !== undefined) this.threadId = metadata.threadId;
     if (metadata.turnId !== undefined) this.turnId = metadata.turnId;
+    if (metadata.correlationId !== undefined) this.correlationId = metadata.correlationId;
     this.resources = new ToolResourcesImpl(host, executionId, () => this.assertActive());
     this.context = new ToolContextStoreImpl(host, executionId, () => this.assertActive());
     this.ipc = new ToolIpcImpl(host, executionId, () => this.assertActive());
@@ -346,7 +352,17 @@ export async function runToolCallback<T>(
   callback: (context: ToolExecutionContext) => T | Promise<T>,
 ): Promise<T> {
   const runtime = new ToolRuntimeContextImpl(host, payload.executionId, payload);
-  const context: ToolExecutionContext = { executionId: payload.executionId, signal, runtime };
+  const context: ToolExecutionContext = {
+    executionId: payload.executionId,
+    callId: payload.callId,
+    toolName: payload.toolName,
+    ...(payload.correlationId !== undefined ? { correlationId: payload.correlationId } : {}),
+    signal,
+    runtime,
+    reportProgress: async (progress) => {
+      await host.client.request("tool.progress", { executionId: payload.executionId, progress });
+    },
+  };
   try {
     return await toolExecutionStorage.run(
       { executionId: payload.executionId },

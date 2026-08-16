@@ -30,6 +30,8 @@ import org.koaks.framework.loop.Agent
 import org.koaks.framework.loop.AgentExecutionContext
 import org.koaks.framework.loop.AgentId
 import org.koaks.framework.memory.ThreadId
+import org.koaks.framework.tool.ToolOutputStream
+import org.koaks.framework.tool.ToolProgress
 import org.koaks.runtime.AgentRuntime
 import org.koaks.runtime.acb.AgentHandle
 import org.koaks.runtime.acb.RunId
@@ -77,6 +79,7 @@ class KoaksBridge internal constructor(
         val config = parseObject(configJson)
         runtime = AgentRuntime {
             maxConcurrency = config.intOrNull("max_concurrency") ?: Int.MAX_VALUE
+            runEventBufferCapacity = config.intOrNull("run_event_buffer_capacity") ?: 1024
             defaultQuota = config.objectOrNull("default_quota")?.toQuota() ?: Quota.UNLIMITED
             config.objectOrNull("default_memory")?.let {
                 defaultMemoryProvider = buildMemory(it, callbacks, runtimeOwned)
@@ -131,6 +134,8 @@ class KoaksBridge internal constructor(
             "agent.resume" -> streamAgent(params, resume = true)
             "agent.resume_run" -> resumeAgent(params)
             "agent.spawn" -> spawnAgent(params)
+            "agent.spawn_structured" -> spawnAgent(params, structured = true)
+            "agent.spawn_resume" -> spawnResumeAgent(params)
             "agent.close" -> {
                 closeAgent(params.string("agent_key"), unregister = true)
                 JsonNull
@@ -159,6 +164,15 @@ class KoaksBridge internal constructor(
                     params.stringOrNull("execution_id"),
                 )
             }
+            "handle.events" -> {
+                val record = handle(params)
+                startSubscription(
+                    record.agentKey,
+                    params.string("callback_id"),
+                    record.handle.events(params.longOrNull("after_sequence")).map { it.toJson() },
+                    params.stringOrNull("execution_id"),
+                )
+            }
             "handle.release" -> {
                 handles.remove(params.string("handle_id"))
                 JsonNull
@@ -175,6 +189,7 @@ class KoaksBridge internal constructor(
             }
 
             "tool.resource.with" -> toolWithResource(params)
+            "tool.progress" -> toolProgress(params)
             "tool.context.put" -> toolPutContext(params)
             "tool.context.delta" -> toolDeltaContext(params)
             "tool.context.resolve" -> toolResolveContext(params)
@@ -237,6 +252,7 @@ class KoaksBridge internal constructor(
                     quota = options.objectOrNull("quota")?.toQuota(),
                     contextRefs = options.contextRefs(),
                     thread = options.stringOrNull("thread_id")?.let(::ThreadId),
+                    correlationId = options.stringOrNull("correlation_id"),
                 )
             } else {
                 runtime.run(
@@ -246,6 +262,7 @@ class KoaksBridge internal constructor(
                     quota = options.objectOrNull("quota")?.toQuota(),
                     contextRefs = options.contextRefs(),
                     thread = options.stringOrNull("thread_id")?.let(::ThreadId),
+                    correlationId = options.stringOrNull("correlation_id"),
                 )
             }
             result.toJson()
@@ -256,7 +273,14 @@ class KoaksBridge internal constructor(
         val record = agentRecord(params)
         val options = params.objectOrNull("options") ?: JsonObject(emptyMap())
         val flow = if (resume) {
-            runtime.resume(record.built.agent, ThreadId(params.string("thread_id")))
+            runtime.resume(
+                record.built.agent,
+                ThreadId(params.string("thread_id")),
+                priority = options.intOrNull("priority") ?: 0,
+                quota = options.objectOrNull("quota")?.toQuota(),
+                contextRefs = options.contextRefs(),
+                correlationId = options.stringOrNull("correlation_id"),
+            )
         } else {
             runtime.stream(
                 record.built.agent,
@@ -265,6 +289,7 @@ class KoaksBridge internal constructor(
                 quota = options.objectOrNull("quota")?.toQuota(),
                 contextRefs = options.contextRefs(),
                 thread = options.stringOrNull("thread_id")?.let(::ThreadId),
+                correlationId = options.stringOrNull("correlation_id"),
             )
         }
         return startSubscription(record.key, params.string("callback_id"), flow.map { it.toJson() })
@@ -272,21 +297,59 @@ class KoaksBridge internal constructor(
 
     private suspend fun resumeAgent(params: JsonObject): JsonObject {
         val record = agentRecord(params)
+        val options = params.objectOrNull("options") ?: JsonObject(emptyMap())
         return withOperation(params.stringOrNull("operation_id"), record.key) {
-            runtime.resumeRun(record.built.agent, ThreadId(params.string("thread_id"))).toJson()
+            runtime.resumeRun(
+                record.built.agent,
+                ThreadId(params.string("thread_id")),
+                priority = options.intOrNull("priority") ?: 0,
+                quota = options.objectOrNull("quota")?.toQuota(),
+                contextRefs = options.contextRefs(),
+                correlationId = options.stringOrNull("correlation_id"),
+            ).toJson()
         }
     }
 
-    private fun spawnAgent(params: JsonObject): JsonObject {
+    private fun spawnAgent(params: JsonObject, structured: Boolean = false): JsonObject {
         val record = agentRecord(params)
         val options = params.objectOrNull("options") ?: JsonObject(emptyMap())
-        val handle = runtime.spawn(
+        val handle = if (structured) {
+            runtime.spawnStructured(
+                record.built.agent,
+                params.string("input"),
+                params.objectOrNull("output")?.toOutputSpec() ?: error("'output' is required"),
+                priority = options.intOrNull("priority") ?: 0,
+                quota = options.objectOrNull("quota")?.toQuota(),
+                contextRefs = options.contextRefs(),
+                thread = options.stringOrNull("thread_id")?.let(::ThreadId),
+                correlationId = options.stringOrNull("correlation_id"),
+            )
+        } else {
+            runtime.spawn(
+                record.built.agent,
+                params.string("input"),
+                priority = options.intOrNull("priority") ?: 0,
+                quota = options.objectOrNull("quota")?.toQuota(),
+                contextRefs = options.contextRefs(),
+                thread = options.stringOrNull("thread_id")?.let(::ThreadId),
+                correlationId = options.stringOrNull("correlation_id"),
+            )
+        }
+        val handleId = nextId("handle")
+        handles[handleId] = HandleRecord(record.key, handle)
+        return handleDescriptor(handleId, handle, parentRunId = null)
+    }
+
+    private fun spawnResumeAgent(params: JsonObject): JsonObject {
+        val record = agentRecord(params)
+        val options = params.objectOrNull("options") ?: JsonObject(emptyMap())
+        val handle = runtime.spawnResume(
             record.built.agent,
-            params.string("input"),
+            ThreadId(params.string("thread_id")),
             priority = options.intOrNull("priority") ?: 0,
             quota = options.objectOrNull("quota")?.toQuota(),
             contextRefs = options.contextRefs(),
-            thread = options.stringOrNull("thread_id")?.let(::ThreadId),
+            correlationId = options.stringOrNull("correlation_id"),
         )
         val handleId = nextId("handle")
         handles[handleId] = HandleRecord(record.key, handle)
@@ -554,6 +617,14 @@ class KoaksBridge internal constructor(
             )
         }
 
+    private suspend fun toolProgress(params: JsonObject): JsonElement =
+        toolExecutions.execute(params.string("execution_id")) { execution ->
+            val invocation = execution.invocationContext
+                ?: throw NodeBridgeException("lifecycle_error", "Tool progress requires a contextual tool invocation")
+            invocation.reportProgress(params.objectOrNull("progress")?.toToolProgress() ?: error("'progress' is required"))
+            JsonNull
+        }
+
     private suspend fun runtimeIpcSend(params: JsonObject): JsonElement {
         val target = requireIpcTarget(params.string("to_run_id"))
         runtime.ipc.send(params.toRuntimeMessage(runtime.ipc.nextId(), sender = null, receiver = target))
@@ -750,6 +821,16 @@ private fun JsonObject.toQuota(): Quota = Quota(
     wallClockMillis = longOrNull("wall_clock_ms"),
 )
 
+private fun JsonObject.toToolProgress(): ToolProgress = when (string("type")) {
+    "output" -> ToolProgress.Output(
+        text = string("text"),
+        stream = if (stringOrNull("stream") == "stderr") ToolOutputStream.Stderr else ToolOutputStream.Stdout,
+    )
+    "status" -> ToolProgress.Status(string("message"))
+    "custom" -> ToolProgress.Custom(string("kind"), get("payload") ?: JsonNull)
+    else -> throw IllegalArgumentException("unknown tool progress type '${string("type")}'")
+}
+
 private fun JsonObject.contextRefs(): List<ContextRef> =
     arrayOrNull("context_refs").orEmpty().map { ContextRef(it.jsonPrimitive.content) }
 
@@ -779,6 +860,7 @@ private fun handleDescriptor(id: String, handle: AgentHandle, parentRunId: RunId
     put("agent_id", JsonPrimitive(handle.agentId.value))
     handle.threadId?.let { put("thread_id", JsonPrimitive(it.value)) }
     handle.turnId?.let { put("turn_id", JsonPrimitive(it.value.toString())) }
+    handle.correlationId?.let { put("correlation_id", JsonPrimitive(it)) }
     parentRunId?.let { put("parent_run_id", JsonPrimitive(it.value.toString())) }
 }
 
@@ -815,4 +897,6 @@ private fun RuntimeMessage.toJson(replyToken: String? = null): JsonObject = buil
 private fun errorJson(error: Throwable): JsonObject = buildJsonObject {
     put("type", JsonPrimitive(error.bridgeErrorCode()))
     put("message", JsonPrimitive(error.message ?: error::class.simpleName ?: "unknown error"))
+    val stack = (error as? NodeCallbackException)?.callbackStack
+    stack?.takeIf { it.isNotBlank() }?.let { put("stack", JsonPrimitive(it)) }
 }

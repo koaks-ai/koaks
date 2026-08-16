@@ -6,6 +6,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 import org.koaks.framework.loop.AgentExecutionContext
 import org.koaks.framework.loop.AgentId
+import org.koaks.framework.tool.ToolInvocationContext
 import org.koaks.runtime.ipc.RuntimeMessage
 import org.koaks.runtime.resource.RuntimeContext
 
@@ -24,6 +25,7 @@ internal class ToolExecutionRegistry {
         val id: String,
         val runtimeContext: RuntimeContext,
         val executionContext: AgentExecutionContext,
+        val invocationContext: ToolInvocationContext?,
     ) {
         private val jobs = mutableSetOf<Job>()
         private val replyTokens = mutableMapOf<String, RuntimeMessage>()
@@ -71,9 +73,13 @@ internal class ToolExecutionRegistry {
     private val executions = mutableMapOf<String, Execution>()
     private var sequence = 0L
 
-    fun open(runtimeContext: RuntimeContext, executionContext: AgentExecutionContext): Execution {
+    fun open(
+        runtimeContext: RuntimeContext,
+        executionContext: AgentExecutionContext,
+        invocationContext: ToolInvocationContext? = null,
+    ): Execution {
         val id = "tool-execution-${++sequence}"
-        return Execution(id, runtimeContext, executionContext).also { executions[id] = it }
+        return Execution(id, runtimeContext, executionContext, invocationContext).also { executions[id] = it }
     }
 
     fun close(id: String, reason: String = "Tool execution completed") {
