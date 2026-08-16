@@ -28,7 +28,11 @@ The package is ESM-only and requires Node.js 20 or newer.
 ```ts
 import { createRuntime } from "@koaks/node";
 
-const runtime = createRuntime({ maxConcurrency: 4, highWaterMark: 64 });
+const runtime = createRuntime({
+  maxConcurrency: 4,
+  highWaterMark: 64,
+  runEventBufferCapacity: 1024,
+});
 const agent = await runtime.createAgent({
   id: "assistant",
   instructions: "Answer concisely.",
@@ -49,7 +53,37 @@ await runtime.close();
 ```
 
 Streams are single-consumer bounded `AsyncIterable` instances. Stopping a
-`for await` loop cancels the underlying Kotlin Flow and agent run.
+`for await` loop cancels the agent run. `run()`, `stream()`, structured runs,
+and Thread resume are convenience wrappers around `spawn()`-style handles.
+
+The bounded Node iterator protects the JS callback boundary, but consumer speed
+does not backpressure model or tool execution. Run events are recorded in the
+Runtime's bounded journal; a consumer that falls behind receives a typed history
+gap instead of parking the Agent.
+
+Use a handle when a run must continue independently from one UI subscription:
+
+```ts
+const handle = await agent.spawn("Inspect the project", {
+  threadId: "chat-1",
+  correlationId: "application-run-42",
+});
+
+for await (const envelope of handle.events()) {
+  if (envelope.kind === "agent" && envelope.event.type === "text_delta") {
+    process.stdout.write(envelope.event.text);
+  }
+}
+
+const result = await handle.result();
+await handle.release();
+```
+
+Handle events combine content and lifecycle events under one per-run sequence.
+The runtime retains the latest configured number of events without blocking a
+run. A late subscriber whose requested sequence has expired receives a
+`history_gap` envelope. Returning from `handle.events()` only cancels that
+subscription; it does not cancel the run.
 
 ## JavaScript tools and RuntimeContext
 
@@ -67,7 +101,8 @@ const agent = await runtime.createAgent({
       properties: { id: { type: "string" } },
       required: ["id"],
     },
-    async execute({ id }, { signal, runtime: toolRuntime }) {
+    async execute({ id }, { callId, signal, reportProgress, runtime: toolRuntime }) {
+      await reportProgress({ type: "status", message: `Reading ${id}` });
       return await toolRuntime.resources.withResource(`record:${id}`, async () => {
         const response = await fetch(`https://example.test/records/${id}`, { signal });
         const record = await response.json();
@@ -87,7 +122,8 @@ const result = await agent.run("Read record 42", { signal: controller.signal });
 ```
 
 Tool arguments are parsed from the model's JSON before `execute` is called. The
-Tool RuntimeContext exposes the current run metadata, shared resource locks,
+execution context exposes both the model `callId` and Koaks `executionId`, while
+the Tool RuntimeContext exposes the current run metadata, shared resource locks,
 run-scoped ContextStore access, Agent IPC, and true child spawning. If the run
 is cancelled, the tool's `AbortSignal` is aborted and pending Context operations
 are cancelled.
@@ -124,6 +160,28 @@ const orchestrator = await runtime.createAgent({
 conversation state, and `thread` starts an independent Turn. A `propagate`
 child failure fails its parent after the child tree settles; `capture` leaves
 the result for the caller to consume.
+
+## Tool approval through Hooks
+
+Approval policy is an application concern implemented with the suspendable
+`beforeTool` Hook. Koaks marks the run waiting while the Promise is pending and
+aborts the Hook signal if the run is cancelled:
+
+```ts
+hooks: [{
+  async beforeTool(context, execution) {
+    const allowed = await approvals.request({
+      runId: execution.runId,
+      call: context.call,
+      signal: execution.signal,
+    });
+    return allowed ? { action: "proceed" } : { action: "deny", reason: "Denied by user" };
+  },
+}]
+```
+
+Koaks does not persist approval requests or prescribe permission modes. The
+application owns those records, notifications, timeouts, and UI decisions.
 
 ## Runtime IPC operator
 
@@ -182,6 +240,35 @@ const agent = await runtime.createAgent({
 Provider arrays are tried in order. MCP compatibility in this release covers
 `tools/list` and `tools/call`.
 
+For lossless summarization, wrap an append-only custom memory and persist only
+the summary checkpoint separately:
+
+```ts
+memory: {
+  type: "summarizing",
+  id: "sqlite-summary",
+  model: { type: "openai", apiKey, model: "gpt-4.1-mini" },
+  maxTokens: 100_000,
+  keepRecentTurns: 4,
+  delegate: rawSqliteMemory,
+  stateStore: sqliteSummaryStateStore,
+  onCompaction(event) { persistTimelineMarker(event); },
+}
+```
+
+The delegate remains the source of truth for complete raw turns. A summary
+checkpoint is used only when its transcript basis still matches; otherwise the
+raw transcript is returned. Without `delegate` and `stateStore`, both stores are
+process-local and do not survive a restart.
+
+## Resume and process failure
+
+`runId` and `RunHandle` are valid only inside the current Runtime process.
+`resume(threadId)` starts a new run from an interrupted turn committed to the
+configured Memory; it does not reconnect to the previous handle. Koaks never
+automatically replays external side effects after a process crash. Applications
+should mark such runs interrupted and require an explicit retry or resume policy.
+
 ## Electron
 
 Keep the runtime in the main process for a small application. For stronger
@@ -190,6 +277,6 @@ only application-level commands and events over Electron messaging. Complete
 examples are included in `examples/electron-main.ts` and
 `examples/electron-utility.ts`.
 
-Always close agents and the runtime during application shutdown. `close()` is
-idempotent and cancels active streams, handles, tools, HTTP transports, memory,
-and MCP resources before returning.
+During shutdown, stop accepting application requests, cancel or await active
+handles, close agents, and finally close the runtime. `close()` is idempotent and
+cancels active streams, handles, tools, HTTP transports, memory, and MCP resources.
