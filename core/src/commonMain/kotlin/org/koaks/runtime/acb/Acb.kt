@@ -27,6 +27,7 @@ class Acb internal constructor(
     turnId: TurnId?,
     priority: Int,
     parent: RunId?,
+    correlationId: String?,
 ) {
     private val cancellationReported = MutableStateFlow(false)
     private val childFailurePolicies = MutableStateFlow<Map<RunId, ChildFailurePolicy>>(emptyMap())
@@ -40,6 +41,7 @@ class Acb internal constructor(
             state = LifecycleState.CREATED,
             priority = priority,
             parent = parent,
+            correlationId = correlationId,
             children = emptyList(),
             acceptingChildren = true,
             usage = Usage.ZERO,
@@ -171,6 +173,7 @@ data class AcbSnapshot(
     val state: LifecycleState,
     val priority: Int,
     val parent: RunId?,
+    val correlationId: String?,
     val children: List<RunId>,
     val acceptingChildren: Boolean,
     val usage: Usage,

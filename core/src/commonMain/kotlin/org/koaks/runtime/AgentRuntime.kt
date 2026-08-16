@@ -12,7 +12,6 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -21,8 +20,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.buffer
-import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -52,11 +50,14 @@ import org.koaks.framework.policy.TerminationReason
 import org.koaks.runtime.acb.Acb
 import org.koaks.runtime.acb.AcbSnapshot
 import org.koaks.runtime.acb.AgentHandle
-import org.koaks.runtime.acb.ChannelEventSink
 import org.koaks.runtime.acb.EventSink
+import org.koaks.runtime.acb.JournalEventSink
 import org.koaks.runtime.acb.InstanceControl
 import org.koaks.runtime.acb.LifecycleState
 import org.koaks.runtime.acb.RunId
+import org.koaks.runtime.acb.RunEventJournal
+import org.koaks.runtime.acb.RunEventHistoryGapException
+import org.koaks.runtime.acb.RunEventPayload
 import org.koaks.runtime.acb.TurnId
 import org.koaks.runtime.context.ContextRef
 import org.koaks.runtime.context.ContextStore
@@ -92,12 +93,14 @@ class AgentRuntimeConfig {
     var dispatcher: CoroutineDispatcher = Dispatchers.Default
     var defaultQuota: Quota = Quota.UNLIMITED
     var defaultMemoryProvider: MemoryProvider = WindowMemoryProvider(maxMessages = 40)
+    var runEventBufferCapacity: Int = 1024
 
     internal fun snapshot(): AgentRuntimeConfig = AgentRuntimeConfig().also {
         it.maxConcurrency = maxConcurrency
         it.dispatcher = dispatcher
         it.defaultQuota = defaultQuota
         it.defaultMemoryProvider = defaultMemoryProvider
+        it.runEventBufferCapacity = runEventBufferCapacity
     }
 }
 
@@ -126,6 +129,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
 
     val maxConcurrency: Int = config.maxConcurrency
     private val defaultQuota: Quota = config.defaultQuota
+    private val runEventBufferCapacity: Int = config.runEventBufferCapacity.also {
+        require(it > 0) { "runEventBufferCapacity must be positive" }
+    }
 
     private val job = SupervisorJob()
     private val scope = CoroutineScope(config.dispatcher + job + CoroutineName("agent-runtime"))
@@ -137,6 +143,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
     val events: SharedFlow<RuntimeEvent> get() = _events.asSharedFlow()
 
     private fun emit(event: RuntimeEvent) {
+        event.runIdOrNull()?.let { id ->
+            eventJournals.value[id]?.append(RunEventPayload.Lifecycle(event))
+        }
         _events.tryEmit(event)
     }
 
@@ -148,6 +157,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
     private val turnSeq = MutableStateFlow(0L)
     private val acbs = MutableStateFlow<Map<RunId, Acb>>(emptyMap())
     private val handles = MutableStateFlow<Map<RunId, AgentHandle>>(emptyMap())
+    private val eventJournals = MutableStateFlow<Map<RunId, RunEventJournal>>(emptyMap())
     private val registrations = MutableStateFlow<Map<AgentId, AgentRegistration>>(emptyMap())
     private val turnContexts = MutableStateFlow<Map<TurnId, TurnContext>>(emptyMap())
     private val closed = MutableStateFlow(false)
@@ -194,6 +204,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         victims.forEach { ipc.remove(it) }
         acbs.update { it - victims }
         handles.update { it - victims }
+        eventJournals.update { it - victims }
         return victims.size
     }
 
@@ -267,8 +278,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota? = null,
         contextRefs: List<ContextRef> = emptyList(),
         thread: ThreadId? = null,
+        correlationId: String? = null,
     ): AgentResult {
-        val handle = spawn(agent, input, priority, quota, contextRefs, thread)
+        val handle = spawn(agent, input, priority, quota, contextRefs, thread, correlationId)
         return try {
             handle.await()
         } catch (cancelled: CancellationException) {
@@ -288,18 +300,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota? = null,
         contextRefs: List<ContextRef> = emptyList(),
         thread: ThreadId? = null,
+        correlationId: String? = null,
     ): AgentResult {
-        val handle = spawnInternal(
-            agent,
-            input,
-            priority,
-            quota,
-            parent = null,
-            contextRefs = contextRefs,
-            sink = EventSink.NONE,
-            thread = thread,
-            structuredSpec = spec,
-        )
+        val handle = spawnStructured(agent, input, spec, priority, quota, contextRefs, thread, correlationId)
         return try {
             handle.await()
         } catch (cancelled: CancellationException) {
@@ -318,26 +321,26 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota? = null,
         contextRefs: List<ContextRef> = emptyList(),
         thread: ThreadId? = null,
-    ): Flow<AgentEvent> = channelFlow {
-        val handle = spawnInternal(
-            agent = agent,
-            input = input,
-            priority = priority,
-            quota = quota,
-            parent = null,
-            contextRefs = contextRefs,
-            sink = ChannelEventSink(channel),
-            thread = thread,
-            structuredSpec = null,
-        )
+        correlationId: String? = null,
+    ): Flow<AgentEvent> = flow {
+        val handle = spawn(agent, input, priority, quota, contextRefs, thread, correlationId)
         try {
-            handle.join()
+            handle.events().collect { envelope ->
+                when (val payload = envelope.payload) {
+                    is RunEventPayload.Agent -> emit(payload.event)
+                    is RunEventPayload.HistoryGap -> throw RunEventHistoryGapException(
+                        payload.requestedAfter,
+                        payload.oldestAvailable,
+                    )
+                    is RunEventPayload.Lifecycle -> Unit
+                }
+            }
         } finally {
             if (handle.isActive || !handle.state.isTerminal) {
                 cancelAndJoin(handle, "runtime stream collection stopped")
             }
         }
-    }.buffer(Channel.RENDEZVOUS)
+    }
 
     fun stream(agent: Agent, input: String, thread: String): Flow<AgentEvent> =
         stream(agent, input, thread = ThreadId(thread))
@@ -349,46 +352,89 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota? = null,
         contextRefs: List<ContextRef> = emptyList(),
         thread: ThreadId? = null,
-    ): AgentHandle = spawnInternal(agent, input, priority, quota, null, contextRefs, EventSink.NONE, thread, null)
+        correlationId: String? = null,
+    ): AgentHandle = spawnInternal(agent, input, priority, quota, null, contextRefs, thread, null, correlationId = correlationId)
 
     fun spawn(agent: Agent, input: String, thread: String): AgentHandle =
         spawn(agent, input, thread = ThreadId(thread))
 
-    fun resume(agent: Agent, thread: ThreadId): Flow<AgentEvent> = channelFlow {
-        val handle = spawnInternal(
-            agent = agent,
-            input = "",
-            priority = 0,
-            quota = null,
-            parent = null,
-            contextRefs = emptyList(),
-            sink = ChannelEventSink(channel),
-            thread = thread,
-            structuredSpec = null,
-            resume = true,
-        )
+    fun spawnStructured(
+        agent: Agent,
+        input: String,
+        spec: OutputSpec,
+        priority: Int = 0,
+        quota: Quota? = null,
+        contextRefs: List<ContextRef> = emptyList(),
+        thread: ThreadId? = null,
+        correlationId: String? = null,
+    ): AgentHandle = spawnInternal(
+        agent,
+        input,
+        priority,
+        quota,
+        parent = null,
+        contextRefs = contextRefs,
+        thread = thread,
+        structuredSpec = spec,
+        correlationId = correlationId,
+    )
+
+    fun spawnResume(
+        agent: Agent,
+        thread: ThreadId,
+        priority: Int = 0,
+        quota: Quota? = null,
+        contextRefs: List<ContextRef> = emptyList(),
+        correlationId: String? = null,
+    ): AgentHandle = spawnInternal(
+        agent = agent,
+        input = "",
+        priority = priority,
+        quota = quota,
+        parent = null,
+        contextRefs = contextRefs,
+        thread = thread,
+        structuredSpec = null,
+        correlationId = correlationId,
+        resume = true,
+    )
+
+    fun resume(
+        agent: Agent,
+        thread: ThreadId,
+        priority: Int = 0,
+        quota: Quota? = null,
+        contextRefs: List<ContextRef> = emptyList(),
+        correlationId: String? = null,
+    ): Flow<AgentEvent> = flow {
+        val handle = spawnResume(agent, thread, priority, quota, contextRefs, correlationId)
         try {
-            handle.join()
+            handle.events().collect { envelope ->
+                when (val payload = envelope.payload) {
+                    is RunEventPayload.Agent -> emit(payload.event)
+                    is RunEventPayload.HistoryGap -> throw RunEventHistoryGapException(
+                        payload.requestedAfter,
+                        payload.oldestAvailable,
+                    )
+                    is RunEventPayload.Lifecycle -> Unit
+                }
+            }
         } finally {
             if (handle.isActive || !handle.state.isTerminal) {
                 cancelAndJoin(handle, "runtime resume collection stopped")
             }
         }
-    }.buffer(Channel.RENDEZVOUS)
+    }
 
-    suspend fun resumeRun(agent: Agent, thread: ThreadId): AgentResult {
-        val handle = spawnInternal(
-            agent = agent,
-            input = "",
-            priority = 0,
-            quota = null,
-            parent = null,
-            contextRefs = emptyList(),
-            sink = EventSink.NONE,
-            thread = thread,
-            structuredSpec = null,
-            resume = true,
-        )
+    suspend fun resumeRun(
+        agent: Agent,
+        thread: ThreadId,
+        priority: Int = 0,
+        quota: Quota? = null,
+        contextRefs: List<ContextRef> = emptyList(),
+        correlationId: String? = null,
+    ): AgentResult {
+        val handle = spawnResume(agent, thread, priority, quota, contextRefs, correlationId)
         return try {
             handle.await()
         } catch (cancelled: CancellationException) {
@@ -404,15 +450,16 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota?,
         parent: RunId?,
         contextRefs: List<ContextRef>,
-        sink: EventSink,
         thread: ThreadId?,
         structuredSpec: OutputSpec?,
         inheritedTurnContext: TurnContext? = null,
         childConversation: ChildConversation? = null,
         failurePolicy: ChildFailurePolicy = ChildFailurePolicy.PROPAGATE,
+        correlationId: String? = null,
         resume: Boolean = false,
     ): AgentHandle {
         check(!closed.value) { "AgentRuntime is closed" }
+        require(correlationId == null || correlationId.isNotBlank()) { "correlationId must not be blank" }
 
         val parentAcb = parent?.let { parentId ->
             acbs.value[parentId]
@@ -481,9 +528,20 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                 }
                 childLinked = true
             }
-            val acb = Acb(runId, agent.id, agent.name, effectiveThread, turnId, priority, parent)
+            val effectiveCorrelationId = correlationId ?: parentSnapshot?.correlationId
+            val acb = Acb(runId, agent.id, agent.name, effectiveThread, turnId, priority, parent, effectiveCorrelationId)
             if (turnReservation != null) acb.setState(LifecycleState.THREAD_QUEUED)
             acbs.update { it + (runId to acb) }
+            val eventJournal = RunEventJournal(
+                runId,
+                agent.id,
+                effectiveThread,
+                turnId,
+                effectiveCorrelationId,
+                runEventBufferCapacity,
+            )
+            eventJournals.update { it + (runId to eventJournal) }
+            val sink = JournalEventSink(eventJournal)
             emit(RuntimeEvent.Spawned(runId, agent.id, agent.name, effectiveThread, turnId, priority, parent))
 
             val effectiveQuota = quota ?: defaultQuota
@@ -500,15 +558,25 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                     quota = childQuota,
                     parent = runId,
                     contextRefs = childRefs,
-                    sink = EventSink.NONE,
                     thread = null,
                     structuredSpec = null,
                     inheritedTurnContext = turnContext,
                     childConversation = conversation,
                     failurePolicy = childFailurePolicy,
+                    correlationId = effectiveCorrelationId,
                 )
             }
-            val runtimeContext = RuntimeContext(resources, runId, agent.id, effectiveThread, turnId, ipc, context, childSpawner)
+            val runtimeContext = RuntimeContext(
+                resources,
+                runId,
+                agent.id,
+                effectiveThread,
+                turnId,
+                effectiveCorrelationId,
+                ipc,
+                context,
+                childSpawner,
+            )
             val gate = InstanceActivityGate(runId, acb, ::emit) { turnContext?.markSideEffect() }
 
             val deferred: Deferred<AgentResult> = scope.async(runtimeContext + gate) {
@@ -567,10 +635,12 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                 agent.id,
                 effectiveThread,
                 turnId,
+                effectiveCorrelationId,
                 acb,
                 control,
                 deferred,
                 failurePolicy,
+                eventJournal,
             )
             handles.update { it + (runId to handle) }
 
@@ -578,6 +648,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                 handle.cancel("agent runtime closed")
                 handles.update { it - runId }
                 acbs.update { it - runId }
+                eventJournals.update { it - runId }
                 ipc.remove(runId)
                 error("AgentRuntime is closed")
             }
@@ -587,6 +658,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                 if (childLinked) parentAcb?.removeChild(runId)
                 turnReservation?.cancel()
                 if (turnContextRegistered && turnId != null) turnContexts.update { it - turnId }
+                eventJournals.update { it - runId }
                 releaseRegistration(agent)
             }
         }
@@ -1077,6 +1149,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         ipc.closeAll()
         handles.value = emptyMap()
         acbs.value = emptyMap()
+        eventJournals.value = emptyMap()
         registrations.value = emptyMap()
     }
 }
@@ -1162,6 +1235,23 @@ private object DefaultRuntimeHolder {
 }
 
 private class QuotaSignal(val dimension: String) : CancellationException("quota exceeded: $dimension")
+
+private fun RuntimeEvent.runIdOrNull(): RunId? = when (this) {
+    is RuntimeEvent.Spawned -> runId
+    is RuntimeEvent.Running -> runId
+    is RuntimeEvent.Waiting -> runId
+    is RuntimeEvent.Suspended -> runId
+    is RuntimeEvent.Resumed -> runId
+    is RuntimeEvent.Finished -> runId
+    is RuntimeEvent.Incomplete -> runId
+    is RuntimeEvent.Terminated -> runId
+    is RuntimeEvent.Failed -> runId
+    is RuntimeEvent.Cancelled -> runId
+    is RuntimeEvent.UnhandledChildFailure -> childRunId
+    is RuntimeEvent.SideEffectRollback -> runId
+    is RuntimeEvent.Retrying -> runId
+    is RuntimeEvent.CircuitOpen -> runId
+}
 
 fun AgentRuntime(configure: AgentRuntimeConfig.() -> Unit = {}): AgentRuntime =
     AgentRuntime(AgentRuntimeConfig().apply(configure))

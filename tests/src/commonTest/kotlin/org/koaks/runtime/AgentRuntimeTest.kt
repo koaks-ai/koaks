@@ -29,6 +29,7 @@ import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
 import org.koaks.runtime.acb.AgentHandle
 import org.koaks.runtime.acb.LifecycleState
+import org.koaks.runtime.acb.RunEventPayload
 import org.koaks.runtime.context.ContextRef
 import org.koaks.runtime.observe.RuntimeEvent
 import org.koaks.runtime.resource.ChildConversation
@@ -224,6 +225,56 @@ class AgentRuntimeTest {
     }
 
     @Test
+    fun spawn_handle_replays_one_ordered_content_and_lifecycle_timeline() = runTest {
+        withAgentRuntime {
+            val handle = spawn(
+                streamingAgent("timeline", listOf("one", "two")),
+                "hi",
+                correlationId = "app-run-7",
+            )
+            assertEquals("onetwo", handle.await().text)
+
+            val events = handle.events().toList()
+            assertEquals(events.map { it.sequence }.sorted(), events.map { it.sequence })
+            assertEquals(events.size, events.map { it.sequence }.toSet().size)
+            assertTrue(events.all { it.correlationId == "app-run-7" })
+            assertTrue((events.first().payload as RunEventPayload.Lifecycle).event is RuntimeEvent.Spawned)
+            assertEquals(
+                "onetwo",
+                events.mapNotNull { (it.payload as? RunEventPayload.Agent)?.event as? AgentEvent.TextDelta }
+                    .joinToString("") { it.text },
+            )
+            assertTrue((events.last().payload as RunEventPayload.Lifecycle).event is RuntimeEvent.Finished)
+        }
+    }
+
+    @Test
+    fun handle_event_history_reports_a_gap_without_blocking_the_run() = runTest {
+        val runtime = AgentRuntime { runEventBufferCapacity = 3 }
+        runtime.use {
+            val handle = it.spawn(streamingAgent("small-buffer", List(8) { index -> "$index" }), "hi")
+            assertTrue(handle.await() is AgentResult.Completed)
+
+            val retained = handle.events().toList()
+            val gap = retained.first().payload as RunEventPayload.HistoryGap
+            assertEquals(0, gap.requestedAfter)
+            assertTrue(gap.oldestAvailable > 1)
+            assertEquals(3, retained.drop(1).size)
+        }
+    }
+
+    @Test
+    fun stopping_a_handle_event_subscription_does_not_cancel_background_execution() = runTest {
+        withAgentRuntime {
+            val handle = spawn(streamingAgent("detached-events", listOf("a", "b")), "hi")
+            handle.events().take(1).toList()
+
+            assertEquals("ab", handle.await().text)
+            assertEquals(LifecycleState.FINISHED, handle.state)
+        }
+    }
+
+    @Test
     fun stream_is_cold_and_each_collection_creates_a_new_instance() = runTest {
         val script = listOf(ModelEvent.TextDelta("again"), done(Usage(1, 1, 2)))
         val repeatable = agent {
@@ -342,11 +393,36 @@ class AgentRuntimeTest {
     }
 
     @Test
-    fun taking_only_the_first_stream_event_cancels_the_instance() = runTest {
+    fun taking_only_the_first_stream_event_cancels_an_active_instance() = runTest {
+        var modelEvents = 0
+        val releaseModel = CompletableDeferred<Unit>()
+        val active = agent {
+            id = "take-one"
+            name = "take-one"
+            model {
+                custom(
+                    FakeLanguageModel(
+                        ArrayDeque(
+                            listOf(
+                                listOf(
+                                    ModelEvent.TextDelta("one"),
+                                    ModelEvent.TextDelta("two"),
+                                    done(Usage(1, 2, 3)),
+                                ),
+                            ),
+                        ),
+                        beforeEmit = {
+                            if (modelEvents++ > 0) releaseModel.await()
+                        },
+                    ),
+                )
+            }
+            terminateAfter(maxSteps = 5)
+        }
         val runtime = AgentRuntime { dispatcher = StandardTestDispatcher(testScheduler) }
         runtime.use {
             val collection = async {
-                it.stream(streamingAgent("take-one", listOf("one", "two")), "hi")
+                it.stream(active, "hi")
                     .take(1).toList()
             }
             advanceUntilIdle()
@@ -361,13 +437,36 @@ class AgentRuntimeTest {
     fun collector_failure_cancels_the_stream_instance() = runTest {
         class CollectorFailure : RuntimeException()
 
-        // Unconfined execution makes the downstream failure race the producer send directly;
-        // the instance must still normalize that failure to cancellation.
+        var modelEvents = 0
+        val releaseModel = CompletableDeferred<Unit>()
+        val active = agent {
+            id = "collector-failure"
+            name = "collector-failure"
+            model {
+                custom(
+                    FakeLanguageModel(
+                        ArrayDeque(
+                            listOf(
+                                listOf(
+                                    ModelEvent.TextDelta("one"),
+                                    ModelEvent.TextDelta("two"),
+                                    done(Usage(1, 2, 3)),
+                                ),
+                            ),
+                        ),
+                        beforeEmit = {
+                            if (modelEvents++ > 0) releaseModel.await()
+                        },
+                    ),
+                )
+            }
+            terminateAfter(maxSteps = 5)
+        }
         val runtime = AgentRuntime { dispatcher = UnconfinedTestDispatcher(testScheduler) }
         runtime.use {
             val collection = async {
                 assertFailsWith<CollectorFailure> {
-                    it.stream(streamingAgent("collector-failure", listOf("one", "two")), "hi")
+                    it.stream(active, "hi")
                         .collect { throw CollectorFailure() }
                 }
             }
@@ -375,6 +474,29 @@ class AgentRuntimeTest {
             collection.await()
 
             assertEquals(LifecycleState.CANCELLED, it.runs.single().state)
+        }
+    }
+
+    @Test
+    fun a_slow_stream_collector_does_not_backpressure_the_instance() = runTest {
+        val collectorReceivedEvent = CompletableDeferred<Unit>()
+        val releaseCollector = CompletableDeferred<Unit>()
+        val runtime = AgentRuntime { dispatcher = StandardTestDispatcher(testScheduler) }
+        runtime.use {
+            val collection = launch {
+                it.stream(streamingAgent("slow-collector", listOf("one", "two")), "hi")
+                    .collect {
+                        collectorReceivedEvent.complete(Unit)
+                        releaseCollector.await()
+                    }
+            }
+            advanceUntilIdle()
+            collectorReceivedEvent.await()
+
+            assertEquals(LifecycleState.FINISHED, it.runs.single().state)
+
+            releaseCollector.complete(Unit)
+            collection.join()
         }
     }
 

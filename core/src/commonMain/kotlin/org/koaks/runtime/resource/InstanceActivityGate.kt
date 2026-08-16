@@ -8,6 +8,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.koaks.framework.loop.AgentExecutionContext
 import org.koaks.framework.loop.ExecutionBranch
+import org.koaks.framework.loop.ExecutionIdentity
 import org.koaks.runtime.acb.Acb
 import org.koaks.runtime.acb.RunId
 import org.koaks.runtime.acb.LifecycleState
@@ -46,6 +47,16 @@ internal class InstanceActivityGate(
     private val emit: (RuntimeEvent) -> Unit,
     private val onSideEffect: () -> Unit = {},
 ) : AgentExecutionContext() {
+
+    override val identity: ExecutionIdentity = acb.snapshot.let { snapshot ->
+        ExecutionIdentity(
+            runId = runId.value.toString(),
+            agentId = snapshot.agentId.value,
+            threadId = snapshot.threadId?.value,
+            turnId = snapshot.turnId?.value?.toString(),
+            correlationId = snapshot.correlationId,
+        )
+    }
 
     private enum class BranchState { RUNNABLE, WAITING }
 

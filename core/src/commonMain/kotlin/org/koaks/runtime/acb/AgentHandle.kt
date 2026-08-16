@@ -5,6 +5,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import org.koaks.framework.loop.AgentExecutionContext
 import org.koaks.framework.loop.AgentResult
@@ -24,10 +25,12 @@ class AgentHandle internal constructor(
     val agentId: AgentId,
     val threadId: ThreadId?,
     val turnId: TurnId?,
+    val correlationId: String?,
     private val acb: Acb,
     private val control: InstanceControl,
     private val deferred: Deferred<AgentResult>,
     private val failurePolicy: ChildFailurePolicy,
+    private val eventJournal: RunEventJournal,
 ) {
     private val failureObserved = MutableStateFlow(false)
     private val unhandledFailureReported = MutableStateFlow(false)
@@ -37,6 +40,9 @@ class AgentHandle internal constructor(
 
     /** Observable control-block updates. */
     val updates: StateFlow<AcbSnapshot> get() = acb.updates
+
+    /** Ordered lifecycle and content events retained by this run's bounded journal. */
+    fun events(afterSequence: Long? = null): Flow<RunEventEnvelope> = eventJournal.events(afterSequence)
 
     /** Current lifecycle state (shortcut for `snapshot.state`). */
     val state: LifecycleState get() = acb.snapshot.state

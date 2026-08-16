@@ -49,6 +49,7 @@ class RuntimeContext internal constructor(
     val agentId: AgentId,
     val threadId: ThreadId?,
     val turnId: TurnId?,
+    val correlationId: String?,
     val ipc: IpcHub,
     val context: ContextStore,
     private val spawner: AgentSpawner,

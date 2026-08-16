@@ -3,6 +3,14 @@ package org.koaks.framework.loop
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 
+data class ExecutionIdentity(
+    val runId: String,
+    val agentId: String,
+    val threadId: String? = null,
+    val turnId: String? = null,
+    val correlationId: String? = null,
+)
+
 /**
  * A neutral hook, carried in the coroutine context, that lets whoever runs an agent
  * observe when an execution branch blocks and resumes. The agent loop itself has one
@@ -16,6 +24,9 @@ import kotlin.coroutines.CoroutineContext
 abstract class AgentExecutionContext protected constructor() :
     AbstractCoroutineContextElement(Key) {
     companion object Key : CoroutineContext.Key<AgentExecutionContext>
+
+    /** Runtime identity when execution is managed by an AgentRuntime. */
+    open val identity: ExecutionIdentity? get() = null
 
     /** Marks the current branch as blocked. Calls may be nested but must be balanced. */
     abstract suspend fun enterWaiting()
