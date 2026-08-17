@@ -33,6 +33,21 @@ value class ProviderId(val value: String) {
     }
 }
 
+/** Wire protocol spoken by a provider adapter, independent of the provider namespace. */
+@Serializable
+@JvmInline
+value class ProtocolId(val value: String) {
+    init {
+        require(value.isNotBlank()) { "ProtocolId must not be blank" }
+    }
+
+    companion object {
+        val OpenAIResponses = ProtocolId("openai-responses")
+        val ChatCompletions = ProtocolId("chat-completions")
+        val AnthropicMessages = ProtocolId("anthropic-messages")
+    }
+}
+
 /** Provider-native identifier. Providers ignore ids that do not belong to their namespace. */
 @Serializable
 data class ProviderScopedId(

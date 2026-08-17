@@ -18,6 +18,7 @@ import org.koaks.framework.middleware.StepContext
 import org.koaks.framework.middleware.ToolContext
 import org.koaks.framework.middleware.ToolDecision
 import org.koaks.framework.model.AgentError
+import org.koaks.framework.model.EventDetail
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelRequest
@@ -38,8 +39,14 @@ internal class AgentRunner(private val agent: Agent) {
 
     internal data class LoopRun(val state: AgentState)
 
-    fun stream(initial: List<ModelItem>, instructions: String?, turn: TurnBuilder, checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null): Flow<AgentEvent> = channelFlow {
-        runLoop(initial, instructions, turn, checkpoint) { send(it) }
+    fun stream(
+        initial: List<ModelItem>,
+        instructions: String?,
+        turn: TurnBuilder,
+        checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
+    ): Flow<AgentEvent> = channelFlow {
+        runLoop(initial, instructions, turn, checkpoint, eventDetail) { send(it) }
     }
 
     private suspend fun runLoop(
@@ -47,6 +54,7 @@ internal class AgentRunner(private val agent: Agent) {
         instructions: String?,
         turn: TurnBuilder,
         checkpoint: org.koaks.framework.model.ProviderCheckpoint?,
+        eventDetail: EventDetail,
         emit: suspend (AgentEvent) -> Unit,
     ): LoopRun {
         val outputMutex = Mutex()
@@ -77,7 +85,7 @@ internal class AgentRunner(private val agent: Agent) {
             try {
                 val source = modelSource(
                     state,
-                    agent.toRequest(state, stepKey, OutputFormat.Text),
+                    agent.toRequest(state, stepKey, OutputFormat.Text, eventDetail),
                     ModelCallPhase.Normal,
                 )
                 source.collect { event ->
@@ -86,11 +94,14 @@ internal class AgentRunner(private val agent: Agent) {
                     when (event) {
                         is ModelEvent.TextDelta -> {
                             emittedText = true
-                            out(AgentEvent.TextDelta(event.text))
+                            out(AgentEvent.TextDelta(event.text, event.itemRef))
                         }
-                        is ModelEvent.ReasoningDelta -> out(AgentEvent.ReasoningDelta(event.text))
+                        is ModelEvent.ReasoningDelta -> out(AgentEvent.ReasoningDelta(event.text, event.itemRef, event.kind))
                         is ModelEvent.ToolCallCompleted -> out(AgentEvent.ToolCallRequested(event.call))
                         is ModelEvent.Finished -> {
+                            if (eventDetail == EventDetail.LOSSLESS) {
+                                out(AgentEvent.Model(event, state.step, ModelCallPhase.Normal))
+                            }
                             val response = event.response
                             terminalResponse = response
                             state = state.addUsage(response.usage).withCheckpoint(response.checkpoint)
@@ -98,7 +109,13 @@ internal class AgentRunner(private val agent: Agent) {
                                 throw ModelFailure(response.error)
                             }
                         }
-                        else -> logger.debug { "AgentRunner: ignoring model event: $event" }
+                        else -> {
+                            if (eventDetail == EventDetail.LOSSLESS) {
+                                out(AgentEvent.Model(event, state.step, ModelCallPhase.Normal))
+                            } else {
+                                logger.debug { "AgentRunner: ignoring model event: $event" }
+                            }
+                        }
                     }
                 }
             } catch (t: Throwable) {
@@ -244,7 +261,7 @@ internal class AgentRunner(private val agent: Agent) {
         checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null,
     ): AgentResult {
         val events = mutableListOf<AgentEvent>()
-        runLoop(initial, instructions, turn, checkpoint) { events += it }
+        runLoop(initial, instructions, turn, checkpoint, EventDetail.SEMANTIC) { events += it }
         return resultFrom(events)
     }
 
@@ -271,8 +288,9 @@ internal class AgentRunner(private val agent: Agent) {
         spec: OutputSpec,
         turn: TurnBuilder,
         checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): Flow<AgentEvent> = flow {
-        runStructured(initial, instructions, spec, turn, checkpoint) { emit(it) }
+        runStructured(initial, instructions, spec, turn, checkpoint, eventDetail) { emit(it) }
     }
 
     private suspend fun runStructured(
@@ -281,10 +299,11 @@ internal class AgentRunner(private val agent: Agent) {
         spec: OutputSpec,
         turn: TurnBuilder,
         checkpoint: org.koaks.framework.model.ProviderCheckpoint?,
+        eventDetail: EventDetail,
         emit: suspend (AgentEvent) -> Unit,
     ): AgentResult {
         val events = mutableListOf<AgentEvent>()
-        val loop = runLoop(initial, instructions, turn, checkpoint) { event ->
+        val loop = runLoop(initial, instructions, turn, checkpoint, eventDetail) { event ->
             events += event
             when (event) {
                 is AgentEvent.TextDelta,
@@ -309,7 +328,7 @@ internal class AgentRunner(private val agent: Agent) {
         val convo = loop.state.items + listOfNotNull(formatInstruction)
         formatInstruction?.let { turn.append(it) }
         val finalizationState = loop.state.copy(items = convo)
-        val request = agent.toRequest(finalizationState, newIdempotencyKey(), format).copy(tools = emptyList())
+        val request = agent.toRequest(finalizationState, newIdempotencyKey(), format, eventDetail).copy(tools = emptyList())
 
         var finalizationResponse: ModelResponse? = null
         try {
@@ -318,15 +337,29 @@ internal class AgentRunner(private val agent: Agent) {
                     turn.observe(event)
                     agent.listeners.forEach { it.onModelEvent(event) }
                     when (event) {
-                        is ModelEvent.TextDelta -> emitStructuredEvent(AgentEvent.TextDelta(event.text), emit)
-                        is ModelEvent.ReasoningDelta -> emitStructuredEvent(AgentEvent.ReasoningDelta(event.text), emit)
+                        is ModelEvent.TextDelta -> emitStructuredEvent(AgentEvent.TextDelta(event.text, event.itemRef), emit)
+                        is ModelEvent.ReasoningDelta -> emitStructuredEvent(
+                            AgentEvent.ReasoningDelta(event.text, event.itemRef, event.kind),
+                            emit,
+                        )
                         is ModelEvent.Finished -> {
+                            if (eventDetail == EventDetail.LOSSLESS) {
+                                emitStructuredEvent(
+                                    AgentEvent.Model(event, loop.state.step, ModelCallPhase.StructuredFinalization),
+                                    emit,
+                                )
+                            }
                             finalizationResponse = event.response
                             if (event.response is ModelResponse.Failed) {
                                 throw ModelFailure(event.response.error)
                             }
                         }
-                        else -> Unit
+                        else -> if (eventDetail == EventDetail.LOSSLESS) {
+                            emitStructuredEvent(
+                                AgentEvent.Model(event, loop.state.step, ModelCallPhase.StructuredFinalization),
+                                emit,
+                            )
+                        }
                     }
                 }
         } catch (c: CancellationException) {

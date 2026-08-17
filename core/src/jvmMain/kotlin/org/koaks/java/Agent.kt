@@ -29,18 +29,31 @@ class Agent private constructor(
     @Throws(InterruptedException::class)
     fun run(input: String, threadId: String): AgentResult = runBlocking { delegate.run(input, threadId) }
 
+    @Throws(InterruptedException::class)
+    fun run(input: String, options: RunOptions): AgentResult =
+        AgentRuntime.defaultRuntime().run(this, input, options)
+
     fun runAsync(input: String): CompletableFuture<AgentResult> = spawn(input).resultAsync()
 
     fun runAsync(input: String, threadId: String): CompletableFuture<AgentResult> =
         spawn(input, threadId).resultAsync()
 
+    fun runAsync(input: String, options: RunOptions): CompletableFuture<AgentResult> =
+        AgentRuntime.defaultRuntime().runAsync(this, input, options)
+
     fun stream(input: String): EventStream = EventStream.from(delegate.stream(input))
 
     fun stream(input: String, threadId: String): EventStream = EventStream.from(delegate.stream(input, threadId))
 
+    fun stream(input: String, options: RunOptions): EventStream =
+        AgentRuntime.defaultRuntime().stream(this, input, options)
+
     fun spawn(input: String): RunHandle = RunHandle.from(delegate.spawn(input))
 
     fun spawn(input: String, threadId: String): RunHandle = RunHandle.from(delegate.spawn(input, threadId))
+
+    fun spawn(input: String, options: RunOptions): RunHandle =
+        AgentRuntime.defaultRuntime().spawn(this, input, options)
 
     @Throws(InterruptedException::class)
     fun <T> runStructured(input: String, outputType: Class<T>): T =
@@ -49,6 +62,14 @@ class Agent private constructor(
     @Throws(InterruptedException::class)
     fun <T> runStructured(input: String, outputType: TypeReference<T>): T =
         runStructured(input, JacksonType.of(outputType))
+
+    @Throws(InterruptedException::class)
+    fun <T> runStructured(input: String, options: RunOptions, outputType: Class<T>): T =
+        AgentRuntime.defaultRuntime().runStructured(this, input, options, outputType)
+
+    @Throws(InterruptedException::class)
+    fun <T> runStructured(input: String, options: RunOptions, outputType: TypeReference<T>): T =
+        AgentRuntime.defaultRuntime().runStructured(this, input, options, outputType)
 
     @Throws(InterruptedException::class)
     fun <T> runStructured(input: String, outputType: JacksonType<T>): T =
@@ -71,6 +92,18 @@ class Agent private constructor(
 
     fun <T> runStructuredAsync(input: String, outputType: TypeReference<T>): CompletableFuture<T> =
         runStructuredAsync(input, JacksonType.of(outputType))
+
+    fun <T> runStructuredAsync(
+        input: String,
+        options: RunOptions,
+        outputType: Class<T>,
+    ): CompletableFuture<T> = AgentRuntime.defaultRuntime().runStructuredAsync(this, input, options, outputType)
+
+    fun <T> runStructuredAsync(
+        input: String,
+        options: RunOptions,
+        outputType: TypeReference<T>,
+    ): CompletableFuture<T> = AgentRuntime.defaultRuntime().runStructuredAsync(this, input, options, outputType)
 
     fun <T> runStructuredAsync(input: String, outputType: JacksonType<T>): CompletableFuture<T> =
         virtualFuture("koaks-structured") {

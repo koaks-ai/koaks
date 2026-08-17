@@ -1,7 +1,10 @@
 package org.koaks.provider.anthropic
 
+import org.koaks.framework.model.EventDetail
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ModelItem
+import org.koaks.framework.model.ProtocolId
+import org.koaks.framework.transport.WireFrame
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -81,6 +84,8 @@ class AnthropicWireDecoderTest {
 
         val reasoning = events.filterIsInstance<ModelEvent.ReasoningDelta>()
         assertEquals(listOf("let me ", "think"), reasoning.map { it.text })
+        assertTrue(reasoning.all { it.kind == ModelEvent.ReasoningKind.RAW })
+        assertEquals(1, reasoning.map { it.itemRef }.toSet().size)
 
         // Reasoning is NOT conflated with assistant text.
         val text = events.filterIsInstance<ModelEvent.TextDelta>().single()
@@ -88,6 +93,31 @@ class AnthropicWireDecoderTest {
 
         val done = events.filterIsInstance<ModelEvent.Finished>().single()
         assertEquals(10, done.response.usage.totalTokens)
+    }
+
+    @Test
+    fun lossless_preserves_full_lifecycle_unknown_and_malformed_frames() {
+        val decoder = AnthropicWireDecoder(EventDetail.LOSSLESS)
+        val frames = listOf(
+            WireFrame.Sse(
+                "message_start",
+                """{"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":1}}}""",
+                "evt-1",
+            ),
+            WireFrame.Sse("ping", """{"type":"ping"}""", null),
+            WireFrame.Sse("future_event", """{"type":"future_event","value":1}""", null),
+            WireFrame.Sse(null, "{broken", null),
+            WireFrame.Sse("message_stop", """{"type":"message_stop"}""", null),
+        )
+
+        val events = frames.flatMap(decoder::accept)
+        val raw = events.filterIsInstance<ModelEvent.ProviderEvent>()
+
+        assertEquals(frames.map { (it as WireFrame.Sse).data }, raw.map { it.payload })
+        assertEquals(listOf("message_start", "ping", "future_event", "unknown", "message_stop"), raw.map { it.type })
+        assertTrue(raw.all { it.protocolId == ProtocolId.AnthropicMessages })
+        assertEquals("evt-1", raw.first().eventId)
+        assertTrue(events.indexOf(raw.first()) < events.indexOfFirst { it is ModelEvent.Started })
     }
 
     @Test
@@ -165,7 +195,38 @@ class AnthropicWireDecoderTest {
             .single()
         val replay = toAnthropicMessages(listOf(ModelItem.user("q"), providerItem))
         val thinking = replay.last().content.filterIsInstance<AnthropicContentBlock.Thinking>().single()
+        val reasoning = events.filterIsInstance<ModelEvent.ReasoningDelta>().single()
+        assertEquals(reasoning.itemRef, providerItem.ref)
         assertEquals("reason", thinking.thinking)
         assertEquals("sig-tail", thinking.signature)
+    }
+
+    @Test
+    fun redacted_thinking_is_preserved_for_exact_replay() {
+        val decoder = AnthropicWireDecoder()
+        val events = buildList {
+            addAll(
+                decoder.acceptChunk(
+                    AnthropicChatResponse(
+                        type = "content_block_start",
+                        index = 0,
+                        contentBlock = AnthropicChatResponse.ContentBlock(
+                            type = "redacted_thinking",
+                            data = "encrypted-redacted-block",
+                        ),
+                    ),
+                ),
+            )
+            addAll(decoder.acceptChunk(AnthropicChatResponse(type = "content_block_stop", index = 0)))
+            addAll(decoder.finish())
+        }
+
+        val providerItem = events.filterIsInstance<ModelEvent.ItemAdded>()
+            .map { it.item }
+            .filterIsInstance<ModelItem.ProviderItem>()
+            .single()
+        val replay = toAnthropicMessages(listOf(ModelItem.user("q"), providerItem))
+        val redacted = replay.last().content.filterIsInstance<AnthropicContentBlock.RedactedThinking>().single()
+        assertEquals("encrypted-redacted-block", redacted.data)
     }
 }

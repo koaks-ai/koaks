@@ -27,6 +27,7 @@ data class AnthropicChatResponse(
 ) {
     @Serializable
     data class Message(
+        @SerialName("id") val id: String? = null,
         @SerialName("usage") val usage: Usage? = null,
     )
 

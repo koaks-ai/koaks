@@ -15,16 +15,23 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import org.koaks.framework.loop.Agent
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.AgentResult
 import org.koaks.framework.loop.FakeLanguageModel
+import org.koaks.framework.loop.OutputSpec
 import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.tool
 import org.koaks.framework.model.AgentError
+import org.koaks.framework.model.EventDetail
 import org.koaks.framework.loop.done
 import org.koaks.framework.loop.fail
 import org.koaks.framework.model.ModelEvent
+import org.koaks.framework.model.ProtocolId
+import org.koaks.framework.model.ProviderId
+import org.koaks.framework.middleware.ModelCallPhase
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
 import org.koaks.runtime.acb.AgentHandle
@@ -245,6 +252,70 @@ class AgentRuntimeTest {
                     .joinToString("") { it.text },
             )
             assertTrue((events.last().payload as RunEventPayload.Lifecycle).event is RuntimeEvent.Finished)
+        }
+    }
+
+    @Test
+    fun lossless_structured_events_keep_phase_step_and_support_replay() = runTest {
+        fun raw(type: String) = ModelEvent.ProviderEvent(
+            providerId = ProviderId.OpenAIResponses,
+            protocolId = ProtocolId.OpenAIResponses,
+            type = type,
+            payload = "{\"type\":\"$type\"}",
+        )
+        val model = FakeLanguageModel(
+            listOf(raw("response.normal"), ModelEvent.TextDelta("draft"), done(Usage.ZERO)),
+            listOf(raw("response.final"), ModelEvent.TextDelta("{\"value\":1}"), done(Usage.ZERO)),
+        )
+        val agent = agent {
+            id = "lossless-structured-phases"
+            model { custom(model) }
+        }
+        val spec = OutputSpec(buildJsonObject { put("type", JsonPrimitive("object")) }, "Result")
+
+        AgentRuntime().use { runtime ->
+            val handle = runtime.spawnStructured(agent, "go", spec, eventDetail = EventDetail.LOSSLESS)
+            assertTrue(handle.await() is AgentResult.Completed)
+
+            val timeline = handle.events().toList()
+            val rawEvents = timeline.mapNotNull { envelope ->
+                ((envelope.payload as? RunEventPayload.Agent)?.event as? AgentEvent.Model)
+                    ?.takeIf { it.event is ModelEvent.ProviderEvent }
+            }
+            assertEquals(listOf(ModelCallPhase.Normal, ModelCallPhase.StructuredFinalization), rawEvents.map { it.phase })
+            assertEquals(listOf(0, 1), rawEvents.map { it.step })
+
+            val cursor = timeline[timeline.lastIndex / 2].sequence
+            val replay = handle.events(afterSequence = cursor).toList()
+            assertEquals(timeline.filter { it.sequence > cursor }, replay)
+        }
+    }
+
+    @Test
+    fun lossless_detail_reports_history_gap_when_the_bounded_journal_overflows() = runTest {
+        val modelEvents = List(8) { index ->
+            ModelEvent.ProviderEvent(
+                providerId = ProviderId.OpenAIResponses,
+                protocolId = ProtocolId.OpenAIResponses,
+                type = "response.future.$index",
+                payload = "{\"index\":$index}",
+            )
+        } + listOf(ModelEvent.TextDelta("done"), done(Usage.ZERO))
+        val agent = agent {
+            id = "lossless-small-buffer"
+            model { custom(FakeLanguageModel(modelEvents)) }
+        }
+        val runtime = AgentRuntime { runEventBufferCapacity = 4 }
+
+        runtime.use {
+            val handle = it.spawn(agent, "go", eventDetail = EventDetail.LOSSLESS)
+            assertTrue(handle.await() is AgentResult.Completed)
+            val retained = handle.events().toList()
+
+            val gap = retained.first().payload as RunEventPayload.HistoryGap
+            assertEquals(0, gap.requestedAfter)
+            assertTrue(gap.oldestAvailable > 1)
+            assertEquals(4, retained.drop(1).size)
         }
     }
 

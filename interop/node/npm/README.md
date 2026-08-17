@@ -85,6 +85,37 @@ run. A late subscriber whose requested sequence has expired receives a
 `history_gap` envelope. Returning from `handle.events()` only cancels that
 subscription; it does not cancel the run.
 
+Set `eventDetail: "lossless"` when a UI or recorder needs every logical provider
+event in addition to the normalized Agent events:
+
+```ts
+const handle = await agent.spawn("Investigate the failure", {
+  eventDetail: "lossless",
+});
+
+for await (const envelope of handle.events()) {
+  if (envelope.kind !== "agent") continue;
+  const event = envelope.event;
+  if (event.type === "reasoning_delta") {
+    renderReasoning(event.text, event.kind, event.itemRef);
+  } else if (event.type === "model" && event.event.type === "provider_event") {
+    persistRawEvent(event.event.protocolId, event.event.eventType, event.event.payload);
+  }
+}
+```
+
+The default, `"semantic"`, preserves the compact event sequence. In lossless mode,
+each Responses, Chat Completions, or Anthropic `WireFrame` produces a provider event
+before derived semantic events. `payload` is the unchanged logical frame payload; it
+is not parsed and re-serialized by the Node bridge. This is not a raw HTTP capture and
+does not include HTTP bytes, headers, SSE comments, or connection metadata.
+
+Lossless payloads may contain model text, tool arguments, raw reasoning, signatures,
+or encrypted provider content and are not redacted. They are retained in the same
+bounded run journal (1024 events by default), so lossless streams may produce a
+`history_gap` sooner. Text, reasoning, and completed tool calls are not duplicated in
+the nested `model` events.
+
 ## JavaScript tools and RuntimeContext
 
 ```ts

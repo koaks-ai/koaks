@@ -2,16 +2,30 @@ package org.koaks.framework.loop
 
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.IncompleteReason
+import org.koaks.framework.model.ItemRef
+import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
+import org.koaks.framework.middleware.ModelCallPhase
 import org.koaks.framework.policy.TerminationReason
 import org.koaks.framework.tool.ToolOutcome
 
 sealed interface AgentEvent {
-    data class TextDelta(val text: String) : AgentEvent
+    data class TextDelta(val text: String, val itemRef: ItemRef? = null) : AgentEvent
 
-    data class ReasoningDelta(val text: String) : AgentEvent
+    data class ReasoningDelta(
+        val text: String,
+        val itemRef: ItemRef? = null,
+        val kind: ModelEvent.ReasoningKind = ModelEvent.ReasoningKind.RAW,
+    ) : AgentEvent
+
+    /** Detailed model event surfaced only for lossless runs. */
+    data class Model(
+        val event: ModelEvent,
+        val step: Int,
+        val phase: ModelCallPhase,
+    ) : AgentEvent
 
     data class ToolCallRequested(val call: ToolCall) : AgentEvent
 

@@ -3,6 +3,7 @@ package org.koaks.framework.loop
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer
 import org.koaks.framework.memory.ThreadId
+import org.koaks.framework.model.EventDetail
 import org.koaks.framework.tool.schema.SerialDescriptorToJsonSchema
 import org.koaks.framework.utils.json.JsonExtractor
 
@@ -20,18 +21,25 @@ import org.koaks.framework.utils.json.JsonExtractor
 private val structuredJson = Json { ignoreUnknownKeys = true; isLenient = true }
 
 @Suppress("EXTENSION_SHADOWED_BY_MEMBER")
-suspend inline fun <reified T> Agent.run(input: String, thread: ThreadId? = null): T {
+suspend inline fun <reified T> Agent.run(
+    input: String,
+    thread: ThreadId? = null,
+    eventDetail: EventDetail = EventDetail.SEMANTIC,
+): T {
     val serializer = serializer<T>()
     val schema = SerialDescriptorToJsonSchema.generate(serializer.descriptor)
     val spec = OutputSpec(schema, serializer.descriptor.serialName.substringAfterLast('.'))
-    val result = runStructured(input, spec, thread)
+    val result = runStructured(input, spec, thread, eventDetail)
     val json = JsonExtractor.extract(result.text)
     return decodeStructured(serializer, json)
 }
 
 @Suppress("EXTENSION_SHADOWED_BY_MEMBER")
-suspend inline fun <reified T> Agent.run(input: String, thread: String): T =
-    run<T>(input, ThreadId(thread))
+suspend inline fun <reified T> Agent.run(
+    input: String,
+    thread: String,
+    eventDetail: EventDetail = EventDetail.SEMANTIC,
+): T = run<T>(input, ThreadId(thread), eventDetail)
 
 /** Decodes the extracted JSON; isolated from the inline fun so [structuredJson] stays private. */
 @PublishedApi

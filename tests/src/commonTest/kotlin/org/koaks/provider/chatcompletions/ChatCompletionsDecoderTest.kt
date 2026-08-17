@@ -1,8 +1,11 @@
 package org.koaks.provider.chatcompletions
 
+import org.koaks.framework.model.EventDetail
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ModelResponse
+import org.koaks.framework.model.ProtocolId
 import org.koaks.framework.model.ProviderId
+import org.koaks.framework.transport.WireFrame
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -61,8 +64,60 @@ class ChatCompletionsDecoderTest {
         }
         val reasoning = events.filterIsInstance<ModelEvent.ReasoningDelta>()
         assertEquals(listOf("let me ", "think"), reasoning.map { it.text })
+        assertTrue(reasoning.all { it.kind == ModelEvent.ReasoningKind.RAW })
+        assertEquals(1, reasoning.map { it.itemRef }.toSet().size)
         val text = events.filterIsInstance<ModelEvent.TextDelta>().single()
         assertEquals("the answer", text.text)
+    }
+
+    @Test
+    fun lossless_preserves_chunks_done_and_malformed_payloads() {
+        val decoder = ChatCompletionsDecoder(ProviderId.OpenAI, EventDetail.LOSSLESS)
+        val frames = listOf(
+            WireFrame.Sse(
+                null,
+                """{"object":"chat.completion.chunk","id":"chat_1","choices":[{"index":0,"delta":{"content":"hi"}},{"index":1,"delta":{"content":"kept only in raw"}}]}""",
+                "evt-1",
+            ),
+            WireFrame.Sse(null, "{broken", null),
+            WireFrame.Sse(null, "[DONE]", null),
+        )
+
+        val events = frames.flatMap(decoder::accept)
+        val raw = events.filterIsInstance<ModelEvent.ProviderEvent>()
+
+        assertEquals(frames.map { (it as WireFrame.Sse).data }, raw.map { it.payload })
+        assertEquals(listOf("chat.completion.chunk", "chat.completion.chunk", "done"), raw.map { it.type })
+        assertTrue(raw.all { it.protocolId == ProtocolId.ChatCompletions })
+        assertEquals("evt-1", raw.first().eventId)
+        assertTrue(events.indexOf(raw.first()) < events.indexOfFirst { it is ModelEvent.Started })
+        assertEquals(listOf("hi"), events.filterIsInstance<ModelEvent.TextDelta>().map { it.text })
+        assertTrue(raw.first().payload.contains("kept only in raw"))
+    }
+
+    @Test
+    fun refusal_delta_is_projected_and_preserved_in_the_message() {
+        val decoder = decoder()
+        val events = buildList {
+            addAll(
+                decoder.acceptChunk(
+                    ChatCompletionsResponse(
+                        choices = listOf(
+                            ChatCompletionsResponse.Choice(
+                                delta = ChatCompletionsResponse.Delta(refusal = "cannot comply"),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+            addAll(decoder.finish())
+        }
+
+        val refusal = events.filterIsInstance<ModelEvent.RefusalDelta>().single()
+        val message = events.filterIsInstance<ModelEvent.Finished>().single().response.output
+            .filterIsInstance<org.koaks.framework.model.ModelItem.Message>().single()
+        assertEquals(refusal.itemRef, message.ref)
+        assertEquals("cannot comply", message.refusal)
     }
 
     @Test

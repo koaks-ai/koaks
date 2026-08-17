@@ -66,7 +66,7 @@ fun main() = runBlocking {
 
     agent.use {
         val printer = ConsoleEventPrinter()
-        it.stream("介绍一下自己，并且告诉我现在几点了？今天天气怎么样？").collect { result ->
+        it.stream("详细介绍一下自己，并且告诉我现在几点了？今天天气怎么样？").collect { result ->
             printer.print(result)
         }
     }
@@ -146,7 +146,7 @@ private class ConsoleEventPrinter {
                 println(red("[error] ${event.error.message}"))
             }
 
-            is AgentEvent.StepCompleted -> Unit
+            is AgentEvent.StepCompleted, is AgentEvent.Model -> Unit
         }
     }
 

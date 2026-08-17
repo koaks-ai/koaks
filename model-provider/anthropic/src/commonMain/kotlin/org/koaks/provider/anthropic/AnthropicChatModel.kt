@@ -34,6 +34,8 @@ class AnthropicChatModel(
 
     override fun newDecoder(): WireDecoder = AnthropicWireDecoder()
 
+    override fun newDecoder(request: ModelRequest): WireDecoder = AnthropicWireDecoder(request.eventDetail)
+
     override fun toWireCall(req: ModelRequest): WireCall {
         val body = JsonUtil.toJson(toWire(req), AnthropicChatRequest.serializer())
         return WireCall(

@@ -58,6 +58,7 @@ class OpenAIResponsesModel(
         persistCheckpoint = params.persistCheckpoint,
         basisItems = request.items,
         codec = codec,
+        eventDetail = request.eventDetail,
     )
 
     override fun toWireCall(req: ModelRequest): WireCall {

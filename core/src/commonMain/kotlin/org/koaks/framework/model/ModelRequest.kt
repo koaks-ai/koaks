@@ -2,6 +2,11 @@ package org.koaks.framework.model
 
 import org.koaks.framework.tool.ToolSchema
 
+enum class EventDetail {
+    SEMANTIC,
+    LOSSLESS,
+}
+
 /**
  * Provider-agnostic request handed to [LanguageModel.stream].
  *
@@ -20,4 +25,5 @@ data class ModelRequest(
     val outputFormat: OutputFormat = OutputFormat.Text,
     val checkpoint: ProviderCheckpoint? = null,
     val idempotencyKey: String,
+    val eventDetail: EventDetail = EventDetail.SEMANTIC,
 )

@@ -8,17 +8,20 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import okio.ByteString.Companion.encodeUtf8
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.Annotation
 import org.koaks.framework.model.CheckpointScope
 import org.koaks.framework.model.ContentPart
+import org.koaks.framework.model.EventDetail
 import org.koaks.framework.model.IncompleteReason
 import org.koaks.framework.model.ItemRef
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelResponse
 import org.koaks.framework.model.ProviderId
+import org.koaks.framework.model.ProtocolId
 import org.koaks.framework.model.ProviderScopedId
 import org.koaks.framework.model.ReplayPolicy
 import org.koaks.framework.model.Role
@@ -35,6 +38,7 @@ class ResponsesDecoder(
     private val persistCheckpoint: Boolean,
     private val basisItems: List<ModelItem>,
     private val codec: ResponsesCheckpointCodec = ResponsesCheckpointCodec(),
+    private val eventDetail: EventDetail = EventDetail.SEMANTIC,
 ) : WireDecoder {
 
     private class ToolAcc(
@@ -54,8 +58,14 @@ class ResponsesDecoder(
         val ref: ItemRef = ItemRef.generate("msg"),
     )
 
+    private class ReasoningAcc(
+        var nativeItemId: String? = null,
+        val ref: ItemRef = ItemRef.generate("reason"),
+    )
+
     private val tools = LinkedHashMap<Int, ToolAcc>()
     private val messages = LinkedHashMap<Int, MessageAcc>()
+    private val reasoning = LinkedHashMap<Int, ReasoningAcc>()
     private val output = mutableListOf<ModelItem>()
     private val seenKeys = HashSet<String>()
     private val emittedCallRefs = HashSet<String>()
@@ -67,7 +77,8 @@ class ResponsesDecoder(
     private var started = false
 
     override fun accept(frame: WireFrame): List<ModelEvent> {
-        return when (frame) {
+        val raw = if (eventDetail == EventDetail.LOSSLESS) listOf(providerEvent(frame)) else emptyList()
+        val semantic = when (frame) {
             is WireFrame.HttpError -> {
                 failed = decodeHttpError(frame)
                 finishFailed()
@@ -76,6 +87,7 @@ class ResponsesDecoder(
             is WireFrame.Body -> acceptCompletedJson(frame.text)
             is WireFrame.Ndjson -> acceptEvent(null, frame.line)
         }
+        return raw + semantic
     }
 
     internal fun acceptEvent(event: String?, data: String): List<ModelEvent> {
@@ -126,11 +138,23 @@ class ResponsesDecoder(
                 }
             }
             "response.refusal.delta" -> obj.str("delta")?.let { delta ->
-                messageAccFor(obj.int("output_index"), obj.str("item_id")).refusal.append(delta)
+                val acc = messageAccFor(obj.int("output_index"), obj.str("item_id"))
+                acc.refusal.append(delta)
+                if (delta.isNotEmpty()) events += ModelEvent.RefusalDelta(delta, acc.ref)
             }
-            "response.reasoning_summary_text.delta", "response.reasoning.delta" -> {
+            "response.reasoning_summary_text.delta" -> {
                 val delta = obj.str("delta").orEmpty()
-                if (delta.isNotEmpty()) events += ModelEvent.ReasoningDelta(delta)
+                if (delta.isNotEmpty()) {
+                    val acc = reasoningAccFor(obj.int("output_index"), obj.str("item_id"))
+                    events += ModelEvent.ReasoningDelta(delta, acc.ref, ModelEvent.ReasoningKind.SUMMARY)
+                }
+            }
+            "response.reasoning_text.delta", "response.reasoning.delta" -> {
+                val delta = obj.str("delta").orEmpty()
+                if (delta.isNotEmpty()) {
+                    val acc = reasoningAccFor(obj.int("output_index"), obj.str("item_id"))
+                    events += ModelEvent.ReasoningDelta(delta, acc.ref, ModelEvent.ReasoningKind.RAW)
+                }
             }
             "response.function_call_arguments.delta" -> {
                 val index = obj.int("output_index") ?: 0
@@ -163,6 +187,10 @@ class ResponsesDecoder(
                         itemId = item.str("id"),
                         role = item.role(),
                     )
+                    ResponsesItemTypes.REASONING -> reasoningAccFor(
+                        index = obj.int("output_index"),
+                        itemId = item.str("id"),
+                    )
                     else -> Unit
                 }
             }
@@ -174,7 +202,10 @@ class ResponsesDecoder(
             }
             "response.output_text.annotation.added" -> {
                 obj.obj("annotation")?.let {
-                    messageAccFor(obj.int("output_index"), obj.str("item_id")).annotations += mapAnnotation(it)
+                    val acc = messageAccFor(obj.int("output_index"), obj.str("item_id"))
+                    val annotation = mapAnnotation(it)
+                    acc.annotations += annotation
+                    events += ModelEvent.AnnotationAdded(annotation, acc.ref)
                 }
             }
             "response.completed" -> {
@@ -192,8 +223,13 @@ class ResponsesDecoder(
                 return events + finishFailed()
             }
             else -> {
-                if (event != null) {
-                    events += ModelEvent.ProviderEvent(ProviderId.OpenAIResponses, event, obj.toString())
+                if (event != null && eventDetail != EventDetail.LOSSLESS) {
+                    events += ModelEvent.ProviderEvent(
+                        providerId = ProviderId.OpenAIResponses,
+                        type = event,
+                        payload = obj.toString(),
+                        protocolId = ProtocolId.OpenAIResponses,
+                    )
                 }
             }
         }
@@ -291,6 +327,17 @@ class ResponsesDecoder(
         }
     }
 
+    private fun reasoningAccFor(index: Int? = null, itemId: String? = null): ReasoningAcc {
+        reasoning.values.firstOrNull { itemId != null && it.nativeItemId == itemId }?.let { acc ->
+            itemId?.let { acc.nativeItemId = it }
+            return acc
+        }
+        val key = index ?: (reasoning.keys.maxOrNull()?.plus(1) ?: 0)
+        return reasoning.getOrPut(key) { ReasoningAcc() }.also { acc ->
+            itemId?.let { acc.nativeItemId = it }
+        }
+    }
+
     private fun seenKey(item: ModelItem): String {
         val native = item.nativeId?.raw
         return when (item) {
@@ -365,11 +412,20 @@ class ResponsesDecoder(
                 )
             }
             ResponsesItemTypes.REASONING -> {
+                val acc = reasoningAccFor(outputIndex, item.str("id"))
                 val summary = extractReasoningSummary(item)
                 if (item["encrypted_content"] != null) {
-                    providerItem(item, type, summary.ifBlank { "[reasoning]" }, ReplayPolicy.Required, native)
+                    providerItem(
+                        item,
+                        type,
+                        summary.ifBlank { "[reasoning]" },
+                        ReplayPolicy.Required,
+                        native,
+                        acc.ref,
+                    )
                 } else {
                     ModelItem.ReasoningSummary(
+                        ref = acc.ref,
                         nativeId = native,
                         text = summary,
                     )
@@ -393,7 +449,9 @@ class ResponsesDecoder(
         display: String,
         replay: ReplayPolicy,
         native: ProviderScopedId?,
+        ref: ItemRef = ItemRef.generate("ext"),
     ) = ModelItem.ProviderItem(
+        ref = ref,
         nativeId = native,
         providerId = ProviderId.OpenAIResponses,
         kind = type,
@@ -505,6 +563,53 @@ class ResponsesDecoder(
         )
     }
 
+    private fun providerEvent(frame: WireFrame): ModelEvent.ProviderEvent {
+        val payload = when (frame) {
+            is WireFrame.Sse -> frame.data
+            is WireFrame.Body -> frame.text
+            is WireFrame.Ndjson -> frame.line
+            is WireFrame.HttpError -> frame.body
+        }
+        val parsed = payload.takeUnless { it.isBlank() || it == "[DONE]" }
+            ?.let { runCatching { JsonUtil.json.parseToJsonElement(it).jsonObject }.getOrNull() }
+        val type = when (frame) {
+            is WireFrame.Sse -> frame.event ?: parsed?.str("type") ?: if (payload == "[DONE]") "done" else "response.unknown"
+            is WireFrame.Body -> responseEventType(parsed)
+            is WireFrame.Ndjson -> parsed?.str("type") ?: "response.unknown"
+            is WireFrame.HttpError -> "http.error"
+        }
+        return ModelEvent.ProviderEvent(
+            providerId = ProviderId.OpenAIResponses,
+            protocolId = ProtocolId.OpenAIResponses,
+            type = type,
+            payload = payload,
+            source = when (frame) {
+                is WireFrame.Sse -> ModelEvent.ProviderEventSource.SSE
+                is WireFrame.Body -> ModelEvent.ProviderEventSource.BODY
+                is WireFrame.Ndjson -> ModelEvent.ProviderEventSource.NDJSON
+                is WireFrame.HttpError -> ModelEvent.ProviderEventSource.HTTP_ERROR
+            },
+            eventId = (frame as? WireFrame.Sse)?.id,
+            sequenceNumber = parsed?.long("sequence_number"),
+            statusCode = (frame as? WireFrame.HttpError)?.status,
+            contentType = when (frame) {
+                is WireFrame.Body -> frame.contentType
+                is WireFrame.HttpError -> frame.contentType
+                else -> null
+            },
+        )
+    }
+
+    private fun responseEventType(obj: JsonObject?): String = when (obj?.str("status")) {
+        "queued" -> "response.queued"
+        "in_progress" -> "response.in_progress"
+        "completed" -> "response.completed"
+        "incomplete" -> "response.incomplete"
+        "failed" -> "response.failed"
+        "cancelled" -> "response.cancelled"
+        else -> obj?.str("type") ?: "response.unknown"
+    }
+
     private fun decodeModelError(obj: JsonObject): AgentError.ModelError {
         val err = obj.obj("error") ?: obj.obj("response")?.obj("error") ?: obj
         return AgentError.ModelError(
@@ -543,6 +648,9 @@ private fun JsonObject.str(key: String): String? =
 
 private fun JsonObject.int(key: String): Int? =
     this[key]?.let { el -> (el as? JsonPrimitive)?.intOrNull }
+
+private fun JsonObject.long(key: String): Long? =
+    this[key]?.let { el -> (el as? JsonPrimitive)?.longOrNull }
 
 private fun JsonObject.obj(key: String): JsonObject? =
     this[key] as? JsonObject

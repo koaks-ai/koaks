@@ -4,10 +4,12 @@ import okio.ByteString.Companion.encodeUtf8
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.koaks.framework.model.IncompleteReason
+import org.koaks.framework.model.EventDetail
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelResponse
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ProviderId
+import org.koaks.framework.model.ProtocolId
 import org.koaks.framework.model.ProviderScopedId
 import org.koaks.framework.model.ReplayPolicy
 import org.koaks.framework.model.ToolCall
@@ -56,6 +58,61 @@ class AgentRunnerTest {
         // But never folded into the assistant message text.
         val completed = events.filterIsInstance<AgentEvent.Completed>().single()
         assertEquals("answer", completed.message.text)
+    }
+
+    @Test
+    fun lossless_wraps_only_model_events_without_existing_agent_projection() = runTest {
+        fun script(): List<ModelEvent> {
+            val providerItem = ModelItem.ProviderItem(
+                providerId = ProviderId.OpenAIResponses,
+                kind = "future_item",
+                displayText = "future",
+                replay = ReplayPolicy.Required,
+                payload = "opaque".encodeUtf8(),
+            )
+            return listOf(
+                ModelEvent.Started("resp_1"),
+                ModelEvent.ProviderEvent(
+                    providerId = ProviderId.OpenAIResponses,
+                    protocolId = ProtocolId.OpenAIResponses,
+                    type = "response.future",
+                    payload = "{\"future\":true}",
+                ),
+                ModelEvent.ReasoningDelta("summary", kind = ModelEvent.ReasoningKind.SUMMARY),
+                ModelEvent.TextDelta("answer"),
+                ModelEvent.ItemAdded(providerItem),
+                done(Usage(totalTokens = 2)),
+            )
+        }
+
+        val semanticModel = FakeLanguageModel(script())
+        val semantic = agentWith("runner-semantic-detail", semanticModel).stream("hi").toList()
+        assertTrue(semantic.none { it is AgentEvent.Model })
+        assertEquals(1, semantic.filterIsInstance<AgentEvent.TextDelta>().size)
+        assertEquals(1, semantic.filterIsInstance<AgentEvent.ReasoningDelta>().size)
+        assertEquals(EventDetail.SEMANTIC, semanticModel.lastRequest?.eventDetail)
+
+        val losslessModel = FakeLanguageModel(script())
+        val lossless = agentWith("runner-lossless-detail", losslessModel)
+            .stream("hi", eventDetail = EventDetail.LOSSLESS)
+            .toList()
+        val detailed = lossless.filterIsInstance<AgentEvent.Model>()
+
+        assertEquals(EventDetail.LOSSLESS, losslessModel.lastRequest?.eventDetail)
+        assertEquals(
+            listOf(
+                ModelEvent.Started::class,
+                ModelEvent.ProviderEvent::class,
+                ModelEvent.ItemAdded::class,
+                ModelEvent.Finished::class,
+            ),
+            detailed.map { it.event::class },
+        )
+        assertTrue(detailed.all { it.step == 0 })
+        assertTrue(detailed.all { it.phase == org.koaks.framework.middleware.ModelCallPhase.Normal })
+        assertEquals(1, lossless.filterIsInstance<AgentEvent.TextDelta>().size)
+        assertEquals(1, lossless.filterIsInstance<AgentEvent.ReasoningDelta>().size)
+        assertTrue(detailed.none { it.event is ModelEvent.TextDelta || it.event is ModelEvent.ReasoningDelta })
     }
 
     @Test

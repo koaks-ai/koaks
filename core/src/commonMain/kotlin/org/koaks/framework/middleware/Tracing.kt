@@ -28,6 +28,7 @@ object Tracing : AgentListener {
             is AgentEvent.Failed -> logger.warn { "failed: ${event.error.message}" }
             is AgentEvent.TextDelta -> {}
             is AgentEvent.ReasoningDelta -> {}
+            is AgentEvent.Model -> {}
         }
     }
 

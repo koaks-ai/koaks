@@ -2,6 +2,7 @@ package org.koaks.java
 
 import java.time.Duration
 import org.koaks.framework.memory.ThreadId
+import org.koaks.framework.model.EventDetail
 import org.koaks.runtime.resource.Quota
 
 /** Per-run Java options without exposing Kotlin value classes or default arguments. */
@@ -11,6 +12,7 @@ class RunOptions private constructor(
     val maxSteps: Int?,
     val maxToolCalls: Int?,
     val wallClockTimeout: Duration?,
+    val eventDetail: EventDetail,
 ) {
     internal fun coreThreadId(): ThreadId? = threadId?.let(::ThreadId)
 
@@ -24,6 +26,7 @@ class RunOptions private constructor(
         private var maxSteps: Int? = null
         private var maxToolCalls: Int? = null
         private var wallClockTimeout: Duration? = null
+        private var eventDetail: EventDetail = EventDetail.SEMANTIC
 
         fun threadId(threadId: String?): Builder = apply {
             require(threadId == null || threadId.isNotBlank()) { "thread id must not be blank" }
@@ -47,7 +50,9 @@ class RunOptions private constructor(
             this.wallClockTimeout = timeout
         }
 
-        fun build(): RunOptions = RunOptions(threadId, priority, maxSteps, maxToolCalls, wallClockTimeout)
+        fun eventDetail(eventDetail: EventDetail): Builder = apply { this.eventDetail = eventDetail }
+
+        fun build(): RunOptions = RunOptions(threadId, priority, maxSteps, maxToolCalls, wallClockTimeout, eventDetail)
 
         companion object {
             internal fun create(): Builder = Builder()
@@ -55,7 +60,7 @@ class RunOptions private constructor(
     }
 
     companion object {
-        private val DEFAULT = RunOptions(null, 0, null, null, null)
+        private val DEFAULT = RunOptions(null, 0, null, null, null, EventDetail.SEMANTIC)
 
         @JvmStatic
         fun builder(): Builder = Builder.create()

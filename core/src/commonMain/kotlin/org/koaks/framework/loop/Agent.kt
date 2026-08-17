@@ -10,6 +10,7 @@ import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.middleware.AgentListener
 import org.koaks.framework.middleware.Hook
 import org.koaks.framework.model.ClientActionHandler
+import org.koaks.framework.model.EventDetail
 import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelRequest
@@ -59,42 +60,54 @@ class Agent internal constructor(
         preparation.await()
     }
 
-    fun stream(input: String, thread: ThreadId? = null): Flow<AgentEvent> =
-        AgentRuntime.default.stream(this, input, thread = thread)
+    fun stream(
+        input: String,
+        thread: ThreadId? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
+    ): Flow<AgentEvent> = AgentRuntime.default.stream(this, input, thread = thread, eventDetail = eventDetail)
 
-    fun stream(input: String, thread: String): Flow<AgentEvent> =
-        stream(input, ThreadId(thread))
+    fun stream(input: String, thread: String, eventDetail: EventDetail = EventDetail.SEMANTIC): Flow<AgentEvent> =
+        stream(input, ThreadId(thread), eventDetail)
 
-    suspend fun run(input: String, thread: ThreadId? = null): AgentResult =
-        AgentRuntime.default.run(this, input, thread = thread)
+    suspend fun run(
+        input: String,
+        thread: ThreadId? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
+    ): AgentResult = AgentRuntime.default.run(this, input, thread = thread, eventDetail = eventDetail)
 
-    suspend fun run(input: String, thread: String): AgentResult =
-        run(input, ThreadId(thread))
+    suspend fun run(input: String, thread: String, eventDetail: EventDetail = EventDetail.SEMANTIC): AgentResult =
+        run(input, ThreadId(thread), eventDetail)
 
-    fun spawn(input: String, thread: ThreadId? = null): AgentHandle =
-        AgentRuntime.default.spawn(this, input, thread = thread)
+    fun spawn(
+        input: String,
+        thread: ThreadId? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
+    ): AgentHandle = AgentRuntime.default.spawn(this, input, thread = thread, eventDetail = eventDetail)
 
-    fun spawn(input: String, thread: String): AgentHandle =
-        spawn(input, ThreadId(thread))
+    fun spawn(input: String, thread: String, eventDetail: EventDetail = EventDetail.SEMANTIC): AgentHandle =
+        spawn(input, ThreadId(thread), eventDetail)
 
-    fun resume(thread: ThreadId): Flow<AgentEvent> =
-        AgentRuntime.default.resume(this, thread)
+    fun resume(thread: ThreadId, eventDetail: EventDetail = EventDetail.SEMANTIC): Flow<AgentEvent> =
+        AgentRuntime.default.resume(this, thread, eventDetail = eventDetail)
 
-    fun resume(thread: String): Flow<AgentEvent> = resume(ThreadId(thread))
+    fun resume(thread: String, eventDetail: EventDetail = EventDetail.SEMANTIC): Flow<AgentEvent> =
+        resume(ThreadId(thread), eventDetail)
 
-    suspend fun resumeRun(thread: ThreadId): AgentResult =
-        AgentRuntime.default.resumeRun(this, thread)
+    suspend fun resumeRun(thread: ThreadId, eventDetail: EventDetail = EventDetail.SEMANTIC): AgentResult =
+        AgentRuntime.default.resumeRun(this, thread, eventDetail = eventDetail)
 
-    suspend fun resumeRun(thread: String): AgentResult = resumeRun(ThreadId(thread))
+    suspend fun resumeRun(thread: String, eventDetail: EventDetail = EventDetail.SEMANTIC): AgentResult =
+        resumeRun(ThreadId(thread), eventDetail)
 
     internal fun executeStream(
         input: String?,
         context: List<ModelItem>,
         turn: TurnBuilder,
         checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): Flow<AgentEvent> = flow {
         val prepared = preparation.await()
-        emitAll(runner.stream(initialItems(input, context), prepared.instructions.resolve(), turn, checkpoint))
+        emitAll(runner.stream(initialItems(input, context), prepared.instructions.resolve(), turn, checkpoint, eventDetail))
     }
 
     internal fun executeStructuredStream(
@@ -103,6 +116,7 @@ class Agent internal constructor(
         spec: OutputSpec,
         turn: TurnBuilder,
         checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): Flow<AgentEvent> = flow {
         val prepared = preparation.await()
         emitAll(
@@ -112,15 +126,24 @@ class Agent internal constructor(
                 spec,
                 turn,
                 checkpoint,
+                eventDetail,
             ),
         )
     }
 
-    suspend fun runStructured(input: String, spec: OutputSpec, thread: ThreadId? = null): AgentResult =
-        AgentRuntime.default.runStructured(this, input, spec, thread = thread)
+    suspend fun runStructured(
+        input: String,
+        spec: OutputSpec,
+        thread: ThreadId? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
+    ): AgentResult = AgentRuntime.default.runStructured(this, input, spec, thread = thread, eventDetail = eventDetail)
 
-    suspend fun runStructured(input: String, spec: OutputSpec, thread: String): AgentResult =
-        runStructured(input, spec, ThreadId(thread))
+    suspend fun runStructured(
+        input: String,
+        spec: OutputSpec,
+        thread: String,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
+    ): AgentResult = runStructured(input, spec, ThreadId(thread), eventDetail)
 
     private fun initialItems(input: String?, context: List<ModelItem>): List<ModelItem> {
         val items = buildList {
@@ -143,6 +166,7 @@ class Agent internal constructor(
         state: AgentState,
         idempotencyKey: String,
         outputFormat: OutputFormat = OutputFormat.Text,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): ModelRequest {
         when (outputFormat) {
             OutputFormat.JsonObject ->
@@ -158,6 +182,7 @@ class Agent internal constructor(
             outputFormat = outputFormat,
             checkpoint = state.checkpoint,
             idempotencyKey = idempotencyKey,
+            eventDetail = eventDetail,
         )
     }
 

@@ -30,6 +30,7 @@ class AgentRuntime private constructor(
             priority = options.priority,
             quota = options.quotaOrNull(),
             thread = options.coreThreadId(),
+            eventDetail = options.eventDetail,
         )
     }
 
@@ -49,6 +50,7 @@ class AgentRuntime private constructor(
             priority = options.priority,
             quota = options.quotaOrNull(),
             thread = options.coreThreadId(),
+            eventDetail = options.eventDetail,
         ),
     )
 
@@ -62,6 +64,7 @@ class AgentRuntime private constructor(
             priority = options.priority,
             quota = options.quotaOrNull(),
             thread = options.coreThreadId(),
+            eventDetail = options.eventDetail,
         ),
     )
 
@@ -96,6 +99,7 @@ class AgentRuntime private constructor(
                 priority = options.priority,
                 quota = options.quotaOrNull(),
                 thread = options.coreThreadId(),
+                eventDetail = options.eventDetail,
             )
         },
         outputType,
@@ -141,6 +145,7 @@ class AgentRuntime private constructor(
                 priority = options.priority,
                 quota = options.quotaOrNull(),
                 thread = options.coreThreadId(),
+                eventDetail = options.eventDetail,
             ),
             outputType,
         )

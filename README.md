@@ -219,10 +219,50 @@ agent.use {
             is AgentEvent.Terminated        -> println("\n[terminated] ${event.reason}")
             is AgentEvent.Failed            -> println("\n[error] ${event.error.message}")
             is AgentEvent.StepCompleted     -> Unit
+            is AgentEvent.Model             -> Unit // emitted only when LOSSLESS is requested
+            else                            -> Unit
         }
     }
 }
 ```
+
+`EventDetail.SEMANTIC` is the default and preserves the compact event sequence above.
+Use `EventDetail.LOSSLESS` when a UI, recorder, or debugger needs the complete logical
+provider stream:
+
+```kotlin
+import org.koaks.framework.model.EventDetail
+
+agent.stream("Explain the result", eventDetail = EventDetail.LOSSLESS).collect { event ->
+    when (event) {
+        is AgentEvent.TextDelta -> renderText(event.text, event.itemRef)
+        is AgentEvent.ReasoningDelta -> renderReasoning(event.text, event.kind, event.itemRef)
+        is AgentEvent.Model -> recordModelEvent(event.event, event.step, event.phase)
+        else -> Unit
+    }
+}
+```
+
+In lossless mode, Responses, Chat Completions, and Anthropic emit one
+`ModelEvent.ProviderEvent` for every input `WireFrame`, before any derived semantic
+events. The provider event identifies the wire protocol and source and retains the
+logical payload unchanged. This guarantee starts after HTTP framing: it does not retain
+raw HTTP bytes, headers, SSE comments, or connection metadata. Text, reasoning, and
+completed tool calls continue to use their existing `AgentEvent` projections and are
+not duplicated inside `AgentEvent.Model`. `ReasoningDelta.kind` distinguishes `SUMMARY`
+from `RAW`, while `itemRef` associates streamed deltas with their final item.
+
+> **Sensitive data and journal capacity:** lossless payloads can contain model text,
+> tool arguments, raw reasoning, signatures, and encrypted provider content. They are
+> not redacted. Detailed events are recorded in the runtime's bounded per-run journal;
+> the default capacity is 1024 events, so lossless runs can reach `history_gap` sooner.
+>
+> **Migration note:** `AgentEvent.Model` is a new sealed subtype. Existing exhaustive
+> `when` expressions over `AgentEvent` must add this branch (or an `else` branch).
+
+Java callers select the same behavior through
+`RunOptions.builder().eventDetail(EventDetail.LOSSLESS).build()`. Node callers use
+`{ eventDetail: "lossless" }`.
 
 ### 5. Tools
 

@@ -41,10 +41,13 @@ import org.koaks.framework.middleware.ToolContext
 import org.koaks.framework.middleware.ToolDecision
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.ClientActionHandler
+import org.koaks.framework.model.EventDetail
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.OutputFormat
+import org.koaks.framework.model.ProtocolId
+import org.koaks.framework.model.ProviderId
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.ErrorPolicy
@@ -711,6 +714,7 @@ private fun ModelRequest.toJson() = buildJsonObject {
     instructions?.let { put("instructions", JsonPrimitive(it)) }; put("items", buildJsonArray { items.forEach { add(it.toJson()) } })
     put("tools", buildJsonArray { tools.forEach { schema -> add(buildJsonObject { put("name", JsonPrimitive(schema.name)); put("description", JsonPrimitive(schema.description)); put("parameters", schema.parameters) }) } })
     put("output_format", outputFormat.toJson()); checkpoint?.let { put("checkpoint", it.toJson()) }; put("idempotency_key", JsonPrimitive(idempotencyKey))
+    put("event_detail", JsonPrimitive(eventDetail.name.lowercase()))
 }
 
 private fun JsonObject.toModelRequest() = ModelRequest(
@@ -718,6 +722,11 @@ private fun JsonObject.toModelRequest() = ModelRequest(
     tools = arrayOrNull("tools").orEmpty().map { obj -> obj.jsonObject.let { org.koaks.framework.tool.ToolSchema(it.string("name"), it.stringOrNull("description") ?: "", it.objectOrNull("parameters") ?: JsonObject(emptyMap())) } },
     outputFormat = objectOrNull("output_format")?.toOutputFormat() ?: OutputFormat.Text,
     checkpoint = objectOrNull("checkpoint")?.toCheckpoint(), idempotencyKey = string("idempotency_key"),
+    eventDetail = when (stringOrNull("event_detail") ?: "semantic") {
+        "semantic" -> EventDetail.SEMANTIC
+        "lossless" -> EventDetail.LOSSLESS
+        else -> error("unknown event detail '${string("event_detail")}'")
+    },
 )
 
 private fun OutputFormat.toJson(): JsonObject = buildJsonObject {
@@ -739,39 +748,110 @@ private fun JsonObject.toToolOutcome(): ToolOutcome = when (string("type")) {
     else -> error("unknown tool outcome")
 }
 
-private fun JsonObject.toToolCall() = ToolCall(string("id"), string("name"), string("arguments_json"))
+private fun JsonObject.toToolCall() = ToolCall(
+    id = string("id"),
+    name = string("name"),
+    arguments = string("arguments_json"),
+    nativeId = objectOrNull("native_id")?.toProviderScopedId(),
+    nativeItemId = objectOrNull("native_item_id")?.toProviderScopedId(),
+)
 
-private fun ModelEvent.toJson(): JsonObject = buildJsonObject {
+internal fun ModelEvent.toJson(): JsonObject = buildJsonObject {
     when (this@toJson) {
         is ModelEvent.Started -> { put("type", JsonPrimitive("started")); responseId?.let { put("response_id", JsonPrimitive(it)) } }
         is ModelEvent.CheckpointUpdated -> { put("type", JsonPrimitive("checkpoint_updated")); put("checkpoint", checkpoint.toJson()) }
         is ModelEvent.TextDelta -> { put("type", JsonPrimitive("text_delta")); put("text", JsonPrimitive(text)); itemRef?.let { put("item_ref", JsonPrimitive(it.value)) } }
-        is ModelEvent.ReasoningDelta -> { put("type", JsonPrimitive("reasoning_delta")); put("text", JsonPrimitive(text)); itemRef?.let { put("item_ref", JsonPrimitive(it.value)) } }
+        is ModelEvent.ReasoningDelta -> { put("type", JsonPrimitive("reasoning_delta")); put("text", JsonPrimitive(text)); itemRef?.let { put("item_ref", JsonPrimitive(it.value)) }; put("kind", JsonPrimitive(kind.name.lowercase())) }
+        is ModelEvent.RefusalDelta -> { put("type", JsonPrimitive("refusal_delta")); put("text", JsonPrimitive(text)); itemRef?.let { put("item_ref", JsonPrimitive(it.value)) } }
+        is ModelEvent.AnnotationAdded -> { put("type", JsonPrimitive("annotation_added")); put("annotation", annotation.toJson()); itemRef?.let { put("item_ref", JsonPrimitive(it.value)) } }
         is ModelEvent.ItemAdded -> { put("type", JsonPrimitive("item_added")); put("item", item.toJson()) }
         is ModelEvent.ToolCallDelta -> { put("type", JsonPrimitive("tool_call_delta")); put("id", JsonPrimitive(id)); index?.let { put("index", JsonPrimitive(it)) }; nameDelta?.let { put("name_delta", JsonPrimitive(it)) }; argumentsDelta?.let { put("arguments_delta", JsonPrimitive(it)) }; itemRef?.let { put("item_ref", JsonPrimitive(it.value)) } }
         is ModelEvent.ToolCallCompleted -> { put("type", JsonPrimitive("tool_call_completed")); put("call", call.toJson()) }
-        is ModelEvent.ProviderEvent -> { put("type", JsonPrimitive("provider_event")); put("provider_id", JsonPrimitive(providerId.value)); put("event_type", JsonPrimitive(type)); put("payload", JsonPrimitive(payload)) }
+        is ModelEvent.ProviderEvent -> {
+            put("type", JsonPrimitive("provider_event")); put("provider_id", JsonPrimitive(providerId.value))
+            put("protocol_id", JsonPrimitive(protocolId.value)); put("event_type", JsonPrimitive(type)); put("source", JsonPrimitive(source.name.lowercase()))
+            eventId?.let { put("event_id", JsonPrimitive(it)) }; sequenceNumber?.let { put("sequence_number", JsonPrimitive(it)) }
+            statusCode?.let { put("status_code", JsonPrimitive(it)) }; contentType?.let { put("content_type", JsonPrimitive(it)) }
+            put("payload", JsonPrimitive(payload))
+        }
         is ModelEvent.Finished -> { put("type", JsonPrimitive("finished")); put("response", response.toJson()) }
     }
 }
 
-private fun JsonObject.toModelEvent(): ModelEvent = when (string("type")) {
+internal fun JsonObject.toModelEvent(): ModelEvent = when (string("type")) {
     "started" -> ModelEvent.Started(stringOrNull("response_id"))
     "checkpoint_updated" -> ModelEvent.CheckpointUpdated(objectOrNull("checkpoint")!!.toCheckpoint())
     "text_delta" -> ModelEvent.TextDelta(string("text"), stringOrNull("item_ref")?.let { org.koaks.framework.model.ItemRef(it) })
-    "reasoning_delta" -> ModelEvent.ReasoningDelta(string("text"), stringOrNull("item_ref")?.let { org.koaks.framework.model.ItemRef(it) })
+    "reasoning_delta" -> ModelEvent.ReasoningDelta(
+        string("text"),
+        stringOrNull("item_ref")?.let { org.koaks.framework.model.ItemRef(it) },
+        when (stringOrNull("kind") ?: "raw") {
+            "summary" -> ModelEvent.ReasoningKind.SUMMARY
+            "raw" -> ModelEvent.ReasoningKind.RAW
+            else -> error("unknown reasoning kind '${string("kind")}'")
+        },
+    )
+    "refusal_delta" -> ModelEvent.RefusalDelta(string("text"), stringOrNull("item_ref")?.let { org.koaks.framework.model.ItemRef(it) })
+    "annotation_added" -> ModelEvent.AnnotationAdded(objectOrNull("annotation")!!.toAnnotation(), stringOrNull("item_ref")?.let { org.koaks.framework.model.ItemRef(it) })
     "item_added" -> ModelEvent.ItemAdded(objectOrNull("item")!!.toModelItem())
     "tool_call_delta" -> ModelEvent.ToolCallDelta(string("id"), intOrNull("index"), stringOrNull("name_delta"), stringOrNull("arguments_delta"), stringOrNull("item_ref")?.let { org.koaks.framework.model.ItemRef(it) })
     "tool_call_completed" -> ModelEvent.ToolCallCompleted(objectOrNull("call")!!.toToolCall())
-    "provider_event" -> ModelEvent.ProviderEvent(org.koaks.framework.model.ProviderId(string("provider_id")), string("event_type"), string("payload"))
+    "provider_event" -> ModelEvent.ProviderEvent(
+        providerId = ProviderId(string("provider_id")),
+        type = string("event_type"),
+        payload = string("payload"),
+        protocolId = ProtocolId(stringOrNull("protocol_id") ?: string("provider_id")),
+        source = when (stringOrNull("source") ?: "sse") {
+            "sse" -> ModelEvent.ProviderEventSource.SSE
+            "body" -> ModelEvent.ProviderEventSource.BODY
+            "ndjson" -> ModelEvent.ProviderEventSource.NDJSON
+            "http_error" -> ModelEvent.ProviderEventSource.HTTP_ERROR
+            else -> error("unknown provider event source '${string("source")}'")
+        },
+        eventId = stringOrNull("event_id"),
+        sequenceNumber = longOrNull("sequence_number"),
+        statusCode = intOrNull("status_code"),
+        contentType = stringOrNull("content_type"),
+    )
+    "finished" -> ModelEvent.Finished(objectOrNull("response")!!.toModelResponse())
     else -> error("model event replacement type '${string("type")}' is not supported")
 }
 
 private fun org.koaks.framework.model.ModelResponse.toJson(): JsonObject = buildJsonObject {
     when (this@toJson) {
         is org.koaks.framework.model.ModelResponse.Completed -> put("status", JsonPrimitive("completed"))
-        is org.koaks.framework.model.ModelResponse.Incomplete -> { put("status", JsonPrimitive("incomplete")); put("reason", JsonPrimitive(reason.toString())) }
+        is org.koaks.framework.model.ModelResponse.Incomplete -> { put("status", JsonPrimitive("incomplete")); put("reason", reason.toJson()) }
         is org.koaks.framework.model.ModelResponse.Failed -> { put("status", JsonPrimitive("failed")); put("error", error.toJson()) }
     }
     id?.let { put("id", JsonPrimitive(it)) }; put("output", buildJsonArray { output.forEach { add(it.toJson()) } }); put("usage", usage.toJson()); checkpoint?.let { put("checkpoint", it.toJson()) }
+}
+
+private fun JsonObject.toModelResponse(): org.koaks.framework.model.ModelResponse {
+    val id = stringOrNull("id")
+    val output = arrayOrNull("output").orEmpty().map { it.jsonObject.toModelItem() }
+    val usage = objectOrNull("usage")?.toUsage() ?: Usage.ZERO
+    val checkpoint = objectOrNull("checkpoint")?.toCheckpoint()
+    return when (string("status")) {
+        "completed" -> org.koaks.framework.model.ModelResponse.Completed(id, output, usage, checkpoint)
+        "incomplete" -> org.koaks.framework.model.ModelResponse.Incomplete(
+            id = id,
+            reason = objectOrNull("reason")?.toIncompleteReason() ?: error("incomplete response requires 'reason'"),
+            output = output,
+            usage = usage,
+            checkpoint = checkpoint,
+        )
+        "failed" -> org.koaks.framework.model.ModelResponse.Failed(
+            error = objectOrNull("error")?.let {
+                AgentError.ModelError(
+                    message = it.string("message"),
+                    retriable = it.booleanOrNull("retriable") ?: false,
+                )
+            } ?: error("failed response requires 'error'"),
+            id = id,
+            output = output,
+            usage = usage,
+            checkpoint = checkpoint,
+        )
+        else -> error("unknown model response status '${string("status")}'")
+    }
 }

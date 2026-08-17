@@ -46,6 +46,9 @@ open class ChatCompletionsModel(
 
     override fun newDecoder(): WireDecoder = ChatCompletionsDecoder(providerId)
 
+    override fun newDecoder(request: ModelRequest): WireDecoder =
+        ChatCompletionsDecoder(providerId, request.eventDetail)
+
     override fun toWireCall(req: ModelRequest): WireCall {
         val body = JsonUtil.toJson(toWire(req), ChatCompletionsRequest.serializer())
         return WireCall(

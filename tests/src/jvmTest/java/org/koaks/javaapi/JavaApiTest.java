@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.koaks.framework.model.EventDetail;
 import org.koaks.framework.annotation.Tool;
 import org.koaks.framework.loop.AgentEvent;
 import org.koaks.framework.loop.AgentResult;
@@ -35,6 +36,23 @@ import tools.jackson.core.type.TypeReference;
 class JavaApiTest {
     record WeatherInput(String city) {}
     record Weather(String city, int tempC) {}
+
+    @Test
+    void runOptionsEnableLosslessModelEvents() throws Exception {
+        var options = RunOptions.builder().eventDetail(EventDetail.LOSSLESS).build();
+        assertEquals(EventDetail.LOSSLESS, options.getEventDetail());
+
+        try (var runtime = AgentRuntime.builder().build();
+             var agent = Agent.builder()
+                     .id("java-lossless-events")
+                     .model(Models.custom(JavaFacadeFixtures.textModel("hello")))
+                     .build();
+             var stream = runtime.stream(agent, "hi", options)) {
+            var events = new CopyOnWriteArrayList<AgentEvent>();
+            stream.forEach(events::add).get(5, TimeUnit.SECONDS);
+            assertTrue(events.stream().anyMatch(AgentEvent.Model.class::isInstance));
+        }
+    }
 
     @Test
     void blockingAndAsyncRunsUsePlainJavaSignatures() throws Exception {

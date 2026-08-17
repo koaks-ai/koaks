@@ -46,6 +46,8 @@ class TurnBuilder(
                 text.append(event.text)
             }
             is ModelEvent.ReasoningDelta -> Unit
+            is ModelEvent.RefusalDelta -> Unit
+            is ModelEvent.AnnotationAdded -> Unit
             is ModelEvent.ItemAdded -> {
                 flushPartialText()
                 upsert(event.item)

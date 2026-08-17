@@ -206,10 +206,45 @@ agent.use {
             is AgentEvent.Terminated        -> println("\n[已终止] ${event.reason}")
             is AgentEvent.Failed            -> println("\n[错误] ${event.error.message}")
             is AgentEvent.StepCompleted     -> Unit
+            is AgentEvent.Model             -> Unit // 仅在请求 LOSSLESS 时发出
+            else                            -> Unit
         }
     }
 }
 ```
+
+`EventDetail.SEMANTIC` 是默认值，保持上面这种精简事件序列。界面、录制器或调试器需要
+完整逻辑 provider 流时，可以选择 `EventDetail.LOSSLESS`：
+
+```kotlin
+import org.koaks.framework.model.EventDetail
+
+agent.stream("解释结果", eventDetail = EventDetail.LOSSLESS).collect { event ->
+    when (event) {
+        is AgentEvent.TextDelta -> renderText(event.text, event.itemRef)
+        is AgentEvent.ReasoningDelta -> renderReasoning(event.text, event.kind, event.itemRef)
+        is AgentEvent.Model -> recordModelEvent(event.event, event.step, event.phase)
+        else -> Unit
+    }
+}
+```
+
+在 lossless 模式下，Responses、Chat Completions 和 Anthropic 会为每个输入
+`WireFrame` 先发出一个 `ModelEvent.ProviderEvent`，再发出派生语义事件。provider
+事件记录协议、来源以及未经修改的逻辑 payload。这个保证从 HTTP framing 之后开始，
+不保存原始 HTTP 字节、请求头、SSE 注释或连接元数据。文本、推理和已完成工具调用继续
+使用现有 `AgentEvent` 投影，不会在 `AgentEvent.Model` 中重复出现。
+`ReasoningDelta.kind` 区分 `SUMMARY` 与 `RAW`，`itemRef` 用于把流式 delta 关联到最终 item。
+
+> **敏感数据与日志容量：** lossless payload 可能包含模型文本、工具参数、原始推理、
+> 签名或加密 provider 内容，框架不会自动脱敏。详细事件会写入 runtime 的有界 run
+> journal；默认容量为 1024 条，因此 lossless run 会更快产生 `history_gap`。
+>
+> **迁移说明：** `AgentEvent.Model` 是新增的 sealed subtype。外部对 `AgentEvent`
+> 使用 exhaustive `when` 时，需要增加该分支或 `else`。
+
+Java 使用 `RunOptions.builder().eventDetail(EventDetail.LOSSLESS).build()`；Node 使用
+`{ eventDetail: "lossless" }`。
 
 ### 5. 工具调用
 

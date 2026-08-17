@@ -9,6 +9,7 @@ import type {
   McpConfig,
   MemoryConfig,
   MemoryView,
+  ModelEventHookContext,
   ModelItem,
   RuntimeOptions,
   SkillDefinition,
@@ -222,7 +223,7 @@ function normalizeHook(hook: HookDefinition, registry: CallbackRegistry, lifetim
     lifetime,
   );
   if (hook.afterModelEvent !== undefined) value.after_model_event_callback_id = registry.registerInvoke(
-    (payload) => hook.afterModelEvent?.(payload as Record<string, import("./types.js").JsonValue>) ?? null,
+    (payload) => hook.afterModelEvent?.(payload as ModelEventHookContext) ?? null,
     lifetime,
   );
   if (hook.beforeTool !== undefined) {

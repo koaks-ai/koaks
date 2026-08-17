@@ -6,6 +6,18 @@ package org.koaks.framework.model
  */
 sealed interface ModelEvent {
 
+    enum class ReasoningKind {
+        SUMMARY,
+        RAW,
+    }
+
+    enum class ProviderEventSource {
+        SSE,
+        BODY,
+        NDJSON,
+        HTTP_ERROR,
+    }
+
     data class Started(val responseId: String?) : ModelEvent
 
     /** Provider-native continuation state became available before terminal completion. */
@@ -13,7 +25,15 @@ sealed interface ModelEvent {
 
     data class TextDelta(val text: String, val itemRef: ItemRef? = null) : ModelEvent
 
-    data class ReasoningDelta(val text: String, val itemRef: ItemRef? = null) : ModelEvent
+    data class ReasoningDelta(
+        val text: String,
+        val itemRef: ItemRef? = null,
+        val kind: ReasoningKind = ReasoningKind.RAW,
+    ) : ModelEvent
+
+    data class RefusalDelta(val text: String, val itemRef: ItemRef? = null) : ModelEvent
+
+    data class AnnotationAdded(val annotation: Annotation, val itemRef: ItemRef? = null) : ModelEvent
 
     data class ItemAdded(val item: ModelItem) : ModelEvent
 
@@ -31,6 +51,12 @@ sealed interface ModelEvent {
         val providerId: ProviderId,
         val type: String,
         val payload: String,
+        val protocolId: ProtocolId = ProtocolId(providerId.value),
+        val source: ProviderEventSource = ProviderEventSource.SSE,
+        val eventId: String? = null,
+        val sequenceNumber: Long? = null,
+        val statusCode: Int? = null,
+        val contentType: String? = null,
     ) : ModelEvent
 
     data class Finished(val response: ModelResponse) : ModelEvent

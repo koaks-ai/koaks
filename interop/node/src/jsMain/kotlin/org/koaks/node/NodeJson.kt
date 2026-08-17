@@ -32,6 +32,7 @@ import org.koaks.framework.model.ContentPart
 import org.koaks.framework.model.IncompleteReason
 import org.koaks.framework.model.ItemRef
 import org.koaks.framework.model.ModelItem
+import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ProviderCheckpoint
 import org.koaks.framework.model.ProviderId
 import org.koaks.framework.model.ProviderScopedId
@@ -118,6 +119,14 @@ internal fun Usage.toJson(): JsonObject = buildJsonObject {
     put("reasoning_output_tokens", JsonPrimitive(reasoningOutputTokens))
 }
 
+internal fun JsonObject.toUsage(): Usage = Usage(
+    promptTokens = intOrNull("prompt_tokens") ?: 0,
+    completionTokens = intOrNull("completion_tokens") ?: 0,
+    totalTokens = intOrNull("total_tokens") ?: 0,
+    cachedInputTokens = intOrNull("cached_input_tokens") ?: 0,
+    reasoningOutputTokens = intOrNull("reasoning_output_tokens") ?: 0,
+)
+
 internal fun AgentError.toJson(): JsonObject = buildJsonObject {
     when (this@toJson) {
         is AgentError.ModelError -> {
@@ -147,13 +156,21 @@ internal fun AgentError.toJson(): JsonObject = buildJsonObject {
     cause?.message?.let { put("cause", JsonPrimitive(it)) }
 }
 
-private fun IncompleteReason.toJson(): JsonObject = buildJsonObject {
+internal fun IncompleteReason.toJson(): JsonObject = buildJsonObject {
     when (this@toJson) {
         IncompleteReason.MaxOutputTokens -> put("type", JsonPrimitive("max_output_tokens"))
         IncompleteReason.ContentFilter -> put("type", JsonPrimitive("content_filter"))
         IncompleteReason.Cancelled -> put("type", JsonPrimitive("cancelled"))
         is IncompleteReason.Other -> { put("type", JsonPrimitive("other")); put("code", JsonPrimitive(code)) }
     }
+}
+
+internal fun JsonObject.toIncompleteReason(): IncompleteReason = when (string("type")) {
+    "max_output_tokens" -> IncompleteReason.MaxOutputTokens
+    "content_filter" -> IncompleteReason.ContentFilter
+    "cancelled" -> IncompleteReason.Cancelled
+    "other" -> IncompleteReason.Other(string("code"))
+    else -> error("unknown incomplete reason '${string("type")}'")
 }
 
 private fun TerminationReason.toJson(): JsonObject = buildJsonObject {
@@ -180,8 +197,12 @@ internal fun AgentResult.toJson(): JsonObject = buildJsonObject {
 
 internal fun AgentEvent.toJson(): JsonObject = buildJsonObject {
     when (this@toJson) {
-        is AgentEvent.TextDelta -> { put("type", JsonPrimitive("text_delta")); put("text", JsonPrimitive(text)) }
-        is AgentEvent.ReasoningDelta -> { put("type", JsonPrimitive("reasoning_delta")); put("text", JsonPrimitive(text)) }
+        is AgentEvent.TextDelta -> { put("type", JsonPrimitive("text_delta")); put("text", JsonPrimitive(text)); itemRef?.let { put("item_ref", JsonPrimitive(it.value)) } }
+        is AgentEvent.ReasoningDelta -> { put("type", JsonPrimitive("reasoning_delta")); put("text", JsonPrimitive(text)); itemRef?.let { put("item_ref", JsonPrimitive(it.value)) }; put("kind", JsonPrimitive(kind.name.lowercase())) }
+        is AgentEvent.Model -> {
+            put("type", JsonPrimitive("model")); put("event", event.toJson()); put("step", JsonPrimitive(step))
+            put("phase", JsonPrimitive(if (phase == org.koaks.framework.middleware.ModelCallPhase.Normal) "normal" else "structured_finalization"))
+        }
         is AgentEvent.ToolCallRequested -> { put("type", JsonPrimitive("tool_call_requested")); put("call", call.toJson()) }
         is AgentEvent.ToolResult -> { put("type", JsonPrimitive("tool_result")); put("call_id", JsonPrimitive(callId)); put("output", JsonPrimitive(output)); put("is_error", JsonPrimitive(isError)) }
         is AgentEvent.ToolProgress -> {
@@ -248,7 +269,7 @@ private fun ContentPart.toJson(): JsonObject = buildJsonObject {
     }
 }
 
-private fun Annotation.toJson(): JsonObject = buildJsonObject {
+internal fun Annotation.toJson(): JsonObject = buildJsonObject {
     when (this@toJson) {
         is Annotation.UrlCitation -> { put("type", JsonPrimitive("url_citation")); put("url", JsonPrimitive(url)); title?.let { put("title", JsonPrimitive(it)) }; startIndex?.let { put("start_index", JsonPrimitive(it)) }; endIndex?.let { put("end_index", JsonPrimitive(it)) } }
         is Annotation.FileCitation -> { put("type", JsonPrimitive("file_citation")); put("file_id", JsonPrimitive(fileId)); filename?.let { put("filename", JsonPrimitive(it)) }; startIndex?.let { put("start_index", JsonPrimitive(it)) }; endIndex?.let { put("end_index", JsonPrimitive(it)) } }
@@ -280,7 +301,7 @@ internal fun JsonObject.toModelItem(): ModelItem {
     }
 }
 
-private fun JsonObject.toProviderScopedId() = ProviderScopedId(ProviderId(string("provider_id")), string("raw"))
+internal fun JsonObject.toProviderScopedId() = ProviderScopedId(ProviderId(string("provider_id")), string("raw"))
 
 private fun JsonObject.toContentPart(): ContentPart = when (string("type")) {
     "text" -> ContentPart.Text(string("text"))
@@ -289,7 +310,7 @@ private fun JsonObject.toContentPart(): ContentPart = when (string("type")) {
     else -> error("unknown content part type '${string("type")}'")
 }
 
-private fun JsonObject.toAnnotation(): Annotation = when (string("type")) {
+internal fun JsonObject.toAnnotation(): Annotation = when (string("type")) {
     "url_citation" -> Annotation.UrlCitation(string("url"), stringOrNull("title"), intOrNull("start_index"), intOrNull("end_index"))
     "file_citation" -> Annotation.FileCitation(string("file_id"), stringOrNull("filename"), intOrNull("start_index"), intOrNull("end_index"))
     "generic" -> Annotation.Generic(string("kind"), string("payload"))

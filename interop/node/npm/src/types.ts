@@ -80,9 +80,42 @@ export type AgentResult =
   | { status: "terminated"; text: string; message: ModelItem; usage: Usage; reason: Record<string, JsonValue> }
   | { status: "failed"; text: string; message: ModelItem; usage: Usage; error: AgentError };
 
+export type ReasoningKind = "summary" | "raw";
+export type ProviderEventSource = "sse" | "body" | "ndjson" | "http_error";
+
+export type ModelResponse =
+  | { status: "completed"; id?: string; output: ModelItem[]; usage: Usage; checkpoint?: ProviderCheckpoint }
+  | { status: "incomplete"; id?: string; output: ModelItem[]; usage: Usage; checkpoint?: ProviderCheckpoint; reason: Record<string, JsonValue> }
+  | { status: "failed"; id?: string; output: ModelItem[]; usage: Usage; checkpoint?: ProviderCheckpoint; error: AgentError };
+
+export type ModelEvent =
+  | { type: "started"; responseId?: string }
+  | { type: "checkpoint_updated"; checkpoint: ProviderCheckpoint }
+  | { type: "text_delta"; text: string; itemRef?: string }
+  | { type: "reasoning_delta"; text: string; itemRef?: string; kind: ReasoningKind }
+  | { type: "refusal_delta"; text: string; itemRef?: string }
+  | { type: "annotation_added"; annotation: Annotation; itemRef?: string }
+  | { type: "item_added"; item: ModelItem }
+  | { type: "tool_call_delta"; id: string; index?: number; nameDelta?: string; argumentsDelta?: string; itemRef?: string }
+  | { type: "tool_call_completed"; call: ToolCall }
+  | {
+      type: "provider_event";
+      providerId: string;
+      protocolId: "openai-responses" | "chat-completions" | "anthropic-messages" | string;
+      eventType: string;
+      source: ProviderEventSource;
+      eventId?: string;
+      sequenceNumber?: number;
+      statusCode?: number;
+      contentType?: string;
+      payload: string;
+    }
+  | { type: "finished"; response: ModelResponse };
+
 export type AgentEvent =
-  | { type: "text_delta"; text: string }
-  | { type: "reasoning_delta"; text: string }
+  | { type: "text_delta"; text: string; itemRef?: string }
+  | { type: "reasoning_delta"; text: string; itemRef?: string; kind: ReasoningKind }
+  | { type: "model"; event: ModelEvent; step: number; phase: "normal" | "structured_finalization" }
   | { type: "tool_call_requested"; call: ToolCall }
   | { type: "tool_result"; callId: string; output: string; isError: boolean }
   | { type: "tool_progress"; callId: string; progress: ToolProgress }
@@ -409,7 +442,11 @@ export type McpConfig =
 export type ModelEventDecision =
   | { action: "keep" }
   | { action: "drop" }
-  | { action: "replace"; events: Record<string, JsonValue> | Array<Record<string, JsonValue>> };
+  | { action: "replace"; events: ModelEvent | ModelEvent[] };
+export interface ModelEventHookContext {
+  context: Record<string, JsonValue>;
+  event: ModelEvent;
+}
 export type ToolDecision =
   | { action: "proceed" }
   | { action: "deny"; reason: string }
@@ -417,7 +454,7 @@ export type ToolDecision =
 
 export interface HookDefinition {
   beforeModel?(context: Record<string, JsonValue>): Record<string, JsonValue> | null | Promise<Record<string, JsonValue> | null>;
-  afterModelEvent?(context: Record<string, JsonValue>): ModelEventDecision | Promise<ModelEventDecision>;
+  afterModelEvent?(context: ModelEventHookContext): ModelEventDecision | Promise<ModelEventDecision>;
   beforeTool?(context: Record<string, JsonValue>, execution: HookExecutionContext): ToolDecision | null | Promise<ToolDecision | null>;
   afterTool?(context: Record<string, JsonValue>, execution: HookExecutionContext): Record<string, JsonValue> | null | Promise<Record<string, JsonValue> | null>;
 }
@@ -495,6 +532,7 @@ export interface RunOptions {
   contextRefs?: string[];
   signal?: AbortSignal;
   correlationId?: string;
+  eventDetail?: "semantic" | "lossless";
 }
 
 export interface StreamOptions extends RunOptions {

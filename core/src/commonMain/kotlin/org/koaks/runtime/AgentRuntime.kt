@@ -44,6 +44,7 @@ import org.koaks.framework.memory.shouldRetain
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.AgentFrameworkException
 import org.koaks.framework.model.CheckpointScope
+import org.koaks.framework.model.EventDetail
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.TerminationReason
@@ -279,8 +280,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         contextRefs: List<ContextRef> = emptyList(),
         thread: ThreadId? = null,
         correlationId: String? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): AgentResult {
-        val handle = spawn(agent, input, priority, quota, contextRefs, thread, correlationId)
+        val handle = spawn(agent, input, priority, quota, contextRefs, thread, correlationId, eventDetail)
         return try {
             handle.await()
         } catch (cancelled: CancellationException) {
@@ -289,8 +291,12 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         }
     }
 
-    suspend fun run(agent: Agent, input: String, thread: String): AgentResult =
-        run(agent, input, thread = ThreadId(thread))
+    suspend fun run(
+        agent: Agent,
+        input: String,
+        thread: String,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
+    ): AgentResult = run(agent, input, thread = ThreadId(thread), eventDetail = eventDetail)
 
     suspend fun runStructured(
         agent: Agent,
@@ -301,8 +307,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         contextRefs: List<ContextRef> = emptyList(),
         thread: ThreadId? = null,
         correlationId: String? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): AgentResult {
-        val handle = spawnStructured(agent, input, spec, priority, quota, contextRefs, thread, correlationId)
+        val handle = spawnStructured(agent, input, spec, priority, quota, contextRefs, thread, correlationId, eventDetail)
         return try {
             handle.await()
         } catch (cancelled: CancellationException) {
@@ -311,8 +318,13 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         }
     }
 
-    suspend fun runStructured(agent: Agent, input: String, spec: OutputSpec, thread: String): AgentResult =
-        runStructured(agent, input, spec, thread = ThreadId(thread))
+    suspend fun runStructured(
+        agent: Agent,
+        input: String,
+        spec: OutputSpec,
+        thread: String,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
+    ): AgentResult = runStructured(agent, input, spec, thread = ThreadId(thread), eventDetail = eventDetail)
 
     fun stream(
         agent: Agent,
@@ -322,8 +334,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         contextRefs: List<ContextRef> = emptyList(),
         thread: ThreadId? = null,
         correlationId: String? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): Flow<AgentEvent> = flow {
-        val handle = spawn(agent, input, priority, quota, contextRefs, thread, correlationId)
+        val handle = spawn(agent, input, priority, quota, contextRefs, thread, correlationId, eventDetail)
         try {
             handle.events().collect { envelope ->
                 when (val payload = envelope.payload) {
@@ -342,8 +355,12 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         }
     }
 
-    fun stream(agent: Agent, input: String, thread: String): Flow<AgentEvent> =
-        stream(agent, input, thread = ThreadId(thread))
+    fun stream(
+        agent: Agent,
+        input: String,
+        thread: String,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
+    ): Flow<AgentEvent> = stream(agent, input, thread = ThreadId(thread), eventDetail = eventDetail)
 
     fun spawn(
         agent: Agent,
@@ -353,10 +370,26 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         contextRefs: List<ContextRef> = emptyList(),
         thread: ThreadId? = null,
         correlationId: String? = null,
-    ): AgentHandle = spawnInternal(agent, input, priority, quota, null, contextRefs, thread, null, correlationId = correlationId)
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
+    ): AgentHandle = spawnInternal(
+        agent,
+        input,
+        priority,
+        quota,
+        null,
+        contextRefs,
+        thread,
+        null,
+        correlationId = correlationId,
+        eventDetail = eventDetail,
+    )
 
-    fun spawn(agent: Agent, input: String, thread: String): AgentHandle =
-        spawn(agent, input, thread = ThreadId(thread))
+    fun spawn(
+        agent: Agent,
+        input: String,
+        thread: String,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
+    ): AgentHandle = spawn(agent, input, thread = ThreadId(thread), eventDetail = eventDetail)
 
     fun spawnStructured(
         agent: Agent,
@@ -367,6 +400,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         contextRefs: List<ContextRef> = emptyList(),
         thread: ThreadId? = null,
         correlationId: String? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): AgentHandle = spawnInternal(
         agent,
         input,
@@ -377,6 +411,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         thread = thread,
         structuredSpec = spec,
         correlationId = correlationId,
+        eventDetail = eventDetail,
     )
 
     fun spawnResume(
@@ -386,6 +421,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota? = null,
         contextRefs: List<ContextRef> = emptyList(),
         correlationId: String? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): AgentHandle = spawnInternal(
         agent = agent,
         input = "",
@@ -397,6 +433,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         structuredSpec = null,
         correlationId = correlationId,
         resume = true,
+        eventDetail = eventDetail,
     )
 
     fun resume(
@@ -406,8 +443,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota? = null,
         contextRefs: List<ContextRef> = emptyList(),
         correlationId: String? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): Flow<AgentEvent> = flow {
-        val handle = spawnResume(agent, thread, priority, quota, contextRefs, correlationId)
+        val handle = spawnResume(agent, thread, priority, quota, contextRefs, correlationId, eventDetail)
         try {
             handle.events().collect { envelope ->
                 when (val payload = envelope.payload) {
@@ -433,8 +471,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota? = null,
         contextRefs: List<ContextRef> = emptyList(),
         correlationId: String? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): AgentResult {
-        val handle = spawnResume(agent, thread, priority, quota, contextRefs, correlationId)
+        val handle = spawnResume(agent, thread, priority, quota, contextRefs, correlationId, eventDetail)
         return try {
             handle.await()
         } catch (cancelled: CancellationException) {
@@ -457,6 +496,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         failurePolicy: ChildFailurePolicy = ChildFailurePolicy.PROPAGATE,
         correlationId: String? = null,
         resume: Boolean = false,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): AgentHandle {
         check(!closed.value) { "AgentRuntime is closed" }
         require(correlationId == null || correlationId.isNotBlank()) { "correlationId must not be blank" }
@@ -564,6 +604,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                     childConversation = conversation,
                     failurePolicy = childFailurePolicy,
                     correlationId = effectiveCorrelationId,
+                    eventDetail = eventDetail,
                 )
             }
             val runtimeContext = RuntimeContext(
@@ -599,6 +640,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                         turnReservation,
                         structuredSpec,
                         resume,
+                        eventDetail,
                     )
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -681,6 +723,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         turnReservation: ThreadRegistry.TurnReservation?,
         structuredSpec: OutputSpec?,
         resume: Boolean,
+        eventDetail: EventDetail,
     ): AgentResult {
         var threadLease: ThreadRegistry.ThreadLease? = null
         var threadMemory: ThreadMemory? = null
@@ -718,6 +761,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                     sink,
                     turnContext,
                     structuredSpec,
+                    eventDetail,
                 ) { usage ->
                     terminalUsage = usage
                 }
@@ -846,13 +890,38 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         sink: EventSink,
         turnContext: TurnContext?,
         structuredSpec: OutputSpec?,
+        eventDetail: EventDetail,
         terminalUsage: (Usage) -> Unit,
     ): AgentResult {
         val wall = quota.wallClockMillis
-            ?: return collectStream(agent, input, contextPrefix, acb, control, quota, sink, turnContext, structuredSpec, terminalUsage)
+            ?: return collectStream(
+                agent,
+                input,
+                contextPrefix,
+                acb,
+                control,
+                quota,
+                sink,
+                turnContext,
+                structuredSpec,
+                eventDetail,
+                terminalUsage,
+            )
         return try {
             withTimeout(wall.milliseconds) {
-                collectStream(agent, input, contextPrefix, acb, control, quota, sink, turnContext, structuredSpec, terminalUsage)
+                collectStream(
+                    agent,
+                    input,
+                    contextPrefix,
+                    acb,
+                    control,
+                    quota,
+                    sink,
+                    turnContext,
+                    structuredSpec,
+                    eventDetail,
+                    terminalUsage,
+                )
             }
         } catch (_: TimeoutCancellationException) {
             val error = AgentError.Timeout("agent wall-clock", wall)
@@ -875,6 +944,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         sink: EventSink,
         turnContext: TurnContext?,
         structuredSpec: OutputSpec?,
+        eventDetail: EventDetail,
         terminalUsage: (Usage) -> Unit,
     ): AgentResult {
         var terminal: AgentEvent.Terminal? = null
@@ -888,9 +958,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
 
         try {
             val events = if (structuredSpec == null) {
-                agent.executeStream(input, contextPrefix, turn, turnContext?.checkpoint)
+                agent.executeStream(input, contextPrefix, turn, turnContext?.checkpoint, eventDetail)
             } else {
-                agent.executeStructuredStream(input, contextPrefix, structuredSpec, turn, turnContext?.checkpoint)
+                agent.executeStructuredStream(input, contextPrefix, structuredSpec, turn, turnContext?.checkpoint, eventDetail)
             }
             events.collect { event ->
                 if (control.isPaused) {
@@ -976,6 +1046,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota? = null,
         contextRefs: List<ContextRef> = emptyList(),
         thread: ThreadId? = null,
+        eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): SupervisedHandle {
         val latest = MutableStateFlow<AgentHandle?>(null)
         val deferred: Deferred<AgentResult> = scope.async {
@@ -1010,7 +1081,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                     )
                 },
             ) { attemptInput ->
-                val handle = spawn(agent, attemptInput, priority, quota, contextRefs, thread)
+                val handle = spawn(agent, attemptInput, priority, quota, contextRefs, thread, eventDetail = eventDetail)
                 latest.value = handle
                 handle.await()
             }

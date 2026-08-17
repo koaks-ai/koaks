@@ -30,6 +30,7 @@ import org.koaks.framework.loop.Agent
 import org.koaks.framework.loop.AgentExecutionContext
 import org.koaks.framework.loop.AgentId
 import org.koaks.framework.memory.ThreadId
+import org.koaks.framework.model.EventDetail
 import org.koaks.framework.tool.ToolOutputStream
 import org.koaks.framework.tool.ToolProgress
 import org.koaks.runtime.AgentRuntime
@@ -253,6 +254,7 @@ class KoaksBridge internal constructor(
                     contextRefs = options.contextRefs(),
                     thread = options.stringOrNull("thread_id")?.let(::ThreadId),
                     correlationId = options.stringOrNull("correlation_id"),
+                    eventDetail = options.eventDetail(),
                 )
             } else {
                 runtime.run(
@@ -263,6 +265,7 @@ class KoaksBridge internal constructor(
                     contextRefs = options.contextRefs(),
                     thread = options.stringOrNull("thread_id")?.let(::ThreadId),
                     correlationId = options.stringOrNull("correlation_id"),
+                    eventDetail = options.eventDetail(),
                 )
             }
             result.toJson()
@@ -280,6 +283,7 @@ class KoaksBridge internal constructor(
                 quota = options.objectOrNull("quota")?.toQuota(),
                 contextRefs = options.contextRefs(),
                 correlationId = options.stringOrNull("correlation_id"),
+                eventDetail = options.eventDetail(),
             )
         } else {
             runtime.stream(
@@ -290,6 +294,7 @@ class KoaksBridge internal constructor(
                 contextRefs = options.contextRefs(),
                 thread = options.stringOrNull("thread_id")?.let(::ThreadId),
                 correlationId = options.stringOrNull("correlation_id"),
+                eventDetail = options.eventDetail(),
             )
         }
         return startSubscription(record.key, params.string("callback_id"), flow.map { it.toJson() })
@@ -306,6 +311,7 @@ class KoaksBridge internal constructor(
                 quota = options.objectOrNull("quota")?.toQuota(),
                 contextRefs = options.contextRefs(),
                 correlationId = options.stringOrNull("correlation_id"),
+                eventDetail = options.eventDetail(),
             ).toJson()
         }
     }
@@ -323,6 +329,7 @@ class KoaksBridge internal constructor(
                 contextRefs = options.contextRefs(),
                 thread = options.stringOrNull("thread_id")?.let(::ThreadId),
                 correlationId = options.stringOrNull("correlation_id"),
+                eventDetail = options.eventDetail(),
             )
         } else {
             runtime.spawn(
@@ -333,6 +340,7 @@ class KoaksBridge internal constructor(
                 contextRefs = options.contextRefs(),
                 thread = options.stringOrNull("thread_id")?.let(::ThreadId),
                 correlationId = options.stringOrNull("correlation_id"),
+                eventDetail = options.eventDetail(),
             )
         }
         val handleId = nextId("handle")
@@ -350,6 +358,7 @@ class KoaksBridge internal constructor(
             quota = options.objectOrNull("quota")?.toQuota(),
             contextRefs = options.contextRefs(),
             correlationId = options.stringOrNull("correlation_id"),
+            eventDetail = options.eventDetail(),
         )
         val handleId = nextId("handle")
         handles[handleId] = HandleRecord(record.key, handle)
@@ -833,6 +842,12 @@ private fun JsonObject.toToolProgress(): ToolProgress = when (string("type")) {
 
 private fun JsonObject.contextRefs(): List<ContextRef> =
     arrayOrNull("context_refs").orEmpty().map { ContextRef(it.jsonPrimitive.content) }
+
+private fun JsonObject.eventDetail(): EventDetail = when (stringOrNull("event_detail") ?: "semantic") {
+    "semantic" -> EventDetail.SEMANTIC
+    "lossless" -> EventDetail.LOSSLESS
+    else -> throw IllegalArgumentException("eventDetail must be 'semantic' or 'lossless'")
+}
 
 private fun JsonObject.items() = arrayOrNull("items").orEmpty().map { it.jsonObject.toModelItem() }
 

@@ -7,12 +7,14 @@ import kotlinx.coroutines.test.runTest
 import org.koaks.framework.loop.TurnBuilder
 import org.koaks.framework.model.Annotation
 import org.koaks.framework.model.CheckpointScope
+import org.koaks.framework.model.EventDetail
 import org.koaks.framework.model.ItemRef
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.ModelResponse
 import org.koaks.framework.model.ProviderId
+import org.koaks.framework.model.ProtocolId
 import org.koaks.framework.model.ProviderScopedId
 import org.koaks.framework.model.TranscriptBasis
 import org.koaks.framework.provider.ModelConfig
@@ -144,11 +146,83 @@ class ResponsesProviderTest {
         assertEquals("hello", message.text)
         assertEquals("cannot", message.refusal)
         assertTrue(message.annotations.single() is Annotation.UrlCitation)
+        assertEquals("cannot", events.filterIsInstance<ModelEvent.RefusalDelta>().single().text)
+        assertTrue(events.filterIsInstance<ModelEvent.AnnotationAdded>().single().annotation is Annotation.UrlCitation)
         assertTrue(events.any { it is ModelEvent.CheckpointUpdated })
 
         val builder = TurnBuilder("turn", listOf(ModelItem.user("q")))
         events.forEach(builder::observe)
         assertEquals(1, builder.snapshot().filterIsInstance<ModelItem.Message>().count { it.ref == message.ref })
+    }
+
+    @Test
+    fun lossless_preserves_every_frame_before_derived_events() {
+        val decoder = ResponsesDecoder(
+            ResponsesStateMode.Replayable,
+            persistCheckpoint = false,
+            basisItems = emptyList(),
+            eventDetail = EventDetail.LOSSLESS,
+        )
+        val frames = listOf(
+            WireFrame.Sse(
+                "response.output_text.delta",
+                """{"type":"response.output_text.delta","output_index":0,"delta":"hello","sequence_number":7}""",
+                "evt-1",
+            ),
+            WireFrame.Sse("response.future.delta", """{"type":"response.future.delta","future":true}""", null),
+            WireFrame.Sse(
+                "response.web_search_call.searching",
+                """{"type":"response.web_search_call.searching","output_index":1,"item_id":"ws_1"}""",
+                null,
+            ),
+            WireFrame.Ndjson("{broken"),
+            WireFrame.Body("application/json", """{"id":"resp_1","status":"completed","output":[]}"""),
+        )
+
+        val events = frames.flatMap(decoder::accept)
+        val raw = events.filterIsInstance<ModelEvent.ProviderEvent>()
+
+        assertEquals(frames.size, raw.size)
+        assertEquals(
+            frames.map {
+                when (it) {
+                    is WireFrame.Sse -> it.data
+                    is WireFrame.Ndjson -> it.line
+                    is WireFrame.Body -> it.text
+                    is WireFrame.HttpError -> it.body
+                }
+            },
+            raw.map { it.payload },
+        )
+        assertTrue(events.indexOf(raw.first()) < events.indexOfFirst { it is ModelEvent.TextDelta })
+        assertEquals(ProtocolId.OpenAIResponses, raw.first().protocolId)
+        assertEquals("evt-1", raw.first().eventId)
+        assertEquals(7L, raw.first().sequenceNumber)
+        assertEquals(ModelEvent.ProviderEventSource.BODY, raw.last().source)
+        assertEquals("application/json", raw.last().contentType)
+    }
+
+    @Test
+    fun distinguishes_summary_and_raw_reasoning_with_one_stable_item_ref() {
+        val decoder = ResponsesDecoder(
+            ResponsesStateMode.Replayable,
+            persistCheckpoint = false,
+            basisItems = emptyList(),
+        )
+        val events = play(
+            decoder,
+            "response.output_item.added" to """{"type":"response.output_item.added","output_index":0,"item":{"id":"rs_1","type":"reasoning","summary":[]}}""",
+            "response.reasoning_summary_text.delta" to """{"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_1","delta":"summary"}""",
+            "response.reasoning_text.delta" to """{"type":"response.reasoning_text.delta","output_index":0,"item_id":"rs_1","delta":"raw"}""",
+            "response.output_item.done" to """{"type":"response.output_item.done","output_index":0,"item":{"id":"rs_1","type":"reasoning","summary":[{"type":"summary_text","text":"summary"}]}}""",
+        )
+
+        val reasoning = events.filterIsInstance<ModelEvent.ReasoningDelta>()
+        assertEquals(listOf(ModelEvent.ReasoningKind.SUMMARY, ModelEvent.ReasoningKind.RAW), reasoning.map { it.kind })
+        assertEquals(1, reasoning.map { it.itemRef }.toSet().size)
+        val item = events.filterIsInstance<ModelEvent.Finished>().single().response.output
+            .filterIsInstance<ModelItem.ReasoningSummary>().single()
+        assertEquals(reasoning.first().itemRef, item.ref)
     }
 
     @Test

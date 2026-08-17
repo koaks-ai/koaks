@@ -33,9 +33,9 @@ fun main() = runBlocking {
         """.trimIndent()
         model {
             openaiResponses(
-                baseUrl = EnvTools.loadValue("OPENAI_BASE_URL"),
-                apiKey = EnvTools.loadValue("OPENAI_API_KEY"),
-                modelName = "gpt-5.6-terra",
+                baseUrl = EnvTools.loadValue("DEEPSEEK_BASE_URL"),
+                apiKey = EnvTools.loadValue("DEEPSEEK_API_KEY"),
+                modelName = "deepseek-v4-flash",
             ) {
                 stateMode = ResponsesStateMode.Replayable
                 temperature = 0.7
@@ -133,7 +133,7 @@ private class ResponsesConsolePrinter {
                 endInlineSection()
                 println(red("[error] ${event.error.message}"))
             }
-            is AgentEvent.StepCompleted -> Unit
+            is AgentEvent.StepCompleted, is AgentEvent.Model -> Unit
         }
     }
 

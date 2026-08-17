@@ -1,11 +1,18 @@
 package org.koaks.provider.chatcompletions
 
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.longOrNull
 import org.koaks.framework.model.AgentError
+import org.koaks.framework.model.EventDetail
 import org.koaks.framework.model.ItemRef
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelResponse
 import org.koaks.framework.model.ProviderId
+import org.koaks.framework.model.ProtocolId
 import org.koaks.framework.model.ProviderScopedId
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
@@ -15,6 +22,7 @@ import org.koaks.framework.utils.json.JsonUtil
 
 class ChatCompletionsDecoder(
     private val providerId: ProviderId,
+    private val eventDetail: EventDetail = EventDetail.SEMANTIC,
 ) : WireDecoder {
 
     private class ToolAcc(
@@ -26,7 +34,9 @@ class ChatCompletionsDecoder(
 
     private val toolCalls = LinkedHashMap<Int, ToolAcc>()
     private val text = StringBuilder()
+    private val refusal = StringBuilder()
     private val textRef = ItemRef.generate("msg")
+    private val reasoningRef = ItemRef.generate("reason")
     private val output = mutableListOf<ModelItem>()
     private var usage: Usage = Usage.ZERO
     private var responseId: String? = null
@@ -36,6 +46,7 @@ class ChatCompletionsDecoder(
     private var started = false
 
     override fun accept(frame: WireFrame): List<ModelEvent> {
+        val raw = if (eventDetail == EventDetail.LOSSLESS) listOf(providerEvent(frame)) else emptyList()
         val json = when (frame) {
             is WireFrame.Sse -> frame.data
             is WireFrame.Ndjson -> frame.line
@@ -45,14 +56,14 @@ class ChatCompletionsDecoder(
                     message = "HTTP ${frame.status}: ${frame.body}",
                     retriable = frame.status == 429 || frame.status >= 500,
                 )
-                return finishFailed()
+                return raw + finishFailed()
             }
         }
-        if (json.isBlank() || json == "[DONE]") return emptyList()
+        if (json.isBlank() || json == "[DONE]") return raw
         val chunk = runCatching {
             JsonUtil.fromJson(json, ChatCompletionsResponse.serializer())
-        }.getOrElse { return emptyList() }
-        return acceptChunk(chunk)
+        }.getOrElse { return raw }
+        return raw + acceptChunk(chunk)
     }
 
     fun acceptChunk(chunk: ChatCompletionsResponse): List<ModelEvent> {
@@ -82,11 +93,21 @@ class ChatCompletionsDecoder(
         }
 
         val payload = chunk.choices?.firstOrNull()?.payload ?: return events
-        payload.reasoningContent?.let { if (it.isNotEmpty()) events += ModelEvent.ReasoningDelta(it) }
+        payload.reasoningContent?.let {
+            if (it.isNotEmpty()) {
+                events += ModelEvent.ReasoningDelta(it, reasoningRef, ModelEvent.ReasoningKind.RAW)
+            }
+        }
         payload.content?.let {
             if (it.isNotEmpty()) {
                 text.append(it)
                 events += ModelEvent.TextDelta(it, textRef)
+            }
+        }
+        payload.refusal?.let {
+            if (it.isNotEmpty()) {
+                refusal.append(it)
+                events += ModelEvent.RefusalDelta(it, textRef)
             }
         }
         payload.toolCalls?.forEach { tc ->
@@ -110,7 +131,13 @@ class ChatCompletionsDecoder(
         if (failed != null) return finishFailed()
         val events = mutableListOf<ModelEvent>()
         if (text.isNotEmpty()) {
-            output += ModelItem.assistant(text.toString(), ref = textRef)
+            output += ModelItem.assistant(
+                text = text.toString(),
+                ref = textRef,
+                refusal = refusal.toString().ifBlank { null },
+            )
+        } else if (refusal.isNotEmpty()) {
+            output += ModelItem.assistant("", ref = textRef, refusal = refusal.toString())
         }
         toolCalls.entries.sortedBy { it.key }.forEach { (_, acc) ->
             if (acc.name.isEmpty() && acc.args.isEmpty() && acc.id == null) return@forEach
@@ -139,4 +166,46 @@ class ChatCompletionsDecoder(
         finished = true
         return listOf(ModelEvent.Finished(ModelResponse.Failed(error = failed!!, id = responseId, usage = usage)))
     }
+
+    private fun providerEvent(frame: WireFrame): ModelEvent.ProviderEvent {
+        val payload = when (frame) {
+            is WireFrame.Sse -> frame.data
+            is WireFrame.Body -> frame.text
+            is WireFrame.Ndjson -> frame.line
+            is WireFrame.HttpError -> frame.body
+        }
+        val parsed = payload.takeUnless { it.isBlank() || it == "[DONE]" }
+            ?.let { runCatching { JsonUtil.json.parseToJsonElement(it).jsonObject }.getOrNull() }
+        return ModelEvent.ProviderEvent(
+            providerId = providerId,
+            protocolId = ProtocolId.ChatCompletions,
+            type = when (frame) {
+                is WireFrame.Sse -> frame.event ?: parsed.str("object") ?: if (payload == "[DONE]") "done" else "chat.completion.chunk"
+                is WireFrame.Body -> parsed.str("object") ?: "chat.completion"
+                is WireFrame.Ndjson -> parsed.str("object") ?: "chat.completion.chunk"
+                is WireFrame.HttpError -> "http.error"
+            },
+            payload = payload,
+            source = when (frame) {
+                is WireFrame.Sse -> ModelEvent.ProviderEventSource.SSE
+                is WireFrame.Body -> ModelEvent.ProviderEventSource.BODY
+                is WireFrame.Ndjson -> ModelEvent.ProviderEventSource.NDJSON
+                is WireFrame.HttpError -> ModelEvent.ProviderEventSource.HTTP_ERROR
+            },
+            eventId = (frame as? WireFrame.Sse)?.id,
+            sequenceNumber = parsed.long("sequence_number"),
+            statusCode = (frame as? WireFrame.HttpError)?.status,
+            contentType = when (frame) {
+                is WireFrame.Body -> frame.contentType
+                is WireFrame.HttpError -> frame.contentType
+                else -> null
+            },
+        )
+    }
 }
+
+private fun JsonObject?.str(key: String): String? =
+    this?.get(key)?.let { (it as? JsonPrimitive)?.contentOrNull }
+
+private fun JsonObject?.long(key: String): Long? =
+    this?.get(key)?.let { (it as? JsonPrimitive)?.longOrNull }
