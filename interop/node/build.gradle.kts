@@ -7,6 +7,7 @@ kotlin {
         val jsMain by getting {
             dependencies {
                 implementation(project(":core"))
+                implementation(project(":interop:json"))
                 implementation(project(":model-provider:chat-completions"))
                 implementation(project(":model-provider:qwen"))
                 implementation(project(":model-provider:ollama"))
