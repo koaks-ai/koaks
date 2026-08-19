@@ -51,6 +51,7 @@ import org.koaks.provider.openai.responses.ResponsesItemTypes
 import org.koaks.provider.openai.responses.ResponsesStateMode
 import org.koaks.provider.openai.responses.toInput
 import org.koaks.framework.utils.json.JsonUtil
+import org.koaks.test.runBlockingTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -62,7 +63,7 @@ import kotlin.test.assertTrue
 class ConformanceKitTest {
 
     @Test
-    fun chat_completions_cassette_is_lossless_for_text_and_tools() = runTest {
+    fun chat_completions_cassette_is_lossless_for_text_and_tools() = runBlockingTest {
         val decoder = ChatCompletionsDecoder(ProviderId.OpenAI)
         val events = playSse(CHAT_TOOL_CASSETTE, decoder)
         val finished = events.filterIsInstance<ModelEvent.Finished>().single()
@@ -75,7 +76,7 @@ class ConformanceKitTest {
     }
 
     @Test
-    fun responses_cassette_covers_text_usage_and_unknown_item() = runTest {
+    fun responses_cassette_covers_text_usage_and_unknown_item() = runBlockingTest {
         val decoder = ResponsesDecoder(ResponsesStateMode.Replayable, persistCheckpoint = false, basisItems = emptyList())
         val events = playSse(RESPONSES_CASSETTE, decoder)
         val finished = events.filterIsInstance<ModelEvent.Finished>().single().response

@@ -12,6 +12,7 @@ import io.ktor.utils.io.ByteReadChannel
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.koaks.framework.provider.RetryBudget
+import org.koaks.test.runBlockingTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -35,7 +36,7 @@ class KtorTransportTest {
         )
 
     @Test
-    fun retries_transparently_before_first_byte() = runTest {
+    fun retries_transparently_before_first_byte() = runBlockingTest {
         var calls = 0
         val engine = MockEngine { _ ->
             calls++
@@ -83,7 +84,7 @@ class KtorTransportTest {
     }
 
     @Test
-    fun forwards_sse_payloads_including_done_marker() = runTest {
+    fun forwards_sse_payloads_including_done_marker() = runBlockingTest {
         val engine = MockEngine {
             respond(
                 ByteReadChannel("data: {\"a\":\"first\"}\n\ndata: [DONE]\n\n"),
