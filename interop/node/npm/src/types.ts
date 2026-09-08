@@ -234,7 +234,6 @@ export interface ToolRuntimeContext {
   readonly runId: string;
   readonly agentId: string;
   readonly threadId?: string;
-  readonly turnId?: string;
   readonly correlationId?: string;
   readonly resources: ToolResources;
   readonly context: ToolContextStore;
@@ -259,7 +258,7 @@ export interface ToolContextStore {
 export interface ChildSpawnOptions {
   priority?: number;
   quota?: Quota;
-  contextRefs?: string[];
+  context?: string[];
   failurePolicy?: "propagate" | "capture";
   conversation?:
     | { type: "inherit" }
@@ -273,13 +272,13 @@ export interface IpcMessage {
   readonly receiverRunId?: string;
   readonly type: string;
   readonly payload: string;
-  readonly contextRefs: string[];
+  readonly context: string[];
   readonly priority: number;
   readonly deadlineEpochMs?: number;
 }
 
 export interface IpcSendOptions {
-  contextRefs?: string[];
+  context?: string[];
   priority?: number;
   deadlineEpochMs?: number;
 }
@@ -301,7 +300,7 @@ export interface ToolIpc {
   send(toRunId: string, type: string, payload?: string, options?: IpcSendOptions): Promise<void>;
   receive(): Promise<IpcMessage>;
   request(toRunId: string, type: string, payload?: string, options?: IpcRequestOptions): Promise<IpcMessage>;
-  reply(message: IpcMessage, payload?: string, options?: Pick<IpcSendOptions, "contextRefs">): Promise<void>;
+  reply(message: IpcMessage, payload?: string, options?: Pick<IpcSendOptions, "context">): Promise<void>;
   publish(topic: string, type: string, payload?: string, options?: IpcSendOptions): Promise<void>;
   subscribe(topic: string, options?: IpcSubscriptionOptions): AsyncIterable<IpcMessage>;
 }
@@ -322,25 +321,14 @@ export interface ToolDefinition<TArguments = Record<string, unknown>> {
   execute(argumentsValue: TArguments, context: ToolExecutionContext): string | JsonValue | Promise<string | JsonValue>;
 }
 
-export type TurnRetention = "interrupted" | "completed_only" | "interrupted_if_side_effects";
-
 export interface MemoryView {
   transcript: ModelItem[];
   checkpoint?: ProviderCheckpoint;
 }
 
-export interface ConversationTurn {
-  id: string;
-  status: Record<string, JsonValue>;
-  items: ModelItem[];
-  checkpoint?: ProviderCheckpoint;
-  usage: Usage;
-}
-
 export interface ThreadMemory {
-  retention?: TurnRetention;
   load(query: ModelItem[]): MemoryView | Promise<MemoryView>;
-  commit(turn: ConversationTurn): void | Promise<void>;
+  append(item: ModelItem): void | Promise<void>;
   close?(): void;
 }
 
@@ -369,16 +357,15 @@ export type CompactionEvent =
 
 export type MemoryConfig =
   | { type: "none" }
-  | { type: "window"; maxMessages?: number; retention?: TurnRetention }
+  | { type: "window"; maxMessages?: number }
   | { type: "custom"; id: string; open(threadId: string): ThreadMemory | Promise<ThreadMemory> }
-  | { type: "vector"; id: string; store: VectorStore; topK?: number; retention?: TurnRetention }
+  | { type: "vector"; id: string; store: VectorStore; topK?: number }
   | {
       type: "summarizing";
       id: string;
       model: ModelProvider;
       maxTokens: number;
       keepRecentTurns?: number;
-      retention?: TurnRetention;
       delegate?: MemoryConfig;
       stateStore?: SummaryStateStore;
       onCompaction?(event: CompactionEvent): void;
@@ -463,7 +450,6 @@ export interface HookExecutionContext {
   readonly runId?: string;
   readonly agentId?: string;
   readonly threadId?: string;
-  readonly turnId?: string;
   readonly correlationId?: string;
   readonly signal: AbortSignal;
 }
@@ -529,7 +515,7 @@ export interface RunOptions {
   threadId?: string;
   priority?: number;
   quota?: Quota;
-  contextRefs?: string[];
+  context?: string[];
   signal?: AbortSignal;
   correlationId?: string;
   eventDetail?: "semantic" | "lossless";
@@ -553,7 +539,6 @@ export interface RunSnapshot {
   agentId: string;
   agentName: string;
   threadId?: string;
-  turnId?: string;
   correlationId?: string;
   state: "created" | "thread_queued" | "ready" | "running" | "waiting" | "suspended" | "committing" | "finished" | "failed" | "cancelled";
   priority: number;
@@ -571,8 +556,8 @@ export interface ThreadSnapshot {
   id: string;
   memoryProviderId: string;
   participants: string[];
-  activeTurn?: string;
-  queuedTurns: string[];
+  activeRun?: string;
+  queuedRuns: string[];
 }
 
 export interface RuntimeMetrics {
@@ -596,7 +581,6 @@ interface RuntimeRunEventBase {
   runId: string;
   agentId: string;
   threadId?: string;
-  turnId?: string;
 }
 
 export type RuntimeEvent =
@@ -607,7 +591,6 @@ export type RuntimeEvent =
   | (RuntimeRunEventBase & { type: "incomplete"; reason: Record<string, JsonValue>; usage: Usage })
   | (RuntimeRunEventBase & { type: "terminated"; reason: Record<string, JsonValue> })
   | (RuntimeRunEventBase & { type: "failed"; error: AgentError })
-  | (RuntimeRunEventBase & { type: "side_effect_rollback" })
   | {
       type: "unhandled_child_failure";
       runId: string;
@@ -621,7 +604,6 @@ export type RuntimeEvent =
       agentId: string;
       agentName: string;
       threadId?: string;
-      turnId?: string;
       attempt: number;
       delayMs: number;
     }
@@ -631,7 +613,6 @@ export type RuntimeEvent =
       agentId: string;
       agentName: string;
       threadId?: string;
-      turnId?: string;
     };
 
 export type ContextScope =
@@ -673,7 +654,6 @@ interface RunEventBase {
   runId: string;
   agentId: string;
   threadId?: string;
-  turnId?: string;
   correlationId?: string;
   sequence: number;
   timestampEpochMs: number;
@@ -692,7 +672,6 @@ export interface RunHandle {
   readonly runId: string;
   readonly agentId: string;
   readonly threadId?: string;
-  readonly turnId?: string;
   readonly correlationId?: string;
   readonly parentRunId?: string;
   result(): Promise<AgentResult>;

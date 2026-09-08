@@ -17,7 +17,7 @@
 - **一个声明式 DSL**: `agent { }` 组装出一个不可变、可复用的 Agent。
 - **一等公民的工具**: 用带类型的输入内联定义工具，其 JSON Schema 由你的 `@Serializable` 类自动生成。同时支持类式工具、JVM 的 `@Tool` 注解，以及 **MCP** 工具的懒发现。
 - **可组合的 Skills**: 从 `SKILL.md` 目录或自定义来源加载可复用 instructions、只读资源和工具。
-- **可插拔的记忆**: 滑动窗口、摘要式或向量式记忆，按对话轮次原子提交（运行失败或被取消，不污染历史）。
+- **可插拔的记忆**: 滑动窗口、摘要式或向量式记忆。每条完成的消息即时写入；取消会保留已经写出的内容。
 - **结构化输出**: `agent.run<T>()` 直接返回解码后的强类型结果。
 - **天生健壮**: 模型回退（fallback）、重试/替换错误策略、步数与 token 预算，以及 Around 中间件（缓存、护栏、人工审批）。
 - **Kotlin Multiplatform**: 一套代码同时支持 JVM、JS 与 macOS（Apple Silicon）。
@@ -368,8 +368,8 @@ Skill 资源保持延迟、只读。Koaks 通过一个受大小限制且支持�
 ### 7. 记忆（多轮对话）
 
 为 Agent 配置记忆，然后在每次运行时传入相同的 `thread`。`ThreadId` 由 Runtime 全局管理，
-因此不同 Agent 也可以加入同一个会话。每一轮都会加载历史，并仅在整个 Turn 成功结束时原子
-提交——运行失败或被取消都不会影响已持久化的历史。
+因此不同 Agent 也可以加入同一个会话。每条完成的消息都会写入 Memory；取消会保留用户输入
+和已经拼出的半截回复。
 
 ```kotlin
 val agent = agent {
@@ -397,8 +397,8 @@ AgentRuntime { maxConcurrency = 8 }.use { runtime ->
 }
 ```
 
-`AgentId` 标识不可变的 Agent 定义，`ThreadId` 标识长生命周期会话，`TurnId` 标识一次原子的
-顶层回合，`RunId` 标识一次执行实例。同一 Thread 的顶层 Turn 按 FIFO 串行，不同 Thread 仍可并发。
+`AgentId` 标识不可变的 Agent 定义，`ThreadId` 标识长生命周期会话，`RunId` 标识一次执行实例。
+同一 Thread 的顶层 run 按 FIFO 串行，不同 Thread 仍可并发。
 
 工具或 Agent 协程可以通过 `spawnChild` 创建结构化子运行。默认情况下失败会向父运行传播；
 需要自行处理结果时可使用 CAPTURE，临时子运行则不会创建持久化 Thread 绑定：

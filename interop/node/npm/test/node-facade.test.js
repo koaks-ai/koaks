@@ -738,7 +738,7 @@ test("child Agents preserve parent semantics and saved handles remain usable acr
   assert.equal((await parent.run("conversation modes", { threadId: "parent-thread" })).status, "completed");
   assert.equal(conversationHandles.inherit.parentRunId, conversationHandles.parent.runId);
   assert.equal(conversationHandles.inherit.threadId, "parent-thread");
-  assert.equal(conversationHandles.inherit.turnId, conversationHandles.parent.turnId);
+  assert.notEqual(conversationHandles.inherit.runId, conversationHandles.parent.runId);
   assert.equal(conversationHandles.ephemeral.threadId, undefined);
   assert.equal(conversationHandles.threaded.threadId, "child-thread");
 

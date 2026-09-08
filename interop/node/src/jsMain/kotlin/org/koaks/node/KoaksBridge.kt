@@ -36,7 +36,7 @@ import org.koaks.framework.tool.ToolProgress
 import org.koaks.runtime.AgentRuntime
 import org.koaks.runtime.acb.AgentHandle
 import org.koaks.runtime.acb.RunId
-import org.koaks.runtime.context.ContextRef
+import org.koaks.runtime.context.List<ModelItem>
 import org.koaks.runtime.context.ContextScope
 import org.koaks.runtime.fault.CircuitBreakerPolicy
 import org.koaks.runtime.fault.SupervisedHandle
@@ -251,7 +251,7 @@ class KoaksBridge internal constructor(
                     params.objectOrNull("output")?.toOutputSpec() ?: error("'output' is required"),
                     priority = options.intOrNull("priority") ?: 0,
                     quota = options.objectOrNull("quota")?.toQuota(),
-                    contextRefs = options.contextRefs(),
+                    context = options.context(),
                     thread = options.stringOrNull("thread_id")?.let(::ThreadId),
                     correlationId = options.stringOrNull("correlation_id"),
                     eventDetail = options.eventDetail(),
@@ -262,7 +262,7 @@ class KoaksBridge internal constructor(
                     params.string("input"),
                     priority = options.intOrNull("priority") ?: 0,
                     quota = options.objectOrNull("quota")?.toQuota(),
-                    contextRefs = options.contextRefs(),
+                    context = options.context(),
                     thread = options.stringOrNull("thread_id")?.let(::ThreadId),
                     correlationId = options.stringOrNull("correlation_id"),
                     eventDetail = options.eventDetail(),
@@ -281,7 +281,7 @@ class KoaksBridge internal constructor(
                 ThreadId(params.string("thread_id")),
                 priority = options.intOrNull("priority") ?: 0,
                 quota = options.objectOrNull("quota")?.toQuota(),
-                contextRefs = options.contextRefs(),
+                context = options.context(),
                 correlationId = options.stringOrNull("correlation_id"),
                 eventDetail = options.eventDetail(),
             )
@@ -291,7 +291,7 @@ class KoaksBridge internal constructor(
                 params.string("input"),
                 priority = options.intOrNull("priority") ?: 0,
                 quota = options.objectOrNull("quota")?.toQuota(),
-                contextRefs = options.contextRefs(),
+                context = options.context(),
                 thread = options.stringOrNull("thread_id")?.let(::ThreadId),
                 correlationId = options.stringOrNull("correlation_id"),
                 eventDetail = options.eventDetail(),
@@ -309,7 +309,7 @@ class KoaksBridge internal constructor(
                 ThreadId(params.string("thread_id")),
                 priority = options.intOrNull("priority") ?: 0,
                 quota = options.objectOrNull("quota")?.toQuota(),
-                contextRefs = options.contextRefs(),
+                context = options.context(),
                 correlationId = options.stringOrNull("correlation_id"),
                 eventDetail = options.eventDetail(),
             ).toJson()
@@ -326,7 +326,7 @@ class KoaksBridge internal constructor(
                 params.objectOrNull("output")?.toOutputSpec() ?: error("'output' is required"),
                 priority = options.intOrNull("priority") ?: 0,
                 quota = options.objectOrNull("quota")?.toQuota(),
-                contextRefs = options.contextRefs(),
+                context = options.context(),
                 thread = options.stringOrNull("thread_id")?.let(::ThreadId),
                 correlationId = options.stringOrNull("correlation_id"),
                 eventDetail = options.eventDetail(),
@@ -337,7 +337,7 @@ class KoaksBridge internal constructor(
                 params.string("input"),
                 priority = options.intOrNull("priority") ?: 0,
                 quota = options.objectOrNull("quota")?.toQuota(),
-                contextRefs = options.contextRefs(),
+                context = options.context(),
                 thread = options.stringOrNull("thread_id")?.let(::ThreadId),
                 correlationId = options.stringOrNull("correlation_id"),
                 eventDetail = options.eventDetail(),
@@ -356,7 +356,7 @@ class KoaksBridge internal constructor(
             ThreadId(params.string("thread_id")),
             priority = options.intOrNull("priority") ?: 0,
             quota = options.objectOrNull("quota")?.toQuota(),
-            contextRefs = options.contextRefs(),
+            context = options.context(),
             correlationId = options.stringOrNull("correlation_id"),
             eventDetail = options.eventDetail(),
         )
@@ -438,7 +438,7 @@ class KoaksBridge internal constructor(
             policy,
             priority = options.intOrNull("priority") ?: 0,
             quota = options.objectOrNull("quota")?.toQuota(),
-            contextRefs = options.contextRefs(),
+            context = options.context(),
             thread = options.stringOrNull("thread_id")?.let(::ThreadId),
         )
         val id = nextId("supervised")
@@ -454,13 +454,13 @@ class KoaksBridge internal constructor(
 
     private fun deltaContext(params: JsonObject): JsonPrimitive {
         val (contextScope, owner) = params.contextScope()
-        val ref = runtime.context.delta(ContextRef(params.string("parent_ref")), params.items(), contextScope, owner)
+        val ref = runtime.context.delta(List<ModelItem>(params.string("parent_ref")), params.items(), contextScope, owner)
         return JsonPrimitive(ref.id)
     }
 
     private fun resolveContext(params: JsonObject): JsonArray = buildJsonArray {
         runtime.context.resolve(
-            ContextRef(params.string("ref")),
+            List<ModelItem>(params.string("ref")),
             params.stringOrNull("requester_run_id")?.toRunId(),
         ).forEach { add(it.toJson()) }
     }
@@ -511,7 +511,7 @@ class KoaksBridge internal constructor(
             val owner = execution.runtimeContext.runId.takeIf { scope == ContextScope.PRIVATE }
             JsonPrimitive(
                 execution.runtimeContext.context.delta(
-                    ContextRef(params.string("parent_ref")),
+                    List<ModelItem>(params.string("parent_ref")),
                     params.items(),
                     scope,
                     owner,
@@ -523,7 +523,7 @@ class KoaksBridge internal constructor(
         toolExecutions.execute(params.string("execution_id")) { execution ->
             buildJsonArray {
                 execution.runtimeContext.context.resolve(
-                    ContextRef(params.string("ref")),
+                    List<ModelItem>(params.string("ref")),
                     execution.runtimeContext.runId,
                 ).forEach { add(it.toJson()) }
             }
@@ -553,7 +553,7 @@ class KoaksBridge internal constructor(
                 params.string("input"),
                 priority = options.intOrNull("priority") ?: 0,
                 quota = options.objectOrNull("quota")?.toQuota(),
-                contextRefs = options.contextRefs(),
+                context = options.context(),
                 failurePolicy = failurePolicy,
                 conversation = conversation,
             )
@@ -599,7 +599,7 @@ class KoaksBridge internal constructor(
             if (request.receiver != execution.runtimeContext.runId) {
                 throw NodeBridgeException("ipc_reply_invalid", "IPC request does not belong to the current run")
             }
-            execution.runtimeContext.ipc.reply(request, params.stringOrNull("payload") ?: "", params.contextRefs())
+            execution.runtimeContext.ipc.reply(request, params.stringOrNull("payload") ?: "", params.context())
             JsonNull
         }
 
@@ -840,8 +840,8 @@ private fun JsonObject.toToolProgress(): ToolProgress = when (string("type")) {
     else -> throw IllegalArgumentException("unknown tool progress type '${string("type")}'")
 }
 
-private fun JsonObject.contextRefs(): List<ContextRef> =
-    arrayOrNull("context_refs").orEmpty().map { ContextRef(it.jsonPrimitive.content) }
+private fun JsonObject.context(): List<List<ModelItem>> =
+    arrayOrNull("context_refs").orEmpty().map { List<ModelItem>(it.jsonPrimitive.content) }
 
 private fun JsonObject.eventDetail(): EventDetail = when (stringOrNull("event_detail") ?: "semantic") {
     "semantic" -> EventDetail.SEMANTIC
@@ -874,7 +874,6 @@ private fun handleDescriptor(id: String, handle: AgentHandle, parentRunId: RunId
     put("run_id", JsonPrimitive(handle.runId.value.toString()))
     put("agent_id", JsonPrimitive(handle.agentId.value))
     handle.threadId?.let { put("thread_id", JsonPrimitive(it.value)) }
-    handle.turnId?.let { put("turn_id", JsonPrimitive(it.value.toString())) }
     handle.correlationId?.let { put("correlation_id", JsonPrimitive(it)) }
     parentRunId?.let { put("parent_run_id", JsonPrimitive(it.value.toString())) }
 }
@@ -892,7 +891,7 @@ private fun JsonObject.toRuntimeMessage(id: Long, sender: RunId?, receiver: RunI
     receiver = receiver,
     type = string("type"),
     payload = stringOrNull("payload") ?: "",
-    contextRefs = contextRefs(),
+    context = context(),
     priority = intOrNull("priority") ?: 0,
     deadlineMillis = longOrNull("deadline_epoch_ms"),
 )
@@ -903,7 +902,7 @@ private fun RuntimeMessage.toJson(replyToken: String? = null): JsonObject = buil
     receiver?.let { put("receiver_run_id", JsonPrimitive(it.value.toString())) }
     put("type", JsonPrimitive(type))
     put("payload", JsonPrimitive(payload))
-    put("context_refs", buildJsonArray { contextRefs.forEach { add(JsonPrimitive(it.id)) } })
+    put("context_refs", buildJsonArray { context.forEach { add(JsonPrimitive(it.id)) } })
     put("priority", JsonPrimitive(priority))
     deadlineMillis?.let { put("deadline_epoch_ms", JsonPrimitive(it)) }
     replyToken?.let { put("reply_token", JsonPrimitive(it)) }

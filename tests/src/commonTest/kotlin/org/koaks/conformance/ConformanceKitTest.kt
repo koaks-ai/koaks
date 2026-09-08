@@ -16,9 +16,8 @@ import org.koaks.framework.loop.TurnBuilder
 import org.koaks.framework.loop.agent
 import org.koaks.framework.loop.done
 import org.koaks.framework.loop.fail
-import org.koaks.framework.memory.InterruptReason
 import org.koaks.framework.memory.WindowMemory
-import org.koaks.framework.memory.completedTurn
+import org.koaks.framework.memory.appendAll
 import org.koaks.framework.memory.repairTranscript
 import org.koaks.framework.memory.unresolvedCallRefs
 import org.koaks.framework.model.AgentError
@@ -169,16 +168,16 @@ class ConformanceKitTest {
 
     @Test
     fun interrupt_resume_repairs_orphan_tool_calls() {
-        val builder = TurnBuilder("turn-1", listOf(ModelItem.user("do it")))
+        val builder = TurnBuilder()
         val callRef = ItemRef.generate("call")
         builder.observe(
             ModelEvent.ToolCallCompleted(
                 org.koaks.framework.model.ToolCall(callRef.value, "search", "{}"),
             ),
         )
-        val stored = builder.interruptedTurn(InterruptReason.Cancelled)
-        assertEquals(listOf(callRef), unresolvedCallRefs(stored.items))
-        val online = repairTranscript(stored.items)
+        val stored = builder.takeStepItems()
+        assertEquals(listOf(callRef), unresolvedCallRefs(stored))
+        val online = repairTranscript(stored)
         val results = online.filterIsInstance<ModelItem.ToolResult>()
         assertEquals(1, results.size)
         assertTrue(results.single().isError)
@@ -322,19 +321,17 @@ class ConformanceKitTest {
     @Test
     fun window_memory_rejects_dropping_required_items() = runTest {
         val mem = WindowMemory(maxMessages = 2)
-        mem.commit(
-            completedTurn(
-                ModelItem.user("q1"),
-                ModelItem.ProviderItem(
-                    providerId = ProviderId.Anthropic,
-                    kind = "thinking",
-                    displayText = "secret",
-                    replay = ReplayPolicy.Required,
-                    payload = "{}".encodeUtf8(),
-                ),
+        mem.appendAll(
+            ModelItem.user("q1"),
+            ModelItem.ProviderItem(
+                providerId = ProviderId.Anthropic,
+                kind = "thinking",
+                displayText = "secret",
+                replay = ReplayPolicy.Required,
+                payload = "{}".encodeUtf8(),
             ),
         )
-        mem.commit(completedTurn(ModelItem.user("q2"), ModelItem.assistant("a2")))
+        mem.appendAll(ModelItem.user("q2"), ModelItem.assistant("a2"))
         val error = assertFailsWith<AgentFrameworkException> { mem.load(emptyList()) }
         assertTrue(error.error is AgentError.PreparationError)
         assertTrue(error.message!!.contains("Required"))

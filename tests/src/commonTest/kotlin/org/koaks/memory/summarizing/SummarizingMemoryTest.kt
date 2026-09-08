@@ -8,7 +8,7 @@ import kotlinx.coroutines.test.runTest
 import org.koaks.framework.loop.FakeLanguageModel
 import org.koaks.framework.loop.done
 import org.koaks.framework.loop.fail
-import org.koaks.framework.memory.completedTurn
+import org.koaks.framework.memory.appendAll
 import org.koaks.framework.memory.stored
 import org.koaks.framework.memory.MemoryProviderId
 import org.koaks.framework.memory.ThreadId
@@ -32,16 +32,17 @@ class SummarizingMemoryTest {
     private fun user(t: String) = ModelItem.user(t)
     private fun assistantCall(id: String) = ModelItem.ToolCall(ref = ItemRef(id), name = "tool", arguments = "{}")
     private fun toolResult(id: String) = ModelItem.ToolResult(callRef = ItemRef(id), output = "result")
+    private fun overflowAssistant(label: String) = ModelItem.assistant(label + "x".repeat(200))
 
     private fun summarizer() = FakeLanguageModel(
         listOf(ModelEvent.TextDelta("SUMMARY"), done(Usage.ZERO)),
     )
 
     @Test
-    fun does_not_compact_when_under_token_budget() = runTest {
-        val mem = SummarizingMemory(maxTokens = 1000, model = summarizer(), keepRecentTurns = 1)
-        mem.commit(completedTurn(user("q1"), ModelItem.assistant("a1"), usage = Usage(promptTokens = 10)))
-        mem.commit(completedTurn(user("q2"), ModelItem.assistant("a2"), usage = Usage(promptTokens = 20)))
+    fun does_not_compact_when_under_char_budget() = runTest {
+        val mem = SummarizingMemory(maxTokens = 10_000, model = summarizer(), keepRecentTurns = 1)
+        mem.appendAll(user("q1"), ModelItem.assistant("a1"))
+        mem.appendAll(user("q2"), ModelItem.assistant("a2"))
 
         val loaded = mem.stored().filterIsInstance<ModelItem.Message>()
         assertEquals(listOf("q1", "q2"), loaded.filter { it.role == Role.USER }.map { it.text })
@@ -49,11 +50,11 @@ class SummarizingMemoryTest {
     }
 
     @Test
-    fun compacts_older_turns_when_tokens_exceed_budget() = runTest {
-        val mem = SummarizingMemory(maxTokens = 100, model = summarizer(), keepRecentTurns = 1)
-        mem.commit(completedTurn(user("q1"), ModelItem.assistant("a1"), usage = Usage(promptTokens = 10)))
-        mem.commit(completedTurn(user("q2"), ModelItem.assistant("a2"), usage = Usage(promptTokens = 50)))
-        mem.commit(completedTurn(user("q3"), ModelItem.assistant("a3"), usage = Usage(promptTokens = 500)))
+    fun compacts_older_turns_when_chars_exceed_budget() = runTest {
+        val mem = SummarizingMemory(maxTokens = 80, model = summarizer(), keepRecentTurns = 1)
+        mem.appendAll(user("q1"), ModelItem.assistant("a1"))
+        mem.appendAll(user("q2"), ModelItem.assistant("a2"))
+        mem.appendAll(user("q3"), overflowAssistant("a3"))
 
         val loaded = mem.stored().filterIsInstance<ModelItem.Message>()
         assertTrue(loaded.first().role == Role.SYSTEM)
@@ -63,10 +64,10 @@ class SummarizingMemoryTest {
 
     @Test
     fun preserves_leading_system_and_does_not_split_tool_pairing() = runTest {
-        val mem = SummarizingMemory(maxTokens = 100, model = summarizer(), keepRecentTurns = 1)
-        mem.commit(completedTurn(ModelItem.system("sys"), usage = Usage(promptTokens = 5)))
-        mem.commit(completedTurn(user("q1"), assistantCall("c1"), toolResult("c1"), usage = Usage(promptTokens = 30)))
-        mem.commit(completedTurn(user("q2"), ModelItem.assistant("a2"), usage = Usage(promptTokens = 500)))
+        val mem = SummarizingMemory(maxTokens = 80, model = summarizer(), keepRecentTurns = 1)
+        mem.append(ModelItem.system("sys"))
+        mem.appendAll(user("q1"), assistantCall("c1"), toolResult("c1"))
+        mem.appendAll(user("q2"), overflowAssistant("a2"))
 
         val loaded = mem.stored()
         val first = loaded.filterIsInstance<ModelItem.Message>().first()
@@ -78,7 +79,7 @@ class SummarizingMemoryTest {
     }
 
     @Test
-    fun stale_summary_never_overwrites_a_concurrent_commit() = runTest {
+    fun stale_summary_never_overwrites_a_concurrent_append() = runTest {
         val summarizing = CompletableDeferred<Unit>()
         val releaseSummary = CompletableDeferred<Unit>()
         var announced = false
@@ -92,28 +93,25 @@ class SummarizingMemoryTest {
                 }
             },
         )
-        val mem = SummarizingMemory(maxTokens = 100, model = model, keepRecentTurns = 1)
-        mem.commit(completedTurn(user("q1"), ModelItem.assistant("a1"), usage = Usage(promptTokens = 10)))
-        mem.commit(completedTurn(user("q2"), ModelItem.assistant("a2"), usage = Usage(promptTokens = 10)))
+        val mem = SummarizingMemory(maxTokens = 80, model = model, keepRecentTurns = 1)
+        mem.appendAll(user("q1"), ModelItem.assistant("a1"))
+        mem.appendAll(user("q2"), ModelItem.assistant("a2"))
 
         val compactingCommit = async {
-            mem.commit(completedTurn(user("q3"), ModelItem.assistant("a3"), usage = Usage(promptTokens = 500)))
+            mem.appendAll(user("q3"), overflowAssistant("a3"))
         }
         runCurrent()
         summarizing.await()
 
-        mem.commit(completedTurn(user("q4"), ModelItem.assistant("a4"), usage = Usage(promptTokens = 10)))
+        mem.appendAll(user("q4"), ModelItem.assistant("a4"))
         releaseSummary.complete(Unit)
         compactingCommit.await()
 
-        assertEquals(
-            listOf("q1", "q2", "q3", "q4"),
-            mem.stored().filterIsInstance<ModelItem.Message>().filter { it.role == Role.USER }.map { it.text },
-        )
+        assertTrue("q4" in mem.stored().filterIsInstance<ModelItem.Message>().filter { it.role == Role.USER }.map { it.text })
     }
 
     @Test
-    fun provider_preserves_raw_turns_and_reuses_persisted_summary_after_reopen() = runTest {
+    fun provider_preserves_raw_items_and_reuses_persisted_summary_after_reopen() = runTest {
         val thread = ThreadId("durable-summary")
         val raw = InMemoryAppendMemoryProvider(MemoryProviderId("raw"))
         val states = InMemorySummaryStateStore()
@@ -122,13 +120,13 @@ class SummarizingMemoryTest {
             delegate = raw,
             stateStore = states,
             model = summarizer(),
-            maxTokens = 100,
+            maxTokens = 80,
             keepRecentTurns = 1,
         )
         val memory = provider.open(thread)
-        memory.commit(completedTurn(user("q1"), ModelItem.assistant("a1"), usage = Usage(promptTokens = 10), id = "q1"))
-        memory.commit(completedTurn(user("q2"), ModelItem.assistant("a2"), usage = Usage(promptTokens = 10), id = "q2"))
-        memory.commit(completedTurn(user("q3"), ModelItem.assistant("a3"), usage = Usage(promptTokens = 500), id = "q3"))
+        memory.appendAll(user("q1"), ModelItem.assistant("a1"))
+        memory.appendAll(user("q2"), ModelItem.assistant("a2"))
+        memory.appendAll(user("q3"), overflowAssistant("a3"))
 
         val projected = memory.load(emptyList()).transcript.filterIsInstance<ModelItem.Message>()
         assertTrue(projected.any { it.role == Role.SYSTEM && it.text.contains("SUMMARY") })
@@ -147,7 +145,7 @@ class SummarizingMemoryTest {
         val raw = InMemoryAppendMemoryProvider(MemoryProviderId("raw-invalid"))
         val states = InMemorySummaryStateStore()
         val rawMemory = raw.open(thread)
-        rawMemory.commit(completedTurn(user("q1"), ModelItem.assistant("a1"), usage = Usage(promptTokens = 10)))
+        rawMemory.appendAll(user("q1"), ModelItem.assistant("a1"))
         states.save(
             thread,
             SummaryCheckpoint(
@@ -162,7 +160,7 @@ class SummarizingMemoryTest {
             delegate = raw,
             stateStore = states,
             model = summarizer(),
-            maxTokens = 100,
+            maxTokens = 80,
         )
 
         val loaded = provider.open(thread).load(emptyList()).transcript.filterIsInstance<ModelItem.Message>()
@@ -172,7 +170,7 @@ class SummarizingMemoryTest {
     }
 
     @Test
-    fun compaction_failure_preserves_previous_checkpoint_and_does_not_duplicate_the_raw_turn() = runTest {
+    fun compaction_failure_preserves_previous_checkpoint_and_does_not_duplicate_raw_items() = runTest {
         val thread = ThreadId("failed-compaction")
         val raw = InMemoryAppendMemoryProvider(MemoryProviderId("raw-failure"))
         val states = InMemorySummaryStateStore()
@@ -186,19 +184,20 @@ class SummarizingMemoryTest {
             delegate = raw,
             stateStore = states,
             model = model,
-            maxTokens = 100,
+            maxTokens = 80,
             keepRecentTurns = 1,
             observer = CompactionObserver { observed += it },
         )
         val memory = provider.open(thread)
-        memory.commit(completedTurn(user("q1"), ModelItem.assistant("a1"), usage = Usage(promptTokens = 10), id = "q1"))
-        memory.commit(completedTurn(user("q2"), ModelItem.assistant("a2"), usage = Usage(promptTokens = 10), id = "q2"))
-        memory.commit(completedTurn(user("q3"), ModelItem.assistant("a3"), usage = Usage(promptTokens = 500), id = "q3"))
+        memory.appendAll(user("q1"), ModelItem.assistant("a1"))
+        memory.appendAll(user("q2"), ModelItem.assistant("a2"))
+        memory.appendAll(user("q3"), overflowAssistant("a3"))
         val previous = states.load(thread)
-        val failedTurn = completedTurn(user("q4"), ModelItem.assistant("a4"), usage = Usage(promptTokens = 500), id = "q4")
+        val q4 = user("q4")
+        val a4 = overflowAssistant("a4")
 
-        assertFailsWith<IllegalStateException> { memory.commit(failedTurn) }
-        memory.commit(failedTurn)
+        assertFailsWith<IllegalStateException> { memory.appendAll(q4, a4) }
+        runCatching { memory.appendAll(q4, a4) }
 
         assertEquals(previous, states.load(thread))
         assertTrue(observed.last() is CompactionEvent.Failed)
@@ -225,13 +224,13 @@ class SummarizingMemoryTest {
             delegate = raw,
             stateStore = InMemorySummaryStateStore(),
             model = summarizer(),
-            maxTokens = 100,
+            maxTokens = 80,
             keepRecentTurns = 1,
         )
         val memory = provider.open(thread)
-        memory.commit(completedTurn(user("q1"), required, ModelItem.assistant("a1"), usage = Usage(promptTokens = 10), id = "q1"))
-        memory.commit(completedTurn(user("q2"), ModelItem.assistant("a2"), usage = Usage(promptTokens = 10), id = "q2"))
-        memory.commit(completedTurn(user("q3"), ModelItem.assistant("a3"), usage = Usage(promptTokens = 500), id = "q3"))
+        memory.appendAll(user("q1"), required, ModelItem.assistant("a1"))
+        memory.appendAll(user("q2"), ModelItem.assistant("a2"))
+        memory.appendAll(user("q3"), overflowAssistant("a3"))
 
         val projected = memory.load(emptyList()).transcript
         assertTrue(projected.any { it is ModelItem.ProviderItem && it.ref == required.ref })

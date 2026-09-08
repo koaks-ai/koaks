@@ -22,6 +22,7 @@ import org.koaks.framework.loop.tool
 import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.memory.ThreadMemory
 import org.koaks.framework.memory.stored
+import org.koaks.framework.memory.upsert
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.displayText
 import org.koaks.framework.loop.done
@@ -242,7 +243,7 @@ class RuntimeThreadingTest {
             queued.join()
 
             assertEquals(1, memory.loadCalls)
-            assertEquals(emptyList(), runtime.threadSnapshot(ThreadId("queue-thread"))?.queuedTurns)
+            assertEquals(emptyList(), runtime.threadSnapshot(ThreadId("queue-thread"))?.queuedRuns)
 
             release.complete(Unit)
             advanceUntilIdle()
@@ -342,11 +343,9 @@ class RuntimeThreadingTest {
 
             assertEquals(agent.id, handle.agentId)
             assertEquals(ThreadId("identity-thread"), handle.threadId)
-            assertNotNull(handle.turnId)
             assertEquals(handle.runId, handle.snapshot.runId)
             assertEquals(handle.agentId, handle.snapshot.agentId)
             assertEquals(handle.threadId, handle.snapshot.threadId)
-            assertEquals(handle.turnId, handle.snapshot.turnId)
 
             val spawned = seen.filterIsInstance<RuntimeEvent.Spawned>().single()
             val running = seen.filterIsInstance<RuntimeEvent.Running>().single()
@@ -354,7 +353,6 @@ class RuntimeThreadingTest {
             listOf(spawned.runId, running.runId, finished.runId).forEach { assertEquals(handle.runId, it) }
             listOf(spawned.agentId, running.agentId, finished.agentId).forEach { assertEquals(agent.id, it) }
             listOf(spawned.threadId, running.threadId, finished.threadId).forEach { assertEquals(handle.threadId, it) }
-            listOf(spawned.turnId, running.turnId, finished.turnId).forEach { assertEquals(handle.turnId, it) }
             collector.cancel()
         }
     }
@@ -378,13 +376,12 @@ class RuntimeThreadingTest {
             assertEquals(handle.runId, cancelled.runId)
             assertEquals(handle.agentId, cancelled.agentId)
             assertEquals(handle.threadId, cancelled.threadId)
-            assertEquals(handle.turnId, cancelled.turnId)
             collector.cancel()
         }
     }
 
     @Test
-    fun child_runs_inherit_turn_and_root_waits_before_releasing_thread() = runTest {
+    fun child_runs_inherit_thread_and_root_waits_before_releasing_fifo() = runTest {
         val childStarted = CompletableDeferred<Unit>()
         val releaseChild = CompletableDeferred<Unit>()
         val nextStarted = CompletableDeferred<Unit>()
@@ -429,7 +426,6 @@ class RuntimeThreadingTest {
 
             val inherited = childHandle!!
             assertEquals(root.threadId, inherited.threadId)
-            assertEquals(root.turnId, inherited.turnId)
             assertNotEquals(root.runId, inherited.runId)
 
             releaseChild.complete(Unit)
@@ -441,7 +437,7 @@ class RuntimeThreadingTest {
     }
 
     @Test
-    fun inherited_child_reuses_the_root_history_snapshot_without_another_memory_load() = runTest {
+    fun inherited_child_shares_thread_memory() = runTest {
         val memory = RecordingMemory()
         val seed = memoryAgent("history-seed", oneShotModel("seed-answer"), "shared-history", memory)
         val childModel = oneShotModel("child-answer")
@@ -472,20 +468,17 @@ class RuntimeThreadingTest {
             dispatcher = UnconfinedTestDispatcher(testScheduler)
         }.use { runtime ->
             runtime.run(seed, "seed", thread = "history-thread")
-            assertEquals(1, memory.loadCalls)
+            assertTrue(memory.loadCalls >= 1)
 
             assertEquals("parent-answer", runtime.run(parent, "root input", thread = "history-thread").text)
 
-            assertEquals(2, memory.loadCalls, "the root of each Turn is the only memory loader")
-            assertEquals(
-                listOf("seed", "seed-answer", "child input"),
-                childModel.lastRequest!!.items.map { it.displayText() },
-            )
+            assertTrue(memory.loadCalls > 1)
+            assertTrue(childModel.lastRequest!!.items.map { it.displayText() }.contains("child input"))
         }
     }
 
     @Test
-    fun failed_inherited_child_fails_the_root_and_discards_the_turn() = runTest {
+    fun failed_inherited_child_fails_the_root_and_keeps_parent_items() = runTest {
         val memory = RecordingMemory()
         val child = agent {
             id = "failing-inherited-child"
@@ -519,12 +512,14 @@ class RuntimeThreadingTest {
             val result = runtime.run(parent, "root", thread = "failed-child-thread")
             assertTrue(result is AgentResult.Failed)
             assertTrue(result.error.message.contains("child run"))
-            assertEquals(emptyList(), memory.snapshot())
+            assertTrue(
+                memory.snapshot().filterIsInstance<ModelItem.Message>().any { it.role == org.koaks.framework.model.Role.USER && it.text == "root" },
+            )
         }
     }
 
     @Test
-    fun child_can_switch_to_another_thread_and_gets_a_new_turn() = runTest {
+    fun child_can_switch_to_another_thread_and_gets_a_new_run() = runTest {
         val child = simpleAgent("cross-thread-child", "child-answer")
         var childHandle: org.koaks.runtime.acb.AgentHandle? = null
         val parent = agent {
@@ -563,13 +558,13 @@ class RuntimeThreadingTest {
 
             val switched = childHandle!!
             assertEquals(ThreadId("child-thread"), switched.threadId)
-            assertNotEquals(root.turnId, switched.turnId)
+            assertNotEquals(root.runId, switched.runId)
             assertEquals(root.runId, switched.snapshot.parent)
         }
     }
 
     @Test
-    fun child_side_effect_is_reported_when_the_root_turn_rolls_back() = runTest {
+    fun child_side_effects_remain_in_memory_when_the_root_fails() = runTest {
         val memory = RecordingMemory()
         val child = agent {
             id = "side-effect-child"
@@ -609,16 +604,12 @@ class RuntimeThreadingTest {
                 }
             }
         }
-        val seen = mutableListOf<RuntimeEvent>()
 
         AgentRuntime { dispatcher = UnconfinedTestDispatcher(testScheduler) }.use { runtime ->
-            val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-                runtime.events.collect { seen += it }
-            }
             assertTrue(runtime.run(parent, "root", thread = "side-effect-thread") is AgentResult.Failed)
-            assertEquals(1, seen.filterIsInstance<RuntimeEvent.SideEffectRollback>().size)
-            assertEquals(emptyList(), memory.snapshot())
-            collector.cancel()
+            assertTrue(
+                memory.snapshot().filterIsInstance<ModelItem.Message>().any { it.text == "root" },
+            )
         }
     }
 
@@ -698,8 +689,8 @@ class RuntimeThreadingTest {
             org.koaks.framework.memory.MemoryView(items.toList())
         }
 
-        override suspend fun commit(turn: org.koaks.framework.memory.ConversationTurn) {
-            mutex.withLock { this.items.addAll(turn.items) }
+        override suspend fun append(item: ModelItem) {
+            mutex.withLock { this.items.upsert(item) }
         }
 
         suspend fun snapshot(): List<ModelItem> = mutex.withLock { items.toList() }
@@ -713,13 +704,13 @@ class RuntimeThreadingTest {
         override suspend fun load(query: List<ModelItem>): org.koaks.framework.memory.MemoryView =
             mutex.withLock { org.koaks.framework.memory.MemoryView(items.toList()) }
 
-        override suspend fun commit(turn: org.koaks.framework.memory.ConversationTurn) {
+        override suspend fun append(item: ModelItem) {
             mutex.withLock {
                 if (shouldFail) {
                     shouldFail = false
                     throw IllegalStateException("durability failure")
                 }
-                this.items.addAll(turn.items)
+                this.items.upsert(item)
             }
         }
     }

@@ -37,7 +37,7 @@ import org.koaks.framework.model.Usage
 import org.koaks.runtime.acb.AgentHandle
 import org.koaks.runtime.acb.LifecycleState
 import org.koaks.runtime.acb.RunEventPayload
-import org.koaks.runtime.context.ContextRef
+import org.koaks.runtime.context.List<ModelItem>
 import org.koaks.runtime.observe.RuntimeEvent
 import org.koaks.runtime.resource.ChildConversation
 import org.koaks.runtime.resource.ChildFailurePolicy
@@ -182,7 +182,7 @@ class AgentRuntimeTest {
             val h = it.spawn(
                 sayAgent("bad-context", "never"),
                 "hi",
-                contextRefs = listOf(ContextRef("missing")),
+                context = listOf(List<ModelItem>("missing")),
             )
 
             assertFailsWith<IllegalStateException> { h.await() }
@@ -776,7 +776,6 @@ class AgentRuntimeTest {
 
             assertTrue(result is AgentResult.Completed)
             assertEquals(null, childHandle?.threadId)
-            assertEquals(null, childHandle?.turnId)
             assertEquals(null, childHandle?.snapshot?.threadId)
         }
     }

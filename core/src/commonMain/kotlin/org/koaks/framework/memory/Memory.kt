@@ -3,7 +3,6 @@ package org.koaks.framework.memory
 import kotlinx.datetime.Clock
 import kotlin.jvm.JvmInline
 import org.koaks.framework.model.ModelItem
-import org.koaks.framework.model.ProviderCheckpoint
 import org.koaks.framework.model.takeIfValidFor
 
 @JvmInline
@@ -24,17 +23,13 @@ value class MemoryProviderId(val value: String) {
  * The memory partition bound to exactly one Runtime [ThreadId]. Runtime opens it once,
  * then owns its lifecycle until the Runtime closes.
  *
- * Strict data-flow contract:
  *  - [load] returns the view fed to the model; recall/filtering happens here.
- *  - [commit] faithfully appends one successful-or-interrupted atomic Turn.
- *  - The agent loop never touches memory; Runtime alone calls load/commit.
- *  - Runtime repairs the loaded transcript and validates [MemoryView.checkpoint]
- *    against the *repaired* view before handing it to the model.
+ *  - [append] upserts one completed item (same [ModelItem.ref] replaces in place).
+ *  - The agent loop loads before each model call and appends each finished message.
  */
 interface ThreadMemory : AutoCloseable {
-    val retention: TurnRetention get() = TurnRetention.Interrupted
     suspend fun load(query: List<ModelItem>): MemoryView
-    suspend fun commit(turn: ConversationTurn)
+    suspend fun append(item: ModelItem)
     override fun close() {}
 }
 
@@ -62,7 +57,7 @@ fun memoryProvider(
 
 object NoMemory : ThreadMemory {
     override suspend fun load(query: List<ModelItem>): MemoryView = MemoryView.EMPTY
-    override suspend fun commit(turn: ConversationTurn) {}
+    override suspend fun append(item: ModelItem) {}
 }
 
 object NoMemoryProvider : MemoryProvider {
@@ -70,16 +65,10 @@ object NoMemoryProvider : MemoryProvider {
     override suspend fun open(thread: ThreadId): ThreadMemory = NoMemory
 }
 
-fun shouldRetain(turn: ConversationTurn, retention: TurnRetention, sideEffects: Boolean): Boolean =
-    when (retention) {
-        TurnRetention.Interrupted -> true
-        TurnRetention.InterruptedIfSideEffects ->
-            turn.status is TurnStatus.Completed || sideEffects
-        TurnRetention.CompletedOnly -> turn.status is TurnStatus.Completed
-    }
-
-fun turnHasSideEffects(turn: ConversationTurn): Boolean =
-    turn.items.any { it is ModelItem.ToolResult && !it.isError }
+fun MutableList<ModelItem>.upsert(item: ModelItem) {
+    val index = indexOfFirst { it.ref == item.ref }
+    if (index >= 0) this[index] = item else add(item)
+}
 
 /** Runtime-facing helper: repair + drop a checkpoint whose basis no longer matches. */
 fun MemoryView.forOnlineUse(nowEpochMs: Long = Clock.System.now().toEpochMilliseconds()): MemoryView {

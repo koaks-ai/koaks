@@ -60,7 +60,7 @@ class RuntimeKernelHardeningTest {
                 listOf(ModelItem.user("shared-fact-1"), ModelItem.assistant("shared-fact-2")),
                 scope = ContextScope.GLOBAL,
             )
-            it.spawn(a, "user-task", contextRefs = listOf(ref)).await()
+            it.spawn(a, "user-task", context = listOf(ref)).await()
 
             val texts = model.lastRequest!!.items.map { m -> m.displayText() }
             assertTrue(texts.contains("shared-fact-1"))

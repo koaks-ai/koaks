@@ -17,7 +17,7 @@
 - **One declarative DSL**: `agent { }` assembles an immutable, reusable agent.
 - **First-class tools**: define a tool inline with a typed input; its JSON Schema is derived from your `@Serializable` class. Class-based tools, JVM `@Tool` annotations, and lazy **MCP** discovery are all supported.
 - **Composable Skills**: load reusable instructions, read-only resources, and tools from `SKILL.md` directories or custom sources.
-- **Pluggable memory**: sliding-window, summarizing, or vector memory, committed atomically per turn (a failed or cancelled run won't corrupt history).
+- **Pluggable memory**: sliding-window, summarizing, or vector memory. Each completed message is appended as it happens; cancel keeps already-written content.
 - **Structured output**: `agent.run<T>()` returns a typed, decoded result.
 - **Resilient by design**: model fallbacks, retry/substitute error policies, step & token budgets, typed hooks, guardrails, and human approval.
 - **Kotlin Multiplatform**: JVM, JS, and macOS (Apple Silicon) from a single codebase.
@@ -390,9 +390,9 @@ executed automatically.
 ### 7. Memory (Multi-Turn Conversations)
 
 Attach memory to the agent, then pass the same `thread` to each run. `ThreadId` is owned
-by the Runtime, so different Agents can join the same conversation. History is loaded on
-each turn and committed atomically only when the whole turn finishes — a failure or
-cancellation leaves persisted history untouched.
+by the Runtime, so different Agents can join the same conversation. Each completed
+message is written to Memory as it happens; a cancellation keeps the user turn and any
+partial assistant text already streamed.
 
 ```kotlin
 val agent = agent {
@@ -423,9 +423,8 @@ AgentRuntime { maxConcurrency = 8 }.use { runtime ->
 ```
 
 `AgentId` identifies the immutable Agent definition, `ThreadId` identifies a long-lived
-conversation, `TurnId` identifies one atomic top-level turn, and `RunId` identifies one
-execution instance. Top-level turns on the same Thread run FIFO; different Threads remain
-concurrent.
+conversation, and `RunId` identifies one execution instance. Top-level runs on the same
+Thread run FIFO; different Threads remain concurrent.
 
 Tools and agent coroutines can create structured child runs with `spawnChild`. Failure
 propagates by default; supervised work can capture its own result, and ephemeral children

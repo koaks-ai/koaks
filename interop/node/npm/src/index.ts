@@ -79,7 +79,6 @@ class RunHandleImpl implements RunHandle {
   readonly runId: string;
   readonly agentId: string;
   readonly threadId?: string;
-  readonly turnId?: string;
   readonly correlationId?: string;
   readonly parentRunId?: string;
   private readonly handleId: string;
@@ -96,7 +95,6 @@ class RunHandleImpl implements RunHandle {
     this.runId = descriptor.runId;
     this.agentId = descriptor.agentId;
     if (descriptor.threadId !== undefined) this.threadId = descriptor.threadId;
-    if (descriptor.turnId !== undefined) this.turnId = descriptor.turnId;
     if (descriptor.correlationId !== undefined) this.correlationId = descriptor.correlationId;
     if (descriptor.parentRunId !== undefined) this.parentRunId = descriptor.parentRunId;
     if (signal !== undefined) {

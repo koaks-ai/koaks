@@ -29,7 +29,6 @@ import org.koaks.framework.policy.TerminationReason
 import org.koaks.runtime.acb.RunEventEnvelope
 import org.koaks.runtime.acb.RunEventPayload
 import org.koaks.runtime.acb.RunId
-import org.koaks.runtime.acb.TurnId
 import org.koaks.runtime.observe.RuntimeEvent
 import org.koaks.framework.memory.ThreadId
 import kotlin.test.Test
@@ -152,7 +151,6 @@ class KoaksWireJsonTest {
             runId = RunId(1),
             agentId = AgentId("agent"),
             threadId = ThreadId("thread"),
-            turnId = TurnId(2),
             correlationId = "corr",
             sequence = 3,
             timestampEpochMillis = 4,
@@ -163,7 +161,7 @@ class KoaksWireJsonTest {
         assertTrue(encoded["event"] != null)
         assertTrue(encoded["payload"] == null)
 
-        val lifecycle = RuntimeEvent.Finished(RunId(1), AgentId("agent"), ThreadId("thread"), TurnId(2), Usage.ZERO)
+        val lifecycle = RuntimeEvent.Finished(RunId(1), AgentId("agent"), ThreadId("thread"), Usage.ZERO)
         val lifecycleJson = KoaksWireJson.encodeRuntimeEvent(lifecycle)
         assertEquals("finished", (lifecycleJson["type"] as JsonPrimitive).content)
         assertTrue(lifecycleJson["usage"] != null)
@@ -172,14 +170,12 @@ class KoaksWireJsonTest {
     @Test
     fun stateAndAgentResultUseSharedNestedCodecs() {
         val state = AgentState(
-            items = listOf(ModelItem.user("question")),
             instructions = "instructions",
             globalStep = 2,
             localStep = 1,
             usage = Usage(totalTokens = 4),
         )
         val stateJson = KoaksWireJson.encodeAgentState(state)
-        assertEquals(1, stateJson["items"]?.let { (it as kotlinx.serialization.json.JsonArray).size })
         assertEquals("instructions", (stateJson["instructions"] as JsonPrimitive).content)
 
         val result = org.koaks.framework.loop.AgentResult.Completed(ModelItem.assistant("done"), Usage.ZERO)

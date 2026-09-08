@@ -187,10 +187,11 @@ const orchestrator = await runtime.createAgent({
 });
 ```
 
-`inherit` joins the parent Thread and Turn, `ephemeral` disables persistent
-conversation state, and `thread` starts an independent Turn. A `propagate`
-child failure fails its parent after the child tree settles; `capture` leaves
-the result for the caller to consume.
+`inherit` joins the parent's Thread and the same Memory (no extra FIFO slot),
+`ephemeral` disables persistent conversation state, and `thread` starts an
+independent queued run. A `propagate` child failure fails its parent after the
+child tree settles; `capture` leaves the result for the caller to consume.
+Parent messages already written to Memory are kept even if the child fails.
 
 ## Tool approval through Hooks
 
@@ -287,18 +288,23 @@ memory: {
 }
 ```
 
-The delegate remains the source of truth for complete raw turns. A summary
-checkpoint is used only when its transcript basis still matches; otherwise the
-raw transcript is returned. Without `delegate` and `stateStore`, both stores are
-process-local and do not survive a restart.
+The delegate remains the source of truth for the raw item list (`load` /
+`append`). A summary checkpoint is used only when its transcript basis still
+matches; otherwise the raw transcript is returned. Without `delegate` and
+`stateStore`, both stores are process-local and do not survive a restart.
+
+A custom `ThreadMemory` must implement `append(item)` (same `ref` upserts) rather
+than a whole-turn `commit`. Window memory no longer takes a `retention` policy:
+completed messages and partial assistant text from a cancelled run are kept.
 
 ## Resume and process failure
 
 `runId` and `RunHandle` are valid only inside the current Runtime process.
-`resume(threadId)` starts a new run from an interrupted turn committed to the
-configured Memory; it does not reconnect to the previous handle. Koaks never
-automatically replays external side effects after a process crash. Applications
-should mark such runs interrupted and require an explicit retry or resume policy.
+`resume(threadId)` starts a new run from whatever Memory already contains
+(including a partial assistant). It does not reconnect to the previous handle.
+Koaks never automatically replays external side effects after a process crash.
+Applications should treat those effects as already done and require an explicit
+retry or resume policy.
 
 ## Electron
 

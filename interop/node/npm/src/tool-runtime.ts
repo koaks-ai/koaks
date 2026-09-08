@@ -25,7 +25,6 @@ export interface HandleDescriptor {
   runId: string;
   agentId: string;
   threadId?: string;
-  turnId?: string;
   correlationId?: string;
   parentRunId?: string;
 }
@@ -38,7 +37,6 @@ export interface ToolExecutionPayload {
   runId: string;
   agentId: string;
   threadId?: string;
-  turnId?: string;
   correlationId?: string;
 }
 
@@ -81,7 +79,6 @@ class ToolRuntimeContextImpl implements ToolRuntimeContext {
   readonly runId: string;
   readonly agentId: string;
   readonly threadId?: string;
-  readonly turnId?: string;
   readonly correlationId?: string;
   readonly resources: ToolResources;
   readonly context: ToolContextStore;
@@ -91,12 +88,11 @@ class ToolRuntimeContextImpl implements ToolRuntimeContext {
   constructor(
     private readonly host: ToolRuntimeHost,
     private readonly executionId: string,
-    metadata: Pick<ToolExecutionPayload, "runId" | "agentId" | "threadId" | "turnId" | "correlationId">,
+    metadata: Pick<ToolExecutionPayload, "runId" | "agentId" | "threadId" | "correlationId">,
   ) {
     this.runId = metadata.runId;
     this.agentId = metadata.agentId;
     if (metadata.threadId !== undefined) this.threadId = metadata.threadId;
-    if (metadata.turnId !== undefined) this.turnId = metadata.turnId;
     if (metadata.correlationId !== undefined) this.correlationId = metadata.correlationId;
     this.resources = new ToolResourcesImpl(host, executionId, () => this.assertActive());
     this.context = new ToolContextStoreImpl(host, executionId, () => this.assertActive());
@@ -256,7 +252,7 @@ class ToolIpcImpl implements ToolIpc {
   async reply(
     message: IpcMessage,
     payload = "",
-    options: Pick<IpcSendOptions, "contextRefs"> = {},
+    options: Pick<IpcSendOptions, "context"> = {},
   ): Promise<void> {
     this.assertActive();
     const token = this.replyTokens.get(message as object);

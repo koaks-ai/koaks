@@ -95,7 +95,6 @@ class SupervisionObservabilityTest {
             assertEquals(flaky.id, retry.agentId)
             assertEquals(org.koaks.framework.memory.ThreadId("supervised-thread"), retry.threadId)
             assertTrue(retry.runId != null)
-            assertTrue(retry.turnId != null)
             collector.cancel()
         }
     }

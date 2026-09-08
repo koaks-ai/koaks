@@ -144,7 +144,6 @@ internal fun ToolProgress.toWireJson(): JsonObject = buildJsonObject {
 }
 
 internal fun AgentState.toWireJson(): JsonObject = buildJsonObject {
-    put("items", buildJsonArray { items.forEach { add(it.toWireJson()) } })
     instructions?.let { put("instructions", JsonPrimitive(it)) }
     checkpoint?.let { put("checkpoint", it.toWireJson()) }
     put("global_step", JsonPrimitive(globalStep))

@@ -11,23 +11,27 @@ import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Usage
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class AgentMemoryCancelTest {
 
     /**
-     * A memory-backed turn cancelled mid-flight (e.g. a runtime quota preemption or the caller
-     * stopping collection) must leave persisted history untouched — the commit-or-warn step now
-     * runs in a NonCancellable `finally`, so a discarded turn is resolved rather than skipped.
+     * Cancelling mid-stream still writes the user message and any partial assistant text.
      */
     @Test
-    fun cancelled_memory_turn_is_not_committed() = runTest {
+    fun cancelled_run_keeps_user_and_partial_assistant() = runTest {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val model = FakeLanguageModel(
             ArrayDeque(listOf(listOf(ModelEvent.TextDelta("partial"), done(Usage.ZERO)))),
-            beforeEmit = { entered.complete(Unit); release.await() }, // blocks before any terminal
+            beforeEmit = { event ->
+                if (event !is ModelEvent.TextDelta) {
+                    entered.complete(Unit)
+                    release.await()
+                }
+            },
         )
-        val mem = WindowMemory(50, retention = TurnRetention.CompletedOnly)
+        val mem = WindowMemory(50)
         val a = agent {
             id = "agent-29"
             name = "mem-cancel"
@@ -41,6 +45,8 @@ class AgentMemoryCancelTest {
         job.cancel()
         job.join()
 
-        assertEquals(0, mem.stored().size, "a cancelled turn must leave history untouched")
+        val stored = mem.stored().filterIsInstance<org.koaks.framework.model.ModelItem.Message>()
+        assertEquals(listOf("q1"), stored.filter { it.role == org.koaks.framework.model.Role.USER }.map { it.text })
+        assertTrue(stored.any { it.role == org.koaks.framework.model.Role.ASSISTANT && it.text.contains("partial") })
     }
 }

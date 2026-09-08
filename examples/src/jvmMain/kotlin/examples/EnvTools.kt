@@ -17,6 +17,9 @@ object EnvTools {
     @JvmStatic
     fun loadValue(key: String): String = env.required(key)
 
+    @JvmStatic
+    fun loadOptional(key: String): String? = env.optional(key)
+
     private fun findEnvDirectory(): String {
         var current: Path? = Path.of(System.getProperty("user.dir")).toAbsolutePath()
         while (current != null) {

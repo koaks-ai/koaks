@@ -3,13 +3,12 @@ package org.koaks.memory.summarizing
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
-import org.koaks.framework.memory.ConversationTurn
 import org.koaks.framework.memory.MemoryProvider
 import org.koaks.framework.memory.MemoryProviderId
 import org.koaks.framework.memory.MemoryView
 import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.memory.ThreadMemory
-import org.koaks.framework.memory.TurnRetention
+import org.koaks.framework.memory.upsert
 import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelRequest
@@ -78,7 +77,7 @@ fun interface CompactionObserver {
 }
 
 /**
- * A lossless summarizing decorator. The delegate remains the source of truth for raw turns;
+ * A lossless summarizing decorator. The delegate remains the source of truth for raw items;
  * only the model-facing projection and its checkpoint are compacted.
  *
  * The delegate must return its complete append-only transcript from [ThreadMemory.load].
@@ -90,12 +89,11 @@ class SummarizingMemoryProvider(
     private val model: LanguageModel,
     private val maxTokens: Int,
     private val keepRecentTurns: Int = 2,
-    private val retention: TurnRetention = TurnRetention.Interrupted,
     private val observer: CompactionObserver = CompactionObserver {},
 ) : MemoryProvider {
     private class ThreadCoordinator {
         val mutex = Mutex()
-        val committedTurnIds = mutableSetOf<String>()
+        val compactedKeys = mutableSetOf<String>()
     }
 
     private val coordinatorsMutex = Mutex()
@@ -117,10 +115,9 @@ class SummarizingMemoryProvider(
             model,
             maxTokens,
             keepRecentTurns,
-            retention,
             observer,
             coordinator.mutex,
-            coordinator.committedTurnIds,
+            coordinator.compactedKeys,
         )
     }
 }
@@ -128,26 +125,18 @@ class SummarizingMemoryProvider(
 /** Append-only process-local delegate used when no durable store is configured. */
 class InMemoryAppendMemoryProvider(
     override val id: MemoryProviderId = MemoryProviderId("summarizing-raw-memory"),
-    private val retention: TurnRetention = TurnRetention.Interrupted,
 ) : MemoryProvider {
     private val mutex = Mutex()
-    private val threads = mutableMapOf<ThreadId, MutableList<ConversationTurn>>()
+    private val threads = mutableMapOf<ThreadId, MutableList<ModelItem>>()
 
     override suspend fun open(thread: ThreadId): ThreadMemory = object : ThreadMemory {
-        override val retention: TurnRetention = this@InMemoryAppendMemoryProvider.retention
-
         override suspend fun load(query: List<ModelItem>): MemoryView = mutex.withLock {
-            val turns = threads[thread].orEmpty()
-            MemoryView(
-                transcript = turns.flatMap { it.items },
-                checkpoint = turns.lastOrNull()?.checkpoint,
-            )
+            MemoryView(transcript = threads[thread].orEmpty().toList())
         }
 
-        override suspend fun commit(turn: ConversationTurn) {
+        override suspend fun append(item: ModelItem) {
             mutex.withLock {
-                val turns = threads.getOrPut(thread) { mutableListOf() }
-                if (turns.none { it.id == turn.id }) turns.add(turn)
+                threads.getOrPut(thread) { mutableListOf() }.upsert(item)
             }
         }
     }
@@ -160,41 +149,43 @@ private class CompactingThreadMemory(
     private val model: LanguageModel,
     private val maxTokens: Int,
     private val keepRecentTurns: Int,
-    override val retention: TurnRetention,
     private val observer: CompactionObserver,
     private val mutex: Mutex,
-    private val committedTurnIds: MutableSet<String>,
+    private val compactedKeys: MutableSet<String>,
 ) : ThreadMemory {
     override suspend fun load(query: List<ModelItem>): MemoryView = mutex.withLock {
         project(delegate.load(query))
     }
 
-    override suspend fun commit(turn: ConversationTurn) = mutex.withLock {
-        if (turn.id in committedTurnIds) return@withLock
-        delegate.commit(turn)
-        committedTurnIds += turn.id
-        if (turn.usage.promptTokens <= maxTokens) return@withLock
-
+    override suspend fun append(item: ModelItem) = mutex.withLock {
+        delegate.append(item)
+        val compactionKey = item.ref.value
         val raw = delegate.load(emptyList())
+        if (raw.transcript.promptChars() <= maxTokens) return@withLock
+
         val system = raw.transcript.takeWhile { it.isSystem() }
         val turns = groupIntoTurns(raw.transcript.drop(system.size))
         if (turns.size <= keepRecentTurns) return@withLock
 
         val prefix = system + turns.dropLast(keepRecentTurns).flatten()
+        val basisKey = "${prefix.size}:${prefix.lastOrNull()?.ref?.value.orEmpty()}"
+        if (basisKey in compactedKeys) return@withLock
+
         val basis = TranscriptBasis.of(prefix)
-        notify(CompactionEvent.Started(threadId, turn.id, basis))
+        notify(CompactionEvent.Started(threadId, compactionKey, basis))
         try {
             val summary = summarize(prefix.drop(system.size))
             val checkpoint = SummaryCheckpoint(
                 basis = basis,
                 summary = ModelItem.system("Summary of earlier conversation:\n$summary"),
-                sourceTurnId = turn.id,
+                sourceTurnId = compactionKey,
                 createdAtEpochMillis = Clock.System.now().toEpochMilliseconds(),
             )
             stateStore.save(threadId, checkpoint)
-            notify(CompactionEvent.Completed(threadId, turn.id, checkpoint))
+            compactedKeys += basisKey
+            notify(CompactionEvent.Completed(threadId, compactionKey, checkpoint))
         } catch (failure: Throwable) {
-            notify(CompactionEvent.Failed(threadId, turn.id, failure.message ?: "compaction failed"))
+            notify(CompactionEvent.Failed(threadId, compactionKey, failure.message ?: "compaction failed"))
             throw failure
         }
     }

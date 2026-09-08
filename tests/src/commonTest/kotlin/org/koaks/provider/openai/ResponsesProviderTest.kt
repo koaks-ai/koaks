@@ -150,7 +150,7 @@ class ResponsesProviderTest {
         assertTrue(events.filterIsInstance<ModelEvent.AnnotationAdded>().single().annotation is Annotation.UrlCitation)
         assertTrue(events.any { it is ModelEvent.CheckpointUpdated })
 
-        val builder = TurnBuilder("turn", listOf(ModelItem.user("q")))
+        val builder = TurnBuilder()
         events.forEach(builder::observe)
         assertEquals(1, builder.snapshot().filterIsInstance<ModelItem.Message>().count { it.ref == message.ref })
     }

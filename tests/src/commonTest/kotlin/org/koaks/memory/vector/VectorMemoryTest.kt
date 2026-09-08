@@ -2,7 +2,6 @@ package org.koaks.memory.vector
 
 import kotlinx.coroutines.test.runTest
 import org.koaks.framework.memory.ThreadId
-import org.koaks.framework.memory.completedTurn
 import org.koaks.framework.model.ModelItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,12 +21,12 @@ class VectorMemoryTest {
     }
 
     @Test
-    fun commit_indexes_the_successful_turn_messages() = runTest {
+    fun append_indexes_each_message() = runTest {
         val store = RecordingVectorStore()
         val memory = VectorMemory(store, ThreadId("thread"))
         val items = listOf(ModelItem.user("q"), ModelItem.assistant("a"))
 
-        memory.commit(completedTurn(*items.toTypedArray()))
+        items.forEach { memory.append(it) }
 
         assertEquals(items, store.added)
     }
@@ -40,7 +39,7 @@ class VectorMemoryTest {
 
         override suspend fun add(threadId: String, items: List<ModelItem>) {
             lastThread = threadId
-            added = items
+            added = added + items
         }
 
         override suspend fun search(threadId: String, query: String, topK: Int): List<ModelItem> {

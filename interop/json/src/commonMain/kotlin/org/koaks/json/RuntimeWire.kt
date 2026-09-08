@@ -16,7 +16,6 @@ internal fun AcbSnapshot.toWireJson(): JsonObject = buildJsonObject {
     put("agent_id", JsonPrimitive(agentId.value))
     put("agent_name", JsonPrimitive(agentName))
     threadId?.let { put("thread_id", JsonPrimitive(it.value)) }
-    turnId?.let { put("turn_id", JsonPrimitive(it.value.toString())) }
     put("state", JsonPrimitive(state.name.lowercase()))
     put("priority", JsonPrimitive(priority))
     parent?.let { put("parent", JsonPrimitive(it.value.toString())) }
@@ -34,7 +33,6 @@ internal fun RunEventEnvelope.toWireJson(): JsonObject = buildJsonObject {
     put("run_id", JsonPrimitive(runId.value.toString()))
     put("agent_id", JsonPrimitive(agentId.value))
     threadId?.let { put("thread_id", JsonPrimitive(it.value)) }
-    turnId?.let { put("turn_id", JsonPrimitive(it.value.toString())) }
     correlationId?.let { put("correlation_id", JsonPrimitive(it)) }
     put("sequence", JsonPrimitive(sequence))
     put("timestamp_epoch_ms", JsonPrimitive(timestampEpochMillis))
@@ -59,8 +57,8 @@ internal fun ThreadSnapshot.toWireJson(): JsonObject = buildJsonObject {
     put("id", JsonPrimitive(id.value))
     put("memory_provider_id", JsonPrimitive(memoryProviderId.value))
     put("participants", buildJsonArray { participants.forEach { add(JsonPrimitive(it.value)) } })
-    activeTurn?.let { put("active_turn", JsonPrimitive(it.value.toString())) }
-    put("queued_turns", buildJsonArray { queuedTurns.forEach { add(JsonPrimitive(it.value.toString())) } })
+    activeRun?.let { put("active_run", JsonPrimitive(it.value.toString())) }
+    put("queued_runs", buildJsonArray { queuedRuns.forEach { add(JsonPrimitive(it.value.toString())) } })
 }
 
 internal fun RuntimeMetrics.toWireJson(): JsonObject = buildJsonObject {
@@ -81,59 +79,57 @@ internal fun RuntimeMetrics.toWireJson(): JsonObject = buildJsonObject {
 }
 
 internal fun RuntimeEvent.toWireJson(): JsonObject = buildJsonObject {
-    fun base(type: String, run: String?, agent: String?, thread: String?, turn: String?) {
+    fun base(type: String, run: String?, agent: String?, thread: String?) {
         put("type", JsonPrimitive(type))
         run?.let { put("run_id", JsonPrimitive(it)) }
         agent?.let { put("agent_id", JsonPrimitive(it)) }
         thread?.let { put("thread_id", JsonPrimitive(it)) }
-        turn?.let { put("turn_id", JsonPrimitive(it)) }
     }
     when (this@toWireJson) {
         is RuntimeEvent.Spawned -> {
-            base("spawned", runId.value.toString(), agentId.value, threadId?.value, turnId?.value?.toString())
+            base("spawned", runId.value.toString(), agentId.value, threadId?.value)
             put("agent_name", JsonPrimitive(agentName))
             put("priority", JsonPrimitive(priority))
             parent?.let { put("parent", JsonPrimitive(it.value.toString())) }
         }
         is RuntimeEvent.Running -> {
-            base("running", runId.value.toString(), agentId.value, threadId?.value, turnId?.value?.toString())
+            base("running", runId.value.toString(), agentId.value, threadId?.value)
             put("agent_name", JsonPrimitive(agentName))
         }
-        is RuntimeEvent.Waiting -> base("waiting", runId.value.toString(), agentId.value, threadId?.value, turnId?.value?.toString())
-        is RuntimeEvent.Suspended -> base("suspended", runId.value.toString(), agentId.value, threadId?.value, turnId?.value?.toString())
-        is RuntimeEvent.Resumed -> base("resumed", runId.value.toString(), agentId.value, threadId?.value, turnId?.value?.toString())
+        is RuntimeEvent.Waiting -> base("waiting", runId.value.toString(), agentId.value, threadId?.value)
+        is RuntimeEvent.Suspended -> base("suspended", runId.value.toString(), agentId.value, threadId?.value)
+        is RuntimeEvent.Resumed -> base("resumed", runId.value.toString(), agentId.value, threadId?.value)
         is RuntimeEvent.Finished -> {
-            base("finished", runId.value.toString(), agentId.value, threadId?.value, turnId?.value?.toString())
+            base("finished", runId.value.toString(), agentId.value, threadId?.value)
             put("usage", usage.toWireJson())
         }
         is RuntimeEvent.Incomplete -> {
-            base("incomplete", runId.value.toString(), agentId.value, threadId?.value, turnId?.value?.toString())
+            base("incomplete", runId.value.toString(), agentId.value, threadId?.value)
             put("reason", reason.toWireJson())
             put("usage", usage.toWireJson())
         }
         is RuntimeEvent.Terminated -> {
-            base("terminated", runId.value.toString(), agentId.value, threadId?.value, turnId?.value?.toString())
+            base("terminated", runId.value.toString(), agentId.value, threadId?.value)
             put("reason", reason.toWireJson())
         }
         is RuntimeEvent.Failed -> {
-            base("failed", runId.value.toString(), agentId.value, threadId?.value, turnId?.value?.toString())
+            base("failed", runId.value.toString(), agentId.value, threadId?.value)
             put("error", error.toWireJson())
         }
-        is RuntimeEvent.Cancelled -> base("cancelled", runId.value.toString(), agentId.value, threadId?.value, turnId?.value?.toString())
+        is RuntimeEvent.Cancelled -> base("cancelled", runId.value.toString(), agentId.value, threadId?.value)
         is RuntimeEvent.UnhandledChildFailure -> {
-            base("unhandled_child_failure", childRunId.value.toString(), childAgentId.value, null, null)
+            base("unhandled_child_failure", childRunId.value.toString(), childAgentId.value, null)
             put("parent_run_id", JsonPrimitive(parentRunId.value.toString()))
             put("error", error.toWireJson())
         }
-        is RuntimeEvent.SideEffectRollback -> base("side_effect_rollback", runId.value.toString(), agentId.value, threadId.value, turnId.value.toString())
         is RuntimeEvent.Retrying -> {
-            base("retrying", runId?.value?.toString(), agentId.value, threadId?.value, turnId?.value?.toString())
+            base("retrying", runId?.value?.toString(), agentId.value, threadId?.value)
             put("agent_name", JsonPrimitive(agentName))
             put("attempt", JsonPrimitive(attempt))
             put("delay_ms", JsonPrimitive(delayMillis))
         }
         is RuntimeEvent.CircuitOpen -> {
-            base("circuit_open", runId?.value?.toString(), agentId.value, threadId?.value, turnId?.value?.toString())
+            base("circuit_open", runId?.value?.toString(), agentId.value, threadId?.value)
             put("agent_name", JsonPrimitive(agentName))
         }
     }

@@ -128,7 +128,7 @@ class RuntimeMemoryTest {
         val memory = object : ThreadMemory {
             override suspend fun load(query: List<org.koaks.framework.model.ModelItem>) =
                 org.koaks.framework.memory.MemoryView.EMPTY
-            override suspend fun commit(turn: org.koaks.framework.memory.ConversationTurn) {}
+            override suspend fun append(item: org.koaks.framework.model.ModelItem) {}
             override fun close() {
                 closed.complete(Unit)
             }

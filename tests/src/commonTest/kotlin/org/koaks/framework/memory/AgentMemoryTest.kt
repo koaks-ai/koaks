@@ -59,11 +59,11 @@ class AgentMemoryTest {
     }
 
     @Test
-    fun discards_buffer_when_run_fails() = runTest {
+    fun keeps_user_message_when_run_fails() = runTest {
         val model = FakeLanguageModel(
             listOf(fail(AgentError.ModelError("boom", retriable = false))),
         )
-        val mem = WindowMemory(maxMessages = 50, retention = TurnRetention.CompletedOnly)
+        val mem = WindowMemory(maxMessages = 50)
         val a = agent {
             id = "agent-31"
             name = "t"
@@ -77,7 +77,7 @@ class AgentMemoryTest {
             assertTrue(events.any { it is AgentEvent.Failed })
             assertTrue(events.none { it is AgentEvent.Terminal })
 
-            assertEquals(0, mem.stored().size)
+            assertEquals(listOf("q1"), mem.stored().filterIsInstance<org.koaks.framework.model.ModelItem.Message>().filter { it.role == Role.USER }.map { it.text })
         }
     }
 
@@ -149,7 +149,7 @@ class AgentMemoryTest {
     }
 
     @Test
-    fun incomplete_result_commits_an_interrupted_resumable_turn() = runTest {
+    fun incomplete_result_appends_partial_assistant() = runTest {
         val model = FakeLanguageModel(
             listOf(
                 ModelEvent.TextDelta("partial"),
@@ -180,17 +180,17 @@ class AgentMemoryTest {
             assertEquals(IncompleteReason.MaxOutputTokens, runtimeEvent.await().reason)
         }
 
-        val turn = mem.turns.single()
-        val status = turn.status as TurnStatus.Interrupted
-        assertEquals(InterruptReason.Incomplete(IncompleteReason.MaxOutputTokens), status.reason)
-        assertEquals("partial", turn.items.filterIsInstance<org.koaks.framework.model.ModelItem.Message>().last().text)
+        val items = mem.items.toList()
+        assertTrue(items.filterIsInstance<org.koaks.framework.model.ModelItem.Message>().any { it.role == Role.USER && it.text == "q" })
+        assertEquals("partial", items.filterIsInstance<org.koaks.framework.model.ModelItem.Message>().last().text)
     }
 }
 
 private class RecordingMemory : ThreadMemory {
-    val turns = mutableListOf<ConversationTurn>()
-    override suspend fun load(query: List<org.koaks.framework.model.ModelItem>): MemoryView = MemoryView.EMPTY
-    override suspend fun commit(turn: ConversationTurn) {
-        turns += turn
+    val items = mutableListOf<org.koaks.framework.model.ModelItem>()
+    override suspend fun load(query: List<org.koaks.framework.model.ModelItem>): MemoryView =
+        MemoryView(items.toList())
+    override suspend fun append(item: org.koaks.framework.model.ModelItem) {
+        items.upsert(item)
     }
 }

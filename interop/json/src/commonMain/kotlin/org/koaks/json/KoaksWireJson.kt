@@ -5,7 +5,6 @@ import kotlinx.serialization.json.JsonObject
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.AgentResult
 import org.koaks.framework.loop.AgentState
-import org.koaks.framework.memory.ConversationTurn
 import org.koaks.framework.memory.MemoryView
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.Annotation
@@ -63,7 +62,6 @@ object KoaksWireJson {
 
     fun encodeMemoryView(view: MemoryView): JsonObject = view.toWireJson()
     fun decodeMemoryView(value: JsonObject): MemoryView = value.toMemoryView()
-    fun encodeConversationTurn(turn: ConversationTurn): JsonObject = turn.toWireJson()
 
     fun encodeUsage(usage: Usage): JsonObject = usage.toWireJson()
     fun decodeUsage(value: JsonObject): Usage = value.toUsage()

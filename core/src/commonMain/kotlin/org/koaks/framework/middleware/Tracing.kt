@@ -33,6 +33,6 @@ object Tracing : AgentListener {
     }
 
     override fun onStep(state: AgentState) {
-        logger.debug { "step ${state.globalStep}: ${state.items.size} items" }
+        logger.debug { "step ${state.globalStep}" }
     }
 }

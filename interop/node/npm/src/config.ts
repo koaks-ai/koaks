@@ -3,7 +3,6 @@ import { runToolCallback } from "./tool-runtime.js";
 import type { ToolExecutionPayload, ToolRuntimeHost } from "./tool-runtime.js";
 import type {
   AgentConfig,
-  ConversationTurn,
   HookDefinition,
   HookExecutionContext,
   McpConfig,
@@ -69,14 +68,13 @@ function normalizeThreadMemory(memory: ThreadMemory, registry: CallbackRegistry,
     const payload = rawPayload as { query: ModelItem[] };
     return await memory.load(payload.query);
   }, lifetime);
-  const commitCallbackId = registry.registerInvoke(async (rawPayload) => {
-    await memory.commit(rawPayload as ConversationTurn);
+  const appendCallbackId = registry.registerInvoke(async (rawPayload) => {
+    await memory.append(rawPayload as ModelItem);
     return null;
   }, lifetime);
   const value: Record<string, unknown> = {
-    retention: memory.retention ?? "interrupted",
     load_callback_id: loadCallbackId,
-    commit_callback_id: commitCallbackId,
+    append_callback_id: appendCallbackId,
   };
   if (memory.close !== undefined) {
     value.close_callback_id = registry.registerNotify(() => memory.close?.(), lifetime);

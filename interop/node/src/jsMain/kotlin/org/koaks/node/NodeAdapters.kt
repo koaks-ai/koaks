@@ -31,7 +31,6 @@ import org.koaks.framework.memory.MemoryProviderId
 import org.koaks.framework.memory.NoMemoryProvider
 import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.memory.ThreadMemory
-import org.koaks.framework.memory.TurnRetention
 import org.koaks.framework.memory.WindowMemoryProvider
 import org.koaks.framework.middleware.AgentListener
 import org.koaks.framework.middleware.Hook
@@ -348,7 +347,6 @@ private class NodeTool(
                         put("run_id", JsonPrimitive(runtimeContext.runId.value.toString()))
                         put("agent_id", JsonPrimitive(runtimeContext.agentId.value))
                         runtimeContext.threadId?.let { put("thread_id", JsonPrimitive(it.value)) }
-                        runtimeContext.turnId?.let { put("turn_id", JsonPrimitive(it.value.toString())) }
                         runtimeContext.correlationId?.let { put("correlation_id", JsonPrimitive(it)) }
                     },
                 )
@@ -368,7 +366,7 @@ private class NodeTool(
 
 internal fun buildMemory(config: JsonObject, callbacks: CallbackGateway, owned: MutableList<AutoCloseable>): MemoryProvider = when (config.string("type")) {
     "none" -> NoMemoryProvider
-    "window" -> WindowMemoryProvider(config.intOrNull("max_messages") ?: 40, config.retention())
+    "window" -> WindowMemoryProvider(config.intOrNull("max_messages") ?: 40)
     "custom" -> FixedMemoryProvider(MemoryProviderId(config.string("id"))) { thread ->
         val opened = callbacks.call(config.string("open_callback_id"), buildJsonObject { put("thread_id", JsonPrimitive(thread.value)) }).jsonObject
         NodeThreadMemory(opened, callbacks)
@@ -377,7 +375,6 @@ internal fun buildMemory(config: JsonObject, callbacks: CallbackGateway, owned: 
         id = MemoryProviderId(config.string("id")),
         store = NodeVectorStore(config, callbacks),
         topK = config.intOrNull("top_k") ?: 8,
-        retention = config.retention(),
     )
     "summarizing" -> {
         val transport = KtorTransport().also(owned::add)
@@ -386,7 +383,7 @@ internal fun buildMemory(config: JsonObject, callbacks: CallbackGateway, owned: 
             .toLanguageModel()
         val id = MemoryProviderId(config.string("id"))
         val delegate = config.objectOrNull("delegate")?.let { buildMemory(it, callbacks, owned) }
-            ?: InMemoryAppendMemoryProvider(MemoryProviderId("${id.value}-raw"), config.retention())
+            ?: InMemoryAppendMemoryProvider(MemoryProviderId("${id.value}-raw"))
         val stateStore: SummaryStateStore = if (config.stringOrNull("state_load_callback_id") == null) {
             InMemorySummaryStateStore()
         } else {
@@ -402,32 +399,24 @@ internal fun buildMemory(config: JsonObject, callbacks: CallbackGateway, owned: 
             model = model,
             maxTokens = config.intOrNull("max_tokens") ?: error("summarizing memory requires 'max_tokens'"),
             keepRecentTurns = config.intOrNull("keep_recent_turns") ?: 2,
-            retention = config.retention(),
             observer = observer,
         )
     }
     else -> error("unknown memory type '${config.string("type")}'")
 }
 
-private fun JsonObject.retention(): TurnRetention = when (stringOrNull("retention")) {
-    "completed_only" -> TurnRetention.CompletedOnly
-    "interrupted_if_side_effects" -> TurnRetention.InterruptedIfSideEffects
-    else -> TurnRetention.Interrupted
-}
-
 private class NodeThreadMemory(config: JsonObject, private val callbacks: CallbackGateway) : ThreadMemory {
     private val loadCallback = config.string("load_callback_id")
-    private val commitCallback = config.string("commit_callback_id")
+    private val appendCallback = config.string("append_callback_id")
     private val closeCallback = config.stringOrNull("close_callback_id")
-    override val retention: TurnRetention = config.retention()
 
     override suspend fun load(query: List<ModelItem>) = callbacks.call(
         loadCallback,
         buildJsonObject { put("query", buildJsonArray { query.forEach { add(it.toJson()) } }) },
     ).jsonObject.toMemoryView()
 
-    override suspend fun commit(turn: org.koaks.framework.memory.ConversationTurn) {
-        callbacks.call(commitCallback, turn.toJson())
+    override suspend fun append(item: ModelItem) {
+        callbacks.call(appendCallback, item.toJson())
     }
 
     override fun close() {
@@ -704,7 +693,6 @@ private fun ToolContext.toJson() = buildJsonObject {
         put("execution", buildJsonObject {
             put("run_id", JsonPrimitive(identity.runId)); put("agent_id", JsonPrimitive(identity.agentId))
             identity.threadId?.let { put("thread_id", JsonPrimitive(it)) }
-            identity.turnId?.let { put("turn_id", JsonPrimitive(it)) }
             identity.correlationId?.let { put("correlation_id", JsonPrimitive(it)) }
         })
     }

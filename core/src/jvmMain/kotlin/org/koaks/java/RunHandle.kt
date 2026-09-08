@@ -14,7 +14,6 @@ class RunHandle private constructor(
     val runId: Long get() = delegate.runId.value
     val agentId: String get() = delegate.agentId.value
     val threadId: String? get() = delegate.threadId?.value
-    val turnId: Long? get() = delegate.turnId?.value
     val state: LifecycleState get() = delegate.state
     val isActive: Boolean get() = delegate.isActive
 

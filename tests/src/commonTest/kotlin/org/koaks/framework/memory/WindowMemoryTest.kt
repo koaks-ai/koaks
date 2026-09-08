@@ -17,15 +17,15 @@ class WindowMemoryTest {
     @Test
     fun keeps_all_when_under_limit() = runTest {
         val mem = WindowMemory(maxMessages = 10)
-        mem.commit(completedTurn(user("hi"), ModelItem.assistant("hello")))
+        mem.appendAll(user("hi"), ModelItem.assistant("hello"))
         assertEquals(2, mem.load(emptyList()).transcript.size)
     }
 
     @Test
     fun drops_oldest_whole_turns_preserving_tool_pairing() = runTest {
         val mem = WindowMemory(maxMessages = 4)
-        mem.commit(completedTurn(user("q1"), assistantCall("c1"), toolResult("c1")))
-        mem.commit(completedTurn(user("q2"), ModelItem.assistant("a2")))
+        mem.appendAll(user("q1"), assistantCall("c1"), toolResult("c1"))
+        mem.appendAll(user("q2"), ModelItem.assistant("a2"))
 
         val loaded = mem.load(emptyList()).transcript
         assertEquals(listOf("q2"), loaded.userTexts())
@@ -39,9 +39,9 @@ class WindowMemoryTest {
     @Test
     fun preserves_leading_system_message() = runTest {
         val mem = WindowMemory(maxMessages = 3)
-        mem.commit(completedTurn(ModelItem.system("sys")))
-        mem.commit(completedTurn(user("q1"), ModelItem.assistant("a1")))
-        mem.commit(completedTurn(user("q2"), ModelItem.assistant("a2")))
+        mem.append(ModelItem.system("sys"))
+        mem.appendAll(user("q1"), ModelItem.assistant("a1"))
+        mem.appendAll(user("q2"), ModelItem.assistant("a2"))
 
         val loaded = mem.load(emptyList()).transcript.filterIsInstance<ModelItem.Message>()
         assertEquals(Role.SYSTEM, loaded.first().role, "system message must be preserved at the head")
@@ -51,7 +51,7 @@ class WindowMemoryTest {
     @Test
     fun never_splits_a_single_oversized_turn() = runTest {
         val mem = WindowMemory(maxMessages = 2)
-        mem.commit(completedTurn(user("q1"), assistantCall("c1"), toolResult("c1")))
+        mem.appendAll(user("q1"), assistantCall("c1"), toolResult("c1"))
         val loaded = mem.load(emptyList()).transcript
         assertEquals(3, loaded.size)
     }

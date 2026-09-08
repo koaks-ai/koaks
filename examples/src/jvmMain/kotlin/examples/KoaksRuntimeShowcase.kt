@@ -25,6 +25,7 @@ import org.koaks.framework.loop.tool
 import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.memory.ThreadMemory
 import org.koaks.framework.memory.memoryProvider
+import org.koaks.framework.memory.upsert
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.ContentPart
@@ -578,12 +579,11 @@ private suspend fun demonstrateFaultIsolationAndRecovery(runtime: AgentRuntime) 
 
     val commits = memory.committedTurns()
     val persistedText = commits.flatten().joinToString(" | ") { it.displayText() }
-    check(commits.size == 1) { "失败 Turn 不应提交，实际 commits=${commits.size}" }
-    check("半成品" !in persistedText) { "失败草稿泄漏进持久记忆" }
+    check(persistedText.contains("恢复成功")) { "成功回复应写入记忆" }
 
     Console.result("监督最终结果", result.text)
-    Console.kv("Memory.commit 次数", "${commits.size}（仅成功 Turn）")
-    Console.kv("持久化内容检查", "不含失败阶段的‘半成品草稿’")
+    Console.kv("Memory 条目", "${commits.flatten().size}")
+    Console.kv("持久化内容检查", "含成功回复（取消/失败的半截也会保留）")
 
     val circuitModel = AlwaysFailModel("下游模型持续不可用")
     val circuitAgent = agent {
@@ -777,7 +777,7 @@ private class FailOnceModel : LanguageModel {
             emit(ModelEvent.TextDelta("半成品草稿（该内容必须回滚）"))
             throw IllegalStateException("模拟模型连接中断")
         } else {
-            val answer = "恢复成功：TurnCommitBuffer 只提交完整成功回合。"
+            val answer = "恢复成功：已拼接完成的消息写入 Memory。"
             emit(ModelEvent.TextDelta(answer))
             emit(done(usageFor(answer)))
         }
@@ -786,18 +786,17 @@ private class FailOnceModel : LanguageModel {
 
 private class RecordingMemory : ThreadMemory {
     private val mutex = Mutex()
-    private val turns = mutableListOf<List<ModelItem>>()
-    override val retention = org.koaks.framework.memory.TurnRetention.CompletedOnly
+    private val items = mutableListOf<ModelItem>()
 
     override suspend fun load(query: List<ModelItem>) = mutex.withLock {
-        org.koaks.framework.memory.MemoryView(turns.flatten())
+        org.koaks.framework.memory.MemoryView(items.toList())
     }
 
-    override suspend fun commit(turn: org.koaks.framework.memory.ConversationTurn) {
-        mutex.withLock { turns += turn.items.toList() }
+    override suspend fun append(item: ModelItem) {
+        mutex.withLock { items.upsert(item) }
     }
 
-    suspend fun committedTurns(): List<List<ModelItem>> = mutex.withLock { turns.map { it.toList() } }
+    suspend fun committedTurns(): List<List<ModelItem>> = mutex.withLock { listOf(items.toList()) }
 }
 
 private fun usageFor(text: String): Usage {
@@ -926,7 +925,6 @@ private object Console {
             is RuntimeEvent.Retrying -> "RETRY   agent=${event.agentName} attempt=${event.attempt} backoff=${event.delayMillis}ms"
             is RuntimeEvent.CircuitOpen -> "FUSE    agent=${event.agentName} circuit=open"
             is RuntimeEvent.UnhandledChildFailure -> "ORPHAN  child=${event.childRunId.value} error=${event.error.message}"
-            is RuntimeEvent.SideEffectRollback -> "ROLLBACK run=${event.runId.value} turn=${event.turnId.value}"
         }
         val color = when (event) {
             is RuntimeEvent.Failed, is RuntimeEvent.Cancelled, is RuntimeEvent.CircuitOpen -> ::red
@@ -939,7 +937,7 @@ private object Console {
 
     fun acbTable(snapshots: List<AcbSnapshot>) {
         println()
-        println("  ${bold("RUN")}  ${bold("AGENT".padEnd(22))} ${bold("STATE".padEnd(11))} ${bold("PARENT".padEnd(7))} ${bold("TURN".padEnd(7))} ${bold("TOKENS")}")
+        println("  ${bold("RUN")}  ${bold("AGENT".padEnd(22))} ${bold("STATE".padEnd(11))} ${bold("PARENT".padEnd(7))} ${bold("TOKENS")}")
         println("  ${dim("─".repeat(64))}")
         snapshots.sortedBy { it.runId.value }.forEach { snapshot ->
             val note = when {
@@ -950,7 +948,7 @@ private object Console {
                 snapshot.agentName == "Supervised Writer" && snapshot.state == LifecycleState.FAILED ->
                     "  ${yellow("← 刻意失败，Supervisor 将重试")}"
                 snapshot.agentName == "Supervised Writer" && snapshot.state == LifecycleState.FINISHED ->
-                    "  ${green("← Supervisor 重试成功，仅成功 Turn 被提交")}"
+                    "  ${green("← Supervisor 重试成功")}"
                 snapshot.agentName == "Circuit Protected Model" && snapshot.state == LifecycleState.FAILED ->
                     "  ${yellow("← 刻意失败并触发熔断；后续请求未再调用模型")}"
                 else -> ""
@@ -960,7 +958,6 @@ private object Console {
                     "${snapshot.agentName.take(21).padEnd(22)} " +
                     "${stateColor(snapshot.state)(snapshot.state.name.padEnd(11))} " +
                     "${(snapshot.parent?.value?.toString() ?: "-").padEnd(7)} " +
-                    "${(snapshot.turnId?.value?.toString() ?: "-").padEnd(7)} " +
                     snapshot.usage.totalTokens + note,
             )
         }

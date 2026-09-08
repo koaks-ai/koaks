@@ -44,3 +44,12 @@ tasks.register<JavaExec>("runResponsesQuickStart") {
     classpath(jvmMain.output.allOutputs, jvmMain.runtimeDependencyFiles)
     dependsOn(jvmMain.compileTaskProvider)
 }
+
+tasks.register<JavaExec>("runWeatherAgentDemo") {
+    group = "application"
+    description = "Runs the live-model weather agent demo (create / approval / local tool / MCP)"
+    mainClass.set("examples.WeatherAgentDemoKt")
+    classpath(jvmMain.output.allOutputs, jvmMain.runtimeDependencyFiles)
+    dependsOn(jvmMain.compileTaskProvider)
+    standardInput = System.`in`
+}

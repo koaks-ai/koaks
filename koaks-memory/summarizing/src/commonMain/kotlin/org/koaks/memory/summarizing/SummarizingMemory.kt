@@ -2,12 +2,9 @@ package org.koaks.memory.summarizing
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.koaks.framework.memory.ConversationTurn
 import org.koaks.framework.memory.MemoryView
 import org.koaks.framework.memory.ThreadMemory
-import org.koaks.framework.memory.TurnRetention
-import org.koaks.framework.memory.shouldRetain
-import org.koaks.framework.memory.turnHasSideEffects
+import org.koaks.framework.memory.upsert
 import org.koaks.framework.model.LanguageModel
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelRequest
@@ -19,7 +16,7 @@ import org.koaks.framework.model.isUserTurnBoundary
 import org.koaks.framework.model.newIdempotencyKey
 
 /**
- * Memory that compacts older history once a run's API-measured prompt tokens exceed
+ * Memory that compacts older history once the transcript's [displayText] length exceeds
  * [maxTokens], using a [LanguageModel] to compress the oldest turns into a single system
  * "summary so far" item. Lives in its own module (`koaks-memory:summarizing`) since it
  * depends on a model — the core stays dependency-free.
@@ -31,7 +28,6 @@ class SummarizingMemory(
     private val maxTokens: Int,
     private val model: LanguageModel,
     private val keepRecentTurns: Int = 2,
-    override val retention: TurnRetention = TurnRetention.Interrupted,
 ) : ThreadMemory {
 
     private val mutex = Mutex()
@@ -39,18 +35,14 @@ class SummarizingMemory(
     private var items: MutableList<ModelItem> = mutableListOf()
     private var checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null
 
-    override suspend fun commit(turn: ConversationTurn) {
+    override suspend fun append(item: ModelItem) {
         val (snapshotVersion, snapshot) = mutex.withLock {
-            if (!shouldRetain(turn, retention, turnHasSideEffects(turn))) {
-                return
-            }
-            this.items.addAll(turn.items)
-            if (turn.checkpoint != null) this.checkpoint = turn.checkpoint
+            this.items.upsert(item)
             version++
             version to this.items.toList()
         }
 
-        if (turn.usage.promptTokens <= maxTokens) return
+        if (snapshot.promptChars() <= maxTokens) return
 
         val system = snapshot.takeWhile { it.isSystem() }
         val rest = snapshot.drop(system.size)
@@ -102,3 +94,5 @@ class SummarizingMemory(
         return turns
     }
 }
+
+internal fun List<ModelItem>.promptChars(): Int = sumOf { it.displayText().length }

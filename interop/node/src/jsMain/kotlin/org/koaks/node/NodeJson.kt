@@ -15,7 +15,6 @@ import kotlinx.serialization.json.longOrNull
 import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.AgentResult
 import org.koaks.framework.loop.AgentState
-import org.koaks.framework.memory.ConversationTurn
 import org.koaks.framework.memory.MemoryView
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.Annotation
@@ -107,7 +106,6 @@ internal fun ProviderCheckpoint.toJson(): JsonObject = KoaksWireJson.encodeProvi
 internal fun JsonObject.toCheckpoint(): ProviderCheckpoint = KoaksWireJson.decodeProviderCheckpoint(this)
 internal fun MemoryView.toJson(): JsonObject = KoaksWireJson.encodeMemoryView(this)
 internal fun JsonObject.toMemoryView(): MemoryView = KoaksWireJson.decodeMemoryView(this)
-internal fun ConversationTurn.toJson(): JsonObject = KoaksWireJson.encodeConversationTurn(this)
 internal fun AgentState.toJson(): JsonObject = KoaksWireJson.encodeAgentState(this)
 internal fun AcbSnapshot.toJson(): JsonObject = KoaksWireJson.encodeAcbSnapshot(this)
 internal fun RunEventEnvelope.toJson(): JsonObject = KoaksWireJson.encodeRunEvent(this)
