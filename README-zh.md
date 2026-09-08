@@ -371,6 +371,13 @@ Skill 资源保持延迟、只读。Koaks 通过一个受大小限制且支持�
 因此不同 Agent 也可以加入同一个会话。每条完成的消息都会写入 Memory；取消会保留用户输入
 和已经拼出的半截回复。
 
+自定义 Memory 实现 `load(query)` 和 `append(item)`；相同 item ref 更新原位置的消息。
+结构化输出会保留中间 assistant 消息和最终 JSON。`none()` 只保留当前 run 内的消息。
+
+临时背景直接通过 `context = listOf(ModelItem.system("背景"))` 传给 Runtime 或子 Agent。
+Runtime 在 spawn 时复制列表，在该 run 的每次模型请求中加入背景，但不会把它写入 Memory。
+IPC 也直接携带 `context` 消息列表。向量 Memory 和共享上下文句柄已移除。
+
 ```kotlin
 val agent = agent {
     id = "memory-assistant"

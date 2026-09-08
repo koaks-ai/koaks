@@ -394,6 +394,15 @@ by the Runtime, so different Agents can join the same conversation. Each complet
 message is written to Memory as it happens; a cancellation keeps the user turn and any
 partial assistant text already streamed.
 
+Custom memory implements `load(query)` and `append(item)`. Repeated item refs update the
+existing message, preserving its position. Structured output retains both intermediate
+assistant messages and the final JSON. `none()` retains messages only during the current run.
+
+Pass temporary background directly as `context = listOf(ModelItem.system("Background"))`
+to Runtime calls or child spawning. The Runtime snapshots the list when spawning and adds
+it to each model request for that run, without writing it to Memory. IPC messages carry
+the same `context` list directly. Vector memory and shared context handles have been removed.
+
 ```kotlin
 val agent = agent {
     id = "memory-assistant"

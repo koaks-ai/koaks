@@ -773,7 +773,7 @@ private object Console {
         coverage("已实现", "统一调度", "并发槽、优先级、Thread FIFO、等待让槽")
         coverage("已实现", "资源管理", "Quota + ResourceRegistry；硬件负载遥测尚未展示")
         coverage("已实现", "执行抽象", "Agent / RunId / ACB / Handle / 生命周期")
-        coverage("已实现", "故障容错", "CAPTURE/PROPAGATE、重试、熔断、原子提交")
+        coverage("已实现", "故障容错", "CAPTURE/PROPAGATE、重试、熔断、取消时保留消息")
         coverage("已实现", "上下文管理", "去重、COW、PRIVATE ACL、摘要压缩")
         coverage("已实现", "Agent 通信", "Mailbox、Req/Resp、Pub/Sub、消息列表")
         coverage("已实现", "规模压力", "独立 runRuntimeStressTest：默认 10,000 Runs")

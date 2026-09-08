@@ -13,7 +13,7 @@ enum class ChildFailurePolicy {
 
 /** Selects the conversation / memory binding used by a child run. */
 sealed interface ChildConversation {
-    /** Join the parent's active Turn and share its history snapshot and atomic commit. */
+    /** Join the parent's Thread and share its Memory. Each completed message is appended immediately. */
     data object Inherit : ChildConversation
 
     /** Run without a Thread binding or persistent memory. */
