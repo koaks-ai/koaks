@@ -30,8 +30,7 @@ try {
     const result: Promise<AgentResult> | undefined = undefined;
     async function useToolContext(context: ToolExecutionContext, handle: RunHandle, message: IpcMessage) {
       await context.runtime.resources.withResource("fixture", async () => undefined);
-      await context.runtime.context.put([]);
-      await context.runtime.ipc.reply(message, "ok");
+      await context.runtime.ipc.reply(message, "ok", { context: [] });
       await handle.release();
       return runtime.ipc.request(context.runtime.runId, "approval", "allow", { timeoutMs: 100 });
     }

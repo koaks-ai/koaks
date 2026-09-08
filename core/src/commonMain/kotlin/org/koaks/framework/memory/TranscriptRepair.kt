@@ -15,36 +15,40 @@ const val INTERRUPTED_TOOL_OUTPUT: String = "<interrupted: not executed>"
  */
 fun repairTranscript(items: List<ModelItem>): List<ModelItem> {
     val pending = LinkedHashMap<ItemRef, ModelItem.ToolCall>()
-    var repaired: MutableList<ModelItem>? = null
+    val results = items.filterIsInstance<ModelItem.ToolResult>().associateBy { it.callRef }
+    val emittedResults = HashSet<ItemRef>()
+    val repaired = ArrayList<ModelItem>(items.size)
 
-    fun flushPending(target: MutableList<ModelItem>) {
+    fun flushPending() {
         pending.values.forEach { call ->
-            target += ModelItem.ToolResult(
+            // A child can append its conversation while its parent's tool is running.
+            // Move a real, later result next to its call in the model projection only.
+            val result = results[call.ref] ?: ModelItem.ToolResult(
                 ref = ItemRef("repair_${call.ref.value}"),
                 callRef = call.ref,
                 output = INTERRUPTED_TOOL_OUTPUT,
                 isError = true,
             )
+            repaired += result
+            emittedResults += result.ref
         }
         pending.clear()
     }
 
-    for ((index, item) in items.withIndex()) {
-        if (item is ModelItem.Message && pending.isNotEmpty()) {
-            val target = repaired ?: items.take(index).toMutableList().also { repaired = it }
-            flushPending(target)
-        }
+    for (item in items) {
+        if (item is ModelItem.Message && pending.isNotEmpty()) flushPending()
         when (item) {
             is ModelItem.ToolCall -> pending[item.ref] = item
-            is ModelItem.ToolResult -> pending.remove(item.callRef)
+            is ModelItem.ToolResult -> {
+                pending.remove(item.callRef)
+                if (!emittedResults.add(item.ref)) continue
+            }
             else -> Unit
         }
-        repaired?.add(item)
+        repaired += item
     }
-    if (pending.isEmpty()) return repaired ?: items
-    val target = repaired ?: items.toMutableList().also { repaired = it }
-    flushPending(target)
-    return target
+    flushPending()
+    return repaired
 }
 
 fun unresolvedCallRefs(items: List<ModelItem>): List<ItemRef> {

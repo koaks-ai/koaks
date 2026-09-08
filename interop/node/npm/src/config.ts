@@ -93,17 +93,6 @@ export function normalizeMemory(
       const payload = rawPayload as { threadId: string };
       return normalizeThreadMemory(await memory.open(payload.threadId), registry, lifetime);
     }, lifetime);
-  } else if (memory.type === "vector") {
-    value.add_callback_id = registry.registerInvoke(async (rawPayload) => {
-      const payload = rawPayload as { threadId: string; items: ModelItem[] };
-      await memory.store.add(payload.threadId, payload.items);
-      return null;
-    }, lifetime);
-    value.search_callback_id = registry.registerInvoke(async (rawPayload) => {
-      const payload = rawPayload as { threadId: string; query: string; topK: number };
-      return await memory.store.search(payload.threadId, payload.query, payload.topK);
-    }, lifetime);
-    delete value.store;
   } else if (memory.type === "summarizing") {
     if (memory.delegate !== undefined) {
       value.delegate = normalizeMemory(memory.delegate, registry, lifetime);

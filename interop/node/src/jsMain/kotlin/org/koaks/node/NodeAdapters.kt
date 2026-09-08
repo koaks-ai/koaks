@@ -76,8 +76,6 @@ import org.koaks.memory.summarizing.SummaryCheckpoint
 import org.koaks.memory.summarizing.CompactionEvent
 import org.koaks.memory.summarizing.CompactionObserver
 import org.koaks.framework.model.TranscriptBasis
-import org.koaks.memory.vector.VectorMemoryProvider
-import org.koaks.memory.vector.VectorStore
 import org.koaks.provider.anthropic.anthropic
 import org.koaks.provider.ollama.ollama
 import org.koaks.provider.openai.openai
@@ -371,11 +369,6 @@ internal fun buildMemory(config: JsonObject, callbacks: CallbackGateway, owned: 
         val opened = callbacks.call(config.string("open_callback_id"), buildJsonObject { put("thread_id", JsonPrimitive(thread.value)) }).jsonObject
         NodeThreadMemory(opened, callbacks)
     }
-    "vector" -> VectorMemoryProvider(
-        id = MemoryProviderId(config.string("id")),
-        store = NodeVectorStore(config, callbacks),
-        topK = config.intOrNull("top_k") ?: 8,
-    )
     "summarizing" -> {
         val transport = KtorTransport().also(owned::add)
         val scope = ModelScope().apply { transport(transport) }
@@ -449,7 +442,7 @@ private fun SummaryCheckpoint.toJson(): JsonObject = buildJsonObject {
     put("basis", buildJsonObject {
         put("item_count", JsonPrimitive(basis.itemCount)); put("digest", JsonPrimitive(basis.digest))
     })
-    put("summary", summary.toJson()); put("source_turn_id", JsonPrimitive(sourceTurnId))
+    put("summary", summary.toJson()); put("source_item_ref", JsonPrimitive(sourceItemRef))
     put("created_at_epoch_ms", JsonPrimitive(createdAtEpochMillis))
 }
 
@@ -460,13 +453,13 @@ private fun JsonObject.toSummaryCheckpoint(): SummaryCheckpoint {
     return SummaryCheckpoint(
         basis = TranscriptBasis(basis.intOrNull("item_count") ?: error("basis requires item_count"), basis.string("digest")),
         summary = summary,
-        sourceTurnId = string("source_turn_id"),
+        sourceItemRef = string("source_item_ref"),
         createdAtEpochMillis = longOrNull("created_at_epoch_ms") ?: error("checkpoint requires created_at_epoch_ms"),
     )
 }
 
 private fun CompactionEvent.toJson(): JsonObject = buildJsonObject {
-    put("thread_id", JsonPrimitive(threadId.value)); put("source_turn_id", JsonPrimitive(sourceTurnId))
+    put("thread_id", JsonPrimitive(threadId.value)); put("source_item_ref", JsonPrimitive(sourceItemRef))
     when (this@toJson) {
         is CompactionEvent.Started -> {
             put("type", JsonPrimitive("started")); put("basis", buildJsonObject {
@@ -476,22 +469,6 @@ private fun CompactionEvent.toJson(): JsonObject = buildJsonObject {
         is CompactionEvent.Completed -> { put("type", JsonPrimitive("completed")); put("checkpoint", checkpoint.toJson()) }
         is CompactionEvent.Failed -> { put("type", JsonPrimitive("failed")); put("message", JsonPrimitive(message)) }
     }
-}
-
-private class NodeVectorStore(config: JsonObject, private val callbacks: CallbackGateway) : VectorStore {
-    private val addCallback = config.string("add_callback_id")
-    private val searchCallback = config.string("search_callback_id")
-
-    override suspend fun add(threadId: String, items: List<ModelItem>) {
-        callbacks.call(addCallback, buildJsonObject {
-            put("thread_id", JsonPrimitive(threadId)); put("items", buildJsonArray { items.forEach { add(it.toJson()) } })
-        })
-    }
-
-    override suspend fun search(threadId: String, query: String, topK: Int): List<ModelItem> = callbacks.call(
-        searchCallback,
-        buildJsonObject { put("thread_id", JsonPrimitive(threadId)); put("query", JsonPrimitive(query)); put("top_k", JsonPrimitive(topK)) },
-    ).let { it as JsonArray }.map { it.jsonObject.toModelItem() }
 }
 
 private class NodeMcpGateway(config: JsonObject, private val callbacks: CallbackGateway) : McpToolGateway {

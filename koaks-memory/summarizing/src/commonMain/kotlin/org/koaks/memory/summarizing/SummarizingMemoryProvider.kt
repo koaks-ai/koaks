@@ -24,7 +24,7 @@ import org.koaks.framework.model.newIdempotencyKey
 data class SummaryCheckpoint(
     val basis: TranscriptBasis,
     val summary: ModelItem.Message,
-    val sourceTurnId: String,
+    val sourceItemRef: String,
     val createdAtEpochMillis: Long,
 )
 
@@ -51,23 +51,23 @@ class InMemorySummaryStateStore : SummaryStateStore {
 
 sealed interface CompactionEvent {
     val threadId: ThreadId
-    val sourceTurnId: String
+    val sourceItemRef: String
 
     data class Started(
         override val threadId: ThreadId,
-        override val sourceTurnId: String,
+        override val sourceItemRef: String,
         val basis: TranscriptBasis,
     ) : CompactionEvent
 
     data class Completed(
         override val threadId: ThreadId,
-        override val sourceTurnId: String,
+        override val sourceItemRef: String,
         val checkpoint: SummaryCheckpoint,
     ) : CompactionEvent
 
     data class Failed(
         override val threadId: ThreadId,
-        override val sourceTurnId: String,
+        override val sourceItemRef: String,
         val message: String,
     ) : CompactionEvent
 }
@@ -178,7 +178,7 @@ private class CompactingThreadMemory(
             val checkpoint = SummaryCheckpoint(
                 basis = basis,
                 summary = ModelItem.system("Summary of earlier conversation:\n$summary"),
-                sourceTurnId = compactionKey,
+                sourceItemRef = compactionKey,
                 createdAtEpochMillis = Clock.System.now().toEpochMilliseconds(),
             )
             stateStore.save(threadId, checkpoint)

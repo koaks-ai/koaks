@@ -11,7 +11,6 @@ import type {
   RuntimeIpc,
   RuntimeIpcRequestOptions,
   StreamOptions,
-  ToolContextStore,
   ToolExecutionContext,
   ToolIpc,
   ToolResources,
@@ -81,7 +80,6 @@ class ToolRuntimeContextImpl implements ToolRuntimeContext {
   readonly threadId?: string;
   readonly correlationId?: string;
   readonly resources: ToolResources;
-  readonly context: ToolContextStore;
   readonly ipc: ToolIpc;
   private active = true;
 
@@ -95,7 +93,6 @@ class ToolRuntimeContextImpl implements ToolRuntimeContext {
     if (metadata.threadId !== undefined) this.threadId = metadata.threadId;
     if (metadata.correlationId !== undefined) this.correlationId = metadata.correlationId;
     this.resources = new ToolResourcesImpl(host, executionId, () => this.assertActive());
-    this.context = new ToolContextStoreImpl(host, executionId, () => this.assertActive());
     this.ipc = new ToolIpcImpl(host, executionId, () => this.assertActive());
   }
 
@@ -168,38 +165,6 @@ class ToolResourcesImpl implements ToolResources {
     } finally {
       this.host.callbacks.release([callbackId]);
     }
-  }
-}
-
-class ToolContextStoreImpl implements ToolContextStore {
-  constructor(
-    private readonly host: ToolRuntimeHost,
-    private readonly executionId: string,
-    private readonly assertActive: () => void,
-  ) {}
-
-  async put(items: ModelItem[], scope: "private" | "task" | "global" = "private"): Promise<string> {
-    this.assertActive();
-    return await this.host.client.request("tool.context.put", { executionId: this.executionId, items, scope });
-  }
-
-  async delta(
-    parentRef: string,
-    items: ModelItem[],
-    scope: "private" | "task" | "global" = "private",
-  ): Promise<string> {
-    this.assertActive();
-    return await this.host.client.request("tool.context.delta", {
-      executionId: this.executionId,
-      parentRef,
-      items,
-      scope,
-    });
-  }
-
-  async resolve(ref: string): Promise<ModelItem[]> {
-    this.assertActive();
-    return await this.host.client.request("tool.context.resolve", { executionId: this.executionId, ref });
   }
 }
 

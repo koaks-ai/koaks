@@ -9,7 +9,7 @@ import org.koaks.framework.loop.AgentResult
 import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.model.EventDetail
 import org.koaks.runtime.acb.AgentHandle
-import org.koaks.runtime.context.ContextRef
+import org.koaks.framework.model.ModelItem
 import org.koaks.runtime.resource.Quota
 
 /**
@@ -44,27 +44,27 @@ suspend fun Agent.runIn(
     input: String,
     priority: Int = 0,
     quota: Quota? = null,
-    contextRefs: List<ContextRef> = emptyList(),
+    context: List<ModelItem> = emptyList(),
     thread: ThreadId? = null,
     eventDetail: EventDetail = EventDetail.SEMANTIC,
-): AgentResult = runtime.run(this, input, priority, quota, contextRefs = contextRefs, thread = thread, eventDetail = eventDetail)
+): AgentResult = runtime.run(this, input, priority, quota, context = context, thread = thread, eventDetail = eventDetail)
 
 suspend fun Agent.runIn(
     runtime: AgentRuntime,
     input: String,
     priority: Int = 0,
     quota: Quota? = null,
-    contextRefs: List<ContextRef> = emptyList(),
+    context: List<ModelItem> = emptyList(),
     thread: String,
     eventDetail: EventDetail = EventDetail.SEMANTIC,
-): AgentResult = runIn(runtime, input, priority, quota, contextRefs, ThreadId(thread), eventDetail)
+): AgentResult = runIn(runtime, input, priority, quota, context, ThreadId(thread), eventDetail)
 
 fun Agent.streamIn(
     runtime: AgentRuntime,
     input: String,
     priority: Int = 0,
     quota: Quota? = null,
-    contextRefs: List<ContextRef> = emptyList(),
+    context: List<ModelItem> = emptyList(),
     thread: ThreadId? = null,
     eventDetail: EventDetail = EventDetail.SEMANTIC,
 ): Flow<AgentEvent> = runtime.stream(
@@ -72,7 +72,7 @@ fun Agent.streamIn(
     input,
     priority,
     quota,
-    contextRefs = contextRefs,
+    context = context,
     thread = thread,
     eventDetail = eventDetail,
 )
@@ -82,30 +82,30 @@ fun Agent.streamIn(
     input: String,
     priority: Int = 0,
     quota: Quota? = null,
-    contextRefs: List<ContextRef> = emptyList(),
+    context: List<ModelItem> = emptyList(),
     thread: String,
     eventDetail: EventDetail = EventDetail.SEMANTIC,
-): Flow<AgentEvent> = streamIn(runtime, input, priority, quota, contextRefs, ThreadId(thread), eventDetail)
+): Flow<AgentEvent> = streamIn(runtime, input, priority, quota, context, ThreadId(thread), eventDetail)
 
 fun Agent.spawnIn(
     runtime: AgentRuntime,
     input: String,
     priority: Int = 0,
     quota: Quota? = null,
-    contextRefs: List<ContextRef> = emptyList(),
+    context: List<ModelItem> = emptyList(),
     thread: ThreadId? = null,
     eventDetail: EventDetail = EventDetail.SEMANTIC,
-): AgentHandle = runtime.spawn(this, input, priority, quota, contextRefs = contextRefs, thread = thread, eventDetail = eventDetail)
+): AgentHandle = runtime.spawn(this, input, priority, quota, context = context, thread = thread, eventDetail = eventDetail)
 
 fun Agent.spawnIn(
     runtime: AgentRuntime,
     input: String,
     priority: Int = 0,
     quota: Quota? = null,
-    contextRefs: List<ContextRef> = emptyList(),
+    context: List<ModelItem> = emptyList(),
     thread: String,
     eventDetail: EventDetail = EventDetail.SEMANTIC,
-): AgentHandle = spawnIn(runtime, input, priority, quota, contextRefs, ThreadId(thread), eventDetail)
+): AgentHandle = spawnIn(runtime, input, priority, quota, context, ThreadId(thread), eventDetail)
 
 /** Awaits every handle's terminal result, preserving order. */
 suspend fun awaitAll(vararg handles: AgentHandle): List<AgentResult> = handles.map { it.await() }

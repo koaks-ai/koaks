@@ -8,6 +8,17 @@ import kotlin.test.assertTrue
 
 class TranscriptRepairTest {
     @Test
+    fun inherited_child_messages_do_not_duplicate_parent_tool_results() {
+        val call = ModelItem.ToolCall(ref = ItemRef("parent"), name = "child", arguments = "{}")
+        val childInput = ModelItem.user("child task")
+        val childAnswer = ModelItem.assistant("child answer")
+        val result = ModelItem.ToolResult(callRef = call.ref, output = "child answer")
+        val stored = listOf(call, childInput, childAnswer, result)
+        assertEquals(listOf(call, result, childInput, childAnswer), repairTranscript(stored))
+        assertEquals(listOf(call, childInput, childAnswer, result), stored)
+    }
+
+    @Test
     fun synthesizes_error_results_for_orphan_calls_without_mutating_storage() {
         val call = ModelItem.ToolCall(ref = ItemRef("call_1"), name = "search", arguments = "{}")
         val stored = listOf(ModelItem.user("q"), call)

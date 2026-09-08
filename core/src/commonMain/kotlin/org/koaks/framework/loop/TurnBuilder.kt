@@ -1,34 +1,24 @@
 package org.koaks.framework.loop
 
-import org.koaks.framework.memory.ConversationTurn
-import org.koaks.framework.memory.InterruptReason
-import org.koaks.framework.memory.PendingWork
-import org.koaks.framework.memory.TurnStatus
-import org.koaks.framework.memory.unresolvedCallRefs
 import org.koaks.framework.model.ItemRef
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelResponse
 import org.koaks.framework.model.ProviderCheckpoint
 import org.koaks.framework.model.ToolCall
-import org.koaks.framework.model.Usage
 import org.koaks.framework.model.toDispatchCall
 
 /**
- * Always-valid snapshot of the current turn. The runner feeds it [ModelEvent]s as
- * they arrive so a cancellation path can persist an [TurnStatus.Interrupted]
- * record without waiting for a terminal [ModelResponse].
+ * Assembles the current in-flight model step from [ModelEvent]s. Completed items are
+ * taken by the runner and appended to memory; this builder never holds prior turns.
  */
-class TurnBuilder(
-    private val turnId: String,
-    seed: List<ModelItem> = emptyList(),
-) {
-    private val items = seed.toMutableList()
+class TurnBuilder {
+    private val items = mutableListOf<ModelItem>()
+    private val pending = LinkedHashMap<ItemRef, ModelItem>()
     private val text = StringBuilder()
     private var textRef: ItemRef? = null
     private val streamedTextRefs = HashSet<ItemRef>()
     private val pendingToolCalls = LinkedHashMap<String, ToolCallBuilder>()
-    private var usage: Usage = Usage.ZERO
     private var checkpoint: ProviderCheckpoint? = null
     private var responseId: String? = null
     private var finished: ModelResponse? = null
@@ -41,7 +31,10 @@ class TurnBuilder(
                 if (text.isNotEmpty() && event.itemRef != null && event.itemRef != textRef) {
                     flushPartialText()
                 }
-                if (textRef == null) textRef = event.itemRef ?: ItemRef.generate("msg")
+                if (textRef == null) {
+                    textRef = event.itemRef ?: ItemRef.generate("msg")
+                    items.filterIsInstance<ModelItem.Message>().firstOrNull { it.ref == textRef }?.let { text.append(it.text) }
+                }
                 streamedTextRefs += requireNotNull(textRef)
                 text.append(event.text)
             }
@@ -67,7 +60,6 @@ class TurnBuilder(
             is ModelEvent.Finished -> {
                 flushPartialText()
                 finished = event.response
-                usage += event.response.usage
                 event.response.checkpoint?.let { checkpoint = it }
                 responseId = event.response.id ?: responseId
                 mergeResponseOutput(event.response)
@@ -75,23 +67,9 @@ class TurnBuilder(
         }
     }
 
-    fun append(item: ModelItem) {
-        upsert(item)
-    }
-
-    fun addUsage(delta: Usage) {
-        usage += delta
-    }
-
     fun toolCalls(): List<ToolCall> = pendingToolCalls.values
         .map { it.build() }
         .filter { it.name.isNotBlank() }
-
-    fun consumeToolCalls(): List<ToolCall> {
-        val calls = toolCalls()
-        pendingToolCalls.clear()
-        return calls
-    }
 
     fun assistantMessage(): ModelItem.Message {
         flushPartialText()
@@ -100,85 +78,71 @@ class TurnBuilder(
             ?: ModelItem.assistant(text.toString())
     }
 
-    fun usage(): Usage = usage
-
-    fun snapshot(): List<ModelItem> = items.toList()
-
     fun lastResponseId(): String? = responseId
 
     fun lastCheckpoint(): ProviderCheckpoint? = checkpoint
 
     fun lastResponse(): ModelResponse? = finished
 
+    fun snapshot(): List<ModelItem> = items.toList()
+
     /** Returns terminal output reconciled with stream-hook transformations. */
     fun reconciledOutput(response: ModelResponse): List<ModelItem> = response.output.map { item ->
         items.firstOrNull { it.ref == item.ref } ?: item
     }
 
-    fun snapshotTurn(status: TurnStatus): ConversationTurn = ConversationTurn(
-        id = turnId,
-        status = status,
-        items = items.toList(),
-        checkpoint = checkpoint,
-        usage = usage,
-    )
-
-    fun completedTurn(): ConversationTurn = snapshotTurn(TurnStatus.Completed)
-
-    /**
-     * Structured finalization: drop scratch assistant text (and an optional schema
-     * prompt) so the committed turn keeps the user/tool trace plus the final JSON.
-     */
-    fun collapseToFinalAssistant(finalAssistant: ModelItem.Message, dropRefs: Set<ItemRef> = emptySet()) {
+    fun takeStepItems(): List<ModelItem> {
         flushPartialText()
-        if (dropRefs.isNotEmpty()) items.removeAll { it.ref in dropRefs }
-        val lastUser = items.indexOfLast { it is ModelItem.Message && it.role == org.koaks.framework.model.Role.USER }
-        val head = if (lastUser >= 0) items.take(lastUser + 1) else emptyList()
-        val tail = items.drop(head.size).filter { it !is ModelItem.Message || it.role != org.koaks.framework.model.Role.ASSISTANT }
-        items.clear()
-        items.addAll(head)
-        items.addAll(tail)
-        items += finalAssistant
-        text.clear()
-        textRef = null
+        return items.toList()
     }
 
-    fun interruptedTurn(reason: InterruptReason): ConversationTurn {
-        val partialText = text.toString().ifEmpty { null }
-        val partialItem = if (partialText != null) {
-            textRef ?: ItemRef.generate("msg").also { textRef = it }
-        } else {
-            null
-        }
-        flushPartialText()
-        val pending = PendingWork(
-            unresolvedCalls = unresolvedCallRefs(items),
-            partialText = partialText,
-            partialItem = partialItem,
-        )
-        return snapshotTurn(TurnStatus.Interrupted(reason, pending))
+    /** Remaining streamed assistant text, if the step was interrupted before [ModelEvent.Finished]. */
+    fun flushPartial(): ModelItem? {
+        if (text.isEmpty()) return items.filterIsInstance<ModelItem.Message>()
+            .lastOrNull { it.role == org.koaks.framework.model.Role.ASSISTANT }
+        val item = ModelItem.assistant(text.toString(), ref = textRef ?: ItemRef.generate("msg"))
+        text.clear()
+        textRef = null
+        upsert(item, streamedDraft = true)
+        return item
+    }
+
+    /** Drains completed items once, retaining terminal metadata updates under the same ref. */
+    fun drainCompletedItems(): List<ModelItem> = pending.values.toList().also { pending.clear() }
+
+    fun reset() {
+        items.clear()
+        pending.clear()
+        checkpoint = null
+        responseId = null
+        text.clear()
+        textRef = null
+        streamedTextRefs.clear()
+        pendingToolCalls.clear()
+        finished = null
     }
 
     private fun flushPartialText() {
         if (text.isEmpty()) return
-        upsert(ModelItem.assistant(text.toString(), ref = textRef ?: ItemRef.generate("msg")))
+        upsert(ModelItem.assistant(text.toString(), ref = textRef ?: ItemRef.generate("msg")), streamedDraft = true)
         text.clear()
         textRef = null
     }
 
     private fun mergeResponseOutput(response: ModelResponse) {
-        response.output.forEach(::upsert)
+        response.output.forEach { upsert(it) }
     }
 
-    private fun upsert(item: ModelItem) {
+    private fun upsert(item: ModelItem, streamedDraft: Boolean = false) {
         val index = items.indexOfFirst { it.ref == item.ref }
         if (index < 0) {
             items += item
+            pending[item.ref] = item
             return
         }
         val existing = items[index]
-        items[index] = if (
-            item is ModelItem.Message &&
+        val merged = if (
+            !streamedDraft && item is ModelItem.Message &&
             existing is ModelItem.Message &&
             item.ref in streamedTextRefs
         ) {
@@ -186,5 +150,7 @@ class TurnBuilder(
         } else {
             item
         }
+        items[index] = merged
+        if (merged != existing) pending[item.ref] = merged
     }
 }

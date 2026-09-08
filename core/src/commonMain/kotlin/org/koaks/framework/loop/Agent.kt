@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.getAndUpdate
 import org.koaks.framework.memory.MemoryProvider
 import org.koaks.framework.memory.ThreadId
+import org.koaks.framework.memory.ThreadMemory
 import org.koaks.framework.middleware.AgentListener
 import org.koaks.framework.middleware.Hook
 import org.koaks.framework.model.ClientActionHandler
@@ -101,34 +102,27 @@ class Agent internal constructor(
 
     internal fun executeStream(
         input: String?,
-        context: List<ModelItem>,
-        turn: TurnBuilder,
-        checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null,
+        memory: ThreadMemory,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
+        context: List<ModelItem> = emptyList(),
     ): Flow<AgentEvent> = flow {
         val prepared = preparation.await()
-        emitAll(runner.stream(initialItems(input, context), prepared.instructions.resolve(), turn, checkpoint, eventDetail))
+        val user = input?.takeIf { it.isNotEmpty() }?.let { ModelItem.user(it) }
+        if (user != null) memory.append(user)
+        emitAll(runner.stream(memory, prepared.instructions.resolve(), eventDetail, context = context))
     }
 
     internal fun executeStructuredStream(
         input: String?,
-        context: List<ModelItem>,
+        memory: ThreadMemory,
         spec: OutputSpec,
-        turn: TurnBuilder,
-        checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
+        context: List<ModelItem> = emptyList(),
     ): Flow<AgentEvent> = flow {
         val prepared = preparation.await()
-        emitAll(
-            runner.streamStructured(
-                initialItems(input, context),
-                prepared.instructions.resolve(),
-                spec,
-                turn,
-                checkpoint,
-                eventDetail,
-            ),
-        )
+        val user = input?.takeIf { it.isNotEmpty() }?.let { ModelItem.user(it) }
+        if (user != null) memory.append(user)
+        emitAll(runner.streamStructured(memory, prepared.instructions.resolve(), spec, eventDetail, context = context))
     }
 
     suspend fun runStructured(
@@ -145,15 +139,7 @@ class Agent internal constructor(
         eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): AgentResult = runStructured(input, spec, ThreadId(thread), eventDetail)
 
-    private fun initialItems(input: String?, context: List<ModelItem>): List<ModelItem> {
-        val items = buildList {
-            addAll(context)
-            if (!input.isNullOrEmpty()) add(ModelItem.user(input))
-        }
-        return applyPrefill(items)
-    }
-
-    private fun applyPrefill(items: List<ModelItem>): List<ModelItem> {
+    internal fun applyPrefill(items: List<ModelItem>): List<ModelItem> {
         val last = items.lastOrNull() as? ModelItem.Message ?: return items
         if (last.role != Role.ASSISTANT) return items
         if (model.capabilities.assistantPrefill == Support.Supported) return items
@@ -164,6 +150,7 @@ class Agent internal constructor(
 
     internal fun toRequest(
         state: AgentState,
+        items: List<ModelItem>,
         idempotencyKey: String,
         outputFormat: OutputFormat = OutputFormat.Text,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
@@ -177,7 +164,7 @@ class Agent internal constructor(
         }
         return ModelRequest(
             instructions = state.instructions,
-            items = state.items,
+            items = items,
             tools = tools.toSchemas(),
             outputFormat = outputFormat,
             checkpoint = state.checkpoint,

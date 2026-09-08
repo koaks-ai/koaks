@@ -15,7 +15,6 @@ data class RunEventEnvelope(
     val runId: RunId,
     val agentId: AgentId,
     val threadId: ThreadId?,
-    val turnId: TurnId?,
     val correlationId: String?,
     val sequence: Long,
     val timestampEpochMillis: Long,
@@ -43,7 +42,6 @@ internal class RunEventJournal(
     private val runId: RunId,
     private val agentId: AgentId,
     private val threadId: ThreadId?,
-    private val turnId: TurnId?,
     private val correlationId: String?,
     private val capacity: Int,
 ) {
@@ -113,7 +111,6 @@ internal class RunEventJournal(
         runId = runId,
         agentId = agentId,
         threadId = threadId,
-        turnId = turnId,
         correlationId = correlationId,
         sequence = sequence,
         timestampEpochMillis = Clock.System.now().toEpochMilliseconds(),

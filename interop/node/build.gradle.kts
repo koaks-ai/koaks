@@ -14,7 +14,6 @@ kotlin {
                 implementation(project(":model-provider:openai"))
                 implementation(project(":model-provider:anthropic"))
                 implementation(project(":koaks-memory:summarizing"))
-                implementation(project(":koaks-memory:vector"))
                 implementation(libs.coroutines.core)
                 implementation(libs.serialization.json)
             }

@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import org.koaks.runtime.acb.RunId
-import org.koaks.runtime.context.ContextRef
+import org.koaks.framework.model.ModelItem
 
 /**
  * The runtime's IPC switchboard: owns per-instance [Mailbox]es, the pub/sub [EventBus],
@@ -42,7 +42,7 @@ class IpcHub internal constructor() {
     /** Point-to-point send to [RuntimeMessage.receiver]'s mailbox. */
     suspend fun send(message: RuntimeMessage) {
         val target = requireNotNull(message.receiver) { "send requires a receiver" }
-        mailbox(target).send(message)
+        mailbox(target).send(message.copy(context = message.context.toList()))
     }
 
     /**
@@ -63,7 +63,7 @@ class IpcHub internal constructor() {
     }
 
     /** Completes a pending [request] identified by [to]'s correlation id. */
-    suspend fun reply(to: RuntimeMessage, payload: String, contextRefs: List<ContextRef> = emptyList()) {
+    suspend fun reply(to: RuntimeMessage, payload: String, context: List<ModelItem> = emptyList()) {
         val correlation = requireNotNull(to.correlationId) { "message is not a request" }
         val response = RuntimeMessage(
             id = nextId(),
@@ -71,7 +71,7 @@ class IpcHub internal constructor() {
             receiver = to.sender,
             type = "${to.type}.reply",
             payload = payload,
-            contextRefs = contextRefs,
+            context = context.toList(),
             correlationId = correlation,
         )
         val deferred = pending.value[correlation]
@@ -84,7 +84,7 @@ class IpcHub internal constructor() {
     }
 
     /** Publishes [message] to [topic] (pub/sub). */
-    suspend fun publish(topic: String, message: RuntimeMessage) = bus.publish(topic, message)
+    suspend fun publish(topic: String, message: RuntimeMessage) = bus.publish(topic, message.copy(context = message.context.toList()))
 
     /** Subscribes to [topic]. */
     fun subscribe(topic: String): Flow<RuntimeMessage> = bus.subscribe(topic)

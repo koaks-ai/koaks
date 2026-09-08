@@ -9,7 +9,6 @@ import org.koaks.framework.model.ModelItem
 import org.koaks.provider.openai.openai
 import org.koaks.runtime.AgentRuntime
 import org.koaks.runtime.awaitAll
-import org.koaks.runtime.context.ContextScope
 import org.koaks.runtime.observe.RuntimeEvent
 import org.koaks.runtime.resource.quota
 import org.koaks.runtime.sched.taskGraph
@@ -24,7 +23,7 @@ import org.koaks.runtime.withAgentRuntime
  * - 需要显式生命周期、并发、共享上下文、配额、DAG → 显式创建 [AgentRuntime]
  *
  * 本示例一条流水线：
- * 1. 共享背景进 ContextStore（后面只传 ContextRef）
+ * 1. 背景消息通过 context 列表传入
  * 2. spawn 调研 Agent
  * 3. 前后端并行 spawn + awaitAll
  * 4. 同一套依赖也可用 TaskGraph 表达
@@ -88,9 +87,8 @@ fun main() = runBlocking {
             }
         }
 
-        // 1) 共享上下文：大段背景只存一份，spawn 时传 ref，不复制全文。
-        val brief = rt.context.put(
-            messages = listOf(
+        // 1) 上下文：spawn 时直接传入消息列表。
+        val brief = listOf(
                 ModelItem.user(
                     """
                     项目：个人待办 App
@@ -99,26 +97,21 @@ fun main() = runBlocking {
                     本期范围：任务 CRUD、标签、截止日期；不做协作与通知
                     """.trimIndent(),
                 ),
-            ),
-            scope = ContextScope.GLOBAL,
         )
-        println("shared context ref = ${brief.id}")
+        println("context messages = ${brief.size}")
 
         // 2) 串行：先调研。spawn 返回 AgentHandle，await() 拿终态结果。
         println("\n== research ==")
         val researchHandle = rt.spawn(
             agent = researcher,
             input = "请基于项目背景给出实现建议。",
-            contextRefs = listOf(brief),
+            context = brief,
         )
         val research = researchHandle.await()
         printResult("researcher", research)
 
-        // CoW delta：只存调研结论增量，父块不复制。
-        val withResearch = rt.context.delta(
-            parent = brief,
-            added = listOf(ModelItem.assistant("调研结论：\n${research.text}")),
-        )
+        // 为下一步追加调研结论。
+        val withResearch = brief + ModelItem.assistant("调研结论：\n${research.text}")
 
         // 3) 并行：前后端同时跑。priority 越高越先拿到并发槽。
         //    也可用扩展函数 agent.spawnIn(rt, ...)。
@@ -127,13 +120,13 @@ fun main() = runBlocking {
             agent = frontend,
             input = "请设计前端结构。",
             priority = 5,
-            contextRefs = listOf(withResearch),
+            context = withResearch,
         )
         val beHandle = backend.spawnIn(
             runtime = rt,
             input = "请设计后端 API。",
             priority = 5,
-            contextRefs = listOf(withResearch),
+            context = withResearch,
         )
         val (fe, be) = awaitAll(feHandle, beHandle)
         printResult("frontend", fe)

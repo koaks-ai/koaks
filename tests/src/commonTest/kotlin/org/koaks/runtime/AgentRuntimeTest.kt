@@ -37,7 +37,6 @@ import org.koaks.framework.model.Usage
 import org.koaks.runtime.acb.AgentHandle
 import org.koaks.runtime.acb.LifecycleState
 import org.koaks.runtime.acb.RunEventPayload
-import org.koaks.runtime.context.List<ModelItem>
 import org.koaks.runtime.observe.RuntimeEvent
 import org.koaks.runtime.resource.ChildConversation
 import org.koaks.runtime.resource.ChildFailurePolicy
@@ -180,9 +179,13 @@ class AgentRuntimeTest {
         val runtime = AgentRuntime()
         runtime.use {
             val h = it.spawn(
-                sayAgent("bad-context", "never"),
+                agent {
+                    id = "bad-memory"
+                    model { custom(FakeLanguageModel(listOf(done(Usage.ZERO)))) }
+                    memory { custom("broken") { error("cannot open memory") } }
+                },
                 "hi",
-                context = listOf(List<ModelItem>("missing")),
+                thread = "broken-memory-thread",
             )
 
             assertFailsWith<IllegalStateException> { h.await() }

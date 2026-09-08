@@ -20,7 +20,6 @@ import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
 import org.koaks.runtime.acb.RunId
 import org.koaks.runtime.acb.LifecycleState
-import org.koaks.runtime.context.ContextScope
 import org.koaks.runtime.ipc.RuntimeMessage
 import org.koaks.runtime.ipc.receiveMessage
 import org.koaks.runtime.resource.spawnChild
@@ -43,7 +42,7 @@ class RuntimeKernelHardeningTest {
     }
 
     @Test
-    fun spawn_injects_context_refs_into_initial_messages() = runTest {
+    fun spawn_injects_context_into_initial_messages() = runTest {
         val model = FakeLanguageModel(
             listOf(ModelEvent.TextDelta("ok"), done(Usage.ZERO)),
         )
@@ -56,11 +55,8 @@ class RuntimeKernelHardeningTest {
 
         val runtime = AgentRuntime()
         runtime.use {
-            val ref = it.context.put(
-                listOf(ModelItem.user("shared-fact-1"), ModelItem.assistant("shared-fact-2")),
-                scope = ContextScope.GLOBAL,
-            )
-            it.spawn(a, "user-task", context = listOf(ref)).await()
+            val context = listOf(ModelItem.user("shared-fact-1"), ModelItem.assistant("shared-fact-2"))
+            it.spawn(a, "user-task", context = context).await()
 
             val texts = model.lastRequest!!.items.map { m -> m.displayText() }
             assertTrue(texts.contains("shared-fact-1"))

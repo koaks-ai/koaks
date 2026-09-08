@@ -53,7 +53,6 @@ internal class InstanceActivityGate(
             runId = runId.value.toString(),
             agentId = snapshot.agentId.value,
             threadId = snapshot.threadId?.value,
-            turnId = snapshot.turnId?.value?.toString(),
             correlationId = snapshot.correlationId,
         )
     }
@@ -176,7 +175,7 @@ internal class InstanceActivityGate(
         if (acb.snapshot.state == LifecycleState.RUNNING) {
             acb.setState(LifecycleState.WAITING)
             val snapshot = acb.snapshot
-            emit(RuntimeEvent.Waiting(runId, snapshot.agentId, snapshot.threadId, snapshot.turnId))
+            emit(RuntimeEvent.Waiting(runId, snapshot.agentId, snapshot.threadId))
         }
         lease.park()
     }
@@ -191,7 +190,6 @@ internal class InstanceActivityGate(
                     runId,
                     acb.snapshot.agentId,
                     acb.snapshot.threadId,
-                    acb.snapshot.turnId,
                     acb.snapshot.agentName,
                 ),
             )

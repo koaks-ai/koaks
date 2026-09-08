@@ -137,11 +137,11 @@ const agent = await runtime.createAgent({
       return await toolRuntime.resources.withResource(`record:${id}`, async () => {
         const response = await fetch(`https://example.test/records/${id}`, { signal });
         const record = await response.json();
-        const contextRef = await toolRuntime.context.put([
+        const context = [
           { type: "message", role: "user", content: [{ type: "text", text: JSON.stringify(record) }] },
-        ]);
+        ];
         await toolRuntime.ipc.publish("desktop:progress", "record_loaded", id, {
-          contextRefs: [contextRef],
+          context,
         });
         return record;
       });
@@ -155,12 +155,11 @@ const result = await agent.run("Read record 42", { signal: controller.signal });
 Tool arguments are parsed from the model's JSON before `execute` is called. The
 execution context exposes both the model `callId` and Koaks `executionId`, while
 the Tool RuntimeContext exposes the current run metadata, shared resource locks,
-run-scoped ContextStore access, Agent IPC, and true child spawning. If the run
-is cancelled, the tool's `AbortSignal` is aborted and pending Context operations
+Agent IPC with directly attached context, and true child spawning. If the run
+is cancelled, the tool's `AbortSignal` is aborted and pending runtime operations
 are cancelled.
 
-The Tool RuntimeContext expires when `execute` returns. Context refs and child
-`RunHandle` objects created by the callback remain valid. Release saved handles
+The Tool RuntimeContext expires when `execute` returns. Child `RunHandle` objects created by the callback remain valid. Release saved handles
 when the application no longer needs them:
 
 ```ts

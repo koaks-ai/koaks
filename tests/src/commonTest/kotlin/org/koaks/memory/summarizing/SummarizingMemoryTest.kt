@@ -151,7 +151,7 @@ class SummarizingMemoryTest {
             SummaryCheckpoint(
                 basis = TranscriptBasis(1, "sha256:not-the-transcript"),
                 summary = ModelItem.system("invalid summary"),
-                sourceTurnId = "turn",
+                sourceItemRef = "turn",
                 createdAtEpochMillis = 1,
             ),
         )

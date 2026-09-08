@@ -77,7 +77,6 @@ internal fun Throwable.bridgeErrorCode(): String = when (this) {
     is NodeCallbackException -> callbackType
     is IllegalArgumentException -> "configuration_error"
     is org.koaks.runtime.AgentIdConflictException -> "agent_conflict"
-    is org.koaks.runtime.context.ContextAccessException -> "context_access"
     is IllegalStateException -> "lifecycle_error"
     else -> "bridge_error"
 }

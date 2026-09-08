@@ -236,7 +236,6 @@ export interface ToolRuntimeContext {
   readonly threadId?: string;
   readonly correlationId?: string;
   readonly resources: ToolResources;
-  readonly context: ToolContextStore;
   readonly ipc: ToolIpc;
   spawnChild(agent: KoaksAgent, input: string, options?: ChildSpawnOptions): Promise<RunHandle>;
 }
@@ -249,16 +248,11 @@ export interface ToolResources {
   ): Promise<T>;
 }
 
-export interface ToolContextStore {
-  put(items: ModelItem[], scope?: "private" | "task" | "global"): Promise<string>;
-  delta(parentRef: string, items: ModelItem[], scope?: "private" | "task" | "global"): Promise<string>;
-  resolve(ref: string): Promise<ModelItem[]>;
-}
 
 export interface ChildSpawnOptions {
   priority?: number;
   quota?: Quota;
-  context?: string[];
+  context?: ModelItem[];
   failurePolicy?: "propagate" | "capture";
   conversation?:
     | { type: "inherit" }
@@ -272,13 +266,13 @@ export interface IpcMessage {
   readonly receiverRunId?: string;
   readonly type: string;
   readonly payload: string;
-  readonly context: string[];
+  readonly context: ModelItem[];
   readonly priority: number;
   readonly deadlineEpochMs?: number;
 }
 
 export interface IpcSendOptions {
-  context?: string[];
+  context?: ModelItem[];
   priority?: number;
   deadlineEpochMs?: number;
 }
@@ -332,15 +326,11 @@ export interface ThreadMemory {
   close?(): void;
 }
 
-export interface VectorStore {
-  add(threadId: string, items: ModelItem[]): void | Promise<void>;
-  search(threadId: string, query: string, topK: number): ModelItem[] | Promise<ModelItem[]>;
-}
 
 export interface SummaryCheckpoint {
   basis: { itemCount: number; digest: string };
   summary: Extract<ModelItem, { type: "message" }>;
-  sourceTurnId: string;
+  sourceItemRef: string;
   createdAtEpochMs: number;
 }
 
@@ -351,15 +341,14 @@ export interface SummaryStateStore {
 }
 
 export type CompactionEvent =
-  | { type: "started"; threadId: string; sourceTurnId: string; basis: { itemCount: number; digest: string } }
-  | { type: "completed"; threadId: string; sourceTurnId: string; checkpoint: SummaryCheckpoint }
-  | { type: "failed"; threadId: string; sourceTurnId: string; message: string };
+  | { type: "started"; threadId: string; sourceItemRef: string; basis: { itemCount: number; digest: string } }
+  | { type: "completed"; threadId: string; sourceItemRef: string; checkpoint: SummaryCheckpoint }
+  | { type: "failed"; threadId: string; sourceItemRef: string; message: string };
 
 export type MemoryConfig =
   | { type: "none" }
   | { type: "window"; maxMessages?: number }
   | { type: "custom"; id: string; open(threadId: string): ThreadMemory | Promise<ThreadMemory> }
-  | { type: "vector"; id: string; store: VectorStore; topK?: number }
   | {
       type: "summarizing";
       id: string;
@@ -515,7 +504,7 @@ export interface RunOptions {
   threadId?: string;
   priority?: number;
   quota?: Quota;
-  context?: string[];
+  context?: ModelItem[];
   signal?: AbortSignal;
   correlationId?: string;
   eventDetail?: "semantic" | "lossless";
@@ -615,10 +604,6 @@ export type RuntimeEvent =
       threadId?: string;
     };
 
-export type ContextScope =
-  | { type: "global" }
-  | { type: "task" }
-  | { type: "private"; ownerRunId: string };
 
 export interface TaskDefinition {
   id: string;
@@ -713,9 +698,6 @@ export interface KoaksRuntime {
   runs(): Promise<RunSnapshot[]>;
   snapshot(runId: string): Promise<RunSnapshot | undefined>;
   threadSnapshot(threadId: string): Promise<ThreadSnapshot | undefined>;
-  putContext(items: ModelItem[], scope?: ContextScope): Promise<string>;
-  deltaContext(parentRef: string, items: ModelItem[], scope?: ContextScope): Promise<string>;
-  resolveContext(ref: string, requesterRunId?: string): Promise<ModelItem[]>;
   submit(tasks: TaskDefinition[]): Promise<Record<string, AgentResult>>;
   spawnSupervised(agent: KoaksAgent, input: string, policy?: SupervisionPolicy): Promise<SupervisedHandle>;
   reap(options?: ReapOptions): Promise<number>;

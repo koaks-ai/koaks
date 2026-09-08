@@ -2,6 +2,8 @@ package org.koaks.framework.loop
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -12,7 +14,8 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.koaks.framework.memory.InterruptReason
+import org.koaks.framework.memory.ThreadMemory
+import org.koaks.framework.memory.forOnlineUse
 import org.koaks.framework.middleware.ModelCallPhase
 import org.koaks.framework.middleware.StepContext
 import org.koaks.framework.middleware.ToolContext
@@ -24,6 +27,7 @@ import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.ModelResponse
 import org.koaks.framework.model.OutputFormat
+import org.koaks.framework.model.Role
 import org.koaks.framework.model.Support
 import org.koaks.framework.model.toDispatchCall
 import org.koaks.framework.model.newIdempotencyKey
@@ -37,24 +41,22 @@ internal class AgentRunner(private val agent: Agent) {
 
     private val logger = KotlinLogging.logger {}
 
-    internal data class LoopRun(val state: AgentState)
+    internal data class LoopRun(val state: AgentState, val items: List<ModelItem>)
 
     fun stream(
-        initial: List<ModelItem>,
+        memory: ThreadMemory,
         instructions: String?,
-        turn: TurnBuilder,
-        checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
+        context: List<ModelItem> = emptyList(),
     ): Flow<AgentEvent> = channelFlow {
-        runLoop(initial, instructions, turn, checkpoint, eventDetail) { send(it) }
+        runLoop(memory, instructions, eventDetail, context) { send(it) }
     }
 
     private suspend fun runLoop(
-        initial: List<ModelItem>,
+        memory: ThreadMemory,
         instructions: String?,
-        turn: TurnBuilder,
-        checkpoint: org.koaks.framework.model.ProviderCheckpoint?,
         eventDetail: EventDetail,
+        context: List<ModelItem> = emptyList(),
         emit: suspend (AgentEvent) -> Unit,
     ): LoopRun {
         val outputMutex = Mutex()
@@ -65,203 +67,242 @@ internal class AgentRunner(private val agent: Agent) {
             }
         }
 
-        var state = AgentState(items = initial, instructions = instructions, checkpoint = checkpoint, activeAgentName = agent.name)
+        val builder = TurnBuilder()
+        var query: ModelItem? = null
+        val persistenceMutex = Mutex()
+        var state = AgentState(instructions = instructions, activeAgentName = agent.name)
         var retries = 0
         var stepKey = newIdempotencyKey()
 
-        while (true) {
-            when (val decision = agent.terminationDecision(state)) {
-                TerminationDecision.Continue -> {}
-                is TerminationDecision.Stop -> {
-                    out(AgentEvent.Terminated(state.lastAssistantOrEmpty(), state.usage, decision.reason))
-                    return LoopRun(state)
+        suspend fun snapshot(): List<ModelItem> =
+            memory.load(listOfNotNull(query)).forOnlineUse().transcript
+
+        suspend fun persist(item: ModelItem) {
+            withContext(NonCancellable) {
+                persistenceMutex.withLock {
+                    memory.append(item)
+                    query = item
                 }
             }
+        }
 
-            agent.listeners.forEach { it.onStep(state) }
+        suspend fun persistCompleted() {
+            builder.drainCompletedItems().forEach { persist(it) }
+        }
 
-            var emittedText = false
-            var terminalResponse: ModelResponse? = null
-            try {
-                val source = modelSource(
-                    state,
-                    agent.toRequest(state, stepKey, OutputFormat.Text, eventDetail),
-                    ModelCallPhase.Normal,
-                )
-                source.collect { event ->
-                    turn.observe(event)
-                    agent.listeners.forEach { it.onModelEvent(event) }
-                    when (event) {
-                        is ModelEvent.TextDelta -> {
-                            emittedText = true
-                            out(AgentEvent.TextDelta(event.text, event.itemRef))
-                        }
-                        is ModelEvent.ReasoningDelta -> out(AgentEvent.ReasoningDelta(event.text, event.itemRef, event.kind))
-                        is ModelEvent.ToolCallCompleted -> out(AgentEvent.ToolCallRequested(event.call))
-                        is ModelEvent.Finished -> {
-                            if (eventDetail == EventDetail.LOSSLESS) {
-                                out(AgentEvent.Model(event, state.step, ModelCallPhase.Normal))
+        suspend fun persistPartial() {
+            builder.flushPartial()
+            persistCompleted()
+        }
+
+        try {
+            while (true) {
+                val items = snapshot()
+                when (val decision = agent.terminationDecision(state)) {
+                    TerminationDecision.Continue -> {}
+                    is TerminationDecision.Stop -> {
+                        out(AgentEvent.Terminated(items.lastAssistantOrEmpty(), state.usage, decision.reason))
+                        return LoopRun(state, items)
+                    }
+                }
+
+                agent.listeners.forEach { it.onStep(state) }
+
+                var emittedText = false
+                var terminalResponse: ModelResponse? = null
+                try {
+                    val requestItems = agent.applyPrefill(context + items)
+                    val source = modelSource(
+                        state,
+                        agent.toRequest(state, requestItems, stepKey, OutputFormat.Text, eventDetail),
+                        ModelCallPhase.Normal,
+                    )
+                    builder.reset()
+                    source.collect { event ->
+                        builder.observe(event)
+                        persistCompleted()
+                        agent.listeners.forEach { it.onModelEvent(event) }
+                        when (event) {
+                            is ModelEvent.TextDelta -> {
+                                emittedText = true
+                                out(AgentEvent.TextDelta(event.text, event.itemRef))
                             }
-                            val response = event.response
-                            terminalResponse = response
-                            state = state.addUsage(response.usage).withCheckpoint(response.checkpoint)
-                            if (response is ModelResponse.Failed) {
-                                throw ModelFailure(response.error)
+                            is ModelEvent.ReasoningDelta -> out(AgentEvent.ReasoningDelta(event.text, event.itemRef, event.kind))
+                            is ModelEvent.ToolCallCompleted -> out(AgentEvent.ToolCallRequested(event.call))
+                            is ModelEvent.Finished -> {
+                                if (eventDetail == EventDetail.LOSSLESS) {
+                                    out(AgentEvent.Model(event, state.step, ModelCallPhase.Normal))
+                                }
+                                val response = event.response
+                                terminalResponse = response
+                                state = state.addUsage(response.usage).withCheckpoint(response.checkpoint)
+                                if (response is ModelResponse.Failed) {
+                                    throw ModelFailure(response.error)
+                                }
                             }
-                        }
-                        else -> {
-                            if (eventDetail == EventDetail.LOSSLESS) {
-                                out(AgentEvent.Model(event, state.step, ModelCallPhase.Normal))
-                            } else {
-                                logger.debug { "AgentRunner: ignoring model event: $event" }
+                            else -> {
+                                if (eventDetail == EventDetail.LOSSLESS) {
+                                    out(AgentEvent.Model(event, state.step, ModelCallPhase.Normal))
+                                } else {
+                                    logger.debug { "AgentRunner: ignoring model event: $event" }
+                                }
                             }
                         }
                     }
-                }
-            } catch (t: Throwable) {
-                val error: AgentError = when (t) {
-                    is ModelFailure -> t.error
-                    is CancellationException -> throw t
-                    else -> t.toAgentError()
-                }
-                val recovery = agent.suspendErrorPolicy?.decide(error, state)
-                    ?: agent.errorPolicy.decide(error, state)
-                when (val r = recovery) {
-                    is Recovery.Retry -> {
-                        if (!emittedText && retries < r.maxRetries) {
-                            retries++
-                            delay(r.delayMs.milliseconds)
+                    checkNotNull(terminalResponse) { "model stream ended without a terminal response" }
+                } catch (t: Throwable) {
+                    val error: AgentError = when (t) {
+                        is ModelFailure -> t.error
+                        is CancellationException -> throw t
+                        else -> t.toAgentError()
+                    }
+                    val recovery = agent.suspendErrorPolicy?.decide(error, state)
+                        ?: agent.errorPolicy.decide(error, state)
+                    when (val r = recovery) {
+                        is Recovery.Retry -> {
+                            if (!emittedText && retries < r.maxRetries) {
+                                retries++
+                                delay(r.delayMs.milliseconds)
+                                continue
+                            }
+                            persistPartial()
+                            out(AgentEvent.Failed(error, state.usage))
+                            return LoopRun(state, snapshot())
+                        }
+                        is Recovery.Substitute -> {
+                            persistPartial()
+                            persist(r.message)
                             continue
                         }
-                        out(AgentEvent.Failed(error, state.usage))
-                        return LoopRun(state)
-                    }
-                    is Recovery.Substitute -> {
-                        state = state.append(r.message)
-                        turn.append(r.message)
-                        continue
-                    }
-                    is Recovery.Propagate -> {
-                        out(AgentEvent.Failed(error, state.usage))
-                        return LoopRun(state)
+                        is Recovery.Propagate -> {
+                            persistPartial()
+                            out(AgentEvent.Failed(error, state.usage))
+                            return LoopRun(state, snapshot())
+                        }
                     }
                 }
-            }
-            retries = 0
-            stepKey = newIdempotencyKey()
+                retries = 0
+                stepKey = newIdempotencyKey()
 
-            val response = checkNotNull(terminalResponse) { "model stream ended without a terminal response" }
-            val modelOutput = turn.reconciledOutput(response)
-            state = state.completeModelStep(modelOutput)
-            val assistant = modelOutput.filterIsInstance<ModelItem.Message>()
-                .lastOrNull { it.role == org.koaks.framework.model.Role.ASSISTANT }
-                ?: turn.assistantMessage()
-            out(AgentEvent.StepCompleted(state.step))
+                val response = checkNotNull(terminalResponse) { "model stream ended without a terminal response" }
+                val modelOutput = builder.reconciledOutput(response)
+                state = state.advanceModelStep()
+                val assistant = modelOutput.filterIsInstance<ModelItem.Message>()
+                    .lastOrNull { it.role == Role.ASSISTANT }
+                    ?: builder.assistantMessage()
+                out(AgentEvent.StepCompleted(state.step))
 
-            if (response is ModelResponse.Incomplete) {
-                out(AgentEvent.Incomplete(assistant, state.usage, response.reason))
-                return LoopRun(state)
-            }
+                val calls = modelOutput.filterIsInstance<ModelItem.ToolCall>().map { it.toDispatchCall() }
+                val actionResults = dispatchClientActions(modelOutput)
 
-            val calls = modelOutput.filterIsInstance<ModelItem.ToolCall>().map { it.toDispatchCall() }
-            val actionResults = dispatchClientActions(modelOutput)
-            if (actionResults.isNotEmpty()) {
-                actionResults.forEach { turn.append(it) }
-                state = state.appendAll(actionResults)
-            }
-            if (calls.isEmpty() && actionResults.isEmpty()) {
-                out(AgentEvent.Completed(assistant, state.usage))
-                return LoopRun(state)
-            }
-            if (calls.isEmpty()) {
-                continue
-            }
+                actionResults.forEach { persist(it) }
+                builder.reset()
 
-            val exec = currentCoroutineContext()[AgentExecutionContext]
-            val outcomes: List<ToolOutcome> = coroutineScope {
-                val branches = if (exec != null) calls.map { exec.forkBranch() } else null
-                val deferreds = calls.mapIndexed { i, call ->
-                    val branch = branches?.get(i)
-                    async {
-                        val body: suspend () -> ToolOutcome = {
-                            var current = call
-                            var denied: ToolOutcome? = null
-                            var entered = 0
-                            try {
-                                hookLoop@ for (hook in agent.hooks) {
-                                    entered++
-                                    when (val decision = hook.onToolCall(ToolContext(current, state, exec?.identity))) {
-                                        ToolDecision.Proceed -> {}
-                                        is ToolDecision.ProceedWith -> current = decision.call.copy(id = call.id)
-                                        is ToolDecision.Deny -> {
-                                            denied = ToolOutcome.Failure(
-                                                AgentError.ToolError(
-                                                    toolName = current.name,
-                                                    message = decision.reason,
-                                                    retriable = false,
-                                                ),
-                                            )
-                                            break@hookLoop
+                if (response is ModelResponse.Incomplete) {
+                    out(AgentEvent.Incomplete(assistant, state.usage, response.reason))
+                    return LoopRun(state, snapshot())
+                }
+
+                if (calls.isEmpty() && actionResults.isEmpty()) {
+                    out(AgentEvent.Completed(assistant, state.usage))
+                    return LoopRun(state, snapshot())
+                }
+                if (calls.isEmpty()) {
+                    continue
+                }
+
+                val exec = currentCoroutineContext()[AgentExecutionContext]
+                val outcomes: List<ToolOutcome> = coroutineScope {
+                    val branches = if (exec != null) calls.map { exec.forkBranch() } else null
+                    val deferreds = calls.mapIndexed { i, call ->
+                        val branch = branches?.get(i)
+                        async {
+                            val body: suspend () -> ToolOutcome = {
+                                var current = call
+                                var denied: ToolOutcome? = null
+                                var entered = 0
+                                try {
+                                    hookLoop@ for (hook in agent.hooks) {
+                                        entered++
+                                        when (val decision = hook.onToolCall(ToolContext(current, state, exec?.identity))) {
+                                            ToolDecision.Proceed -> {}
+                                            is ToolDecision.ProceedWith -> current = decision.call.copy(id = call.id)
+                                            is ToolDecision.Deny -> {
+                                                denied = ToolOutcome.Failure(
+                                                    AgentError.ToolError(
+                                                        toolName = current.name,
+                                                        message = decision.reason,
+                                                        retriable = false,
+                                                    ),
+                                                )
+                                                break@hookLoop
+                                            }
                                         }
                                     }
+                                    var outcome = denied ?: agent.tools.call(
+                                        call = current,
+                                        execution = exec?.identity,
+                                        reportProgress = { progress ->
+                                            out(AgentEvent.ToolProgress(current.id, progress))
+                                        },
+                                        onSideEffect = { exec?.markSideEffect() },
+                                    )
+                                    for (hook in agent.hooks.take(entered).asReversed()) {
+                                        outcome = hook.onToolResult(ToolContext(current, state, exec?.identity), outcome)
+                                    }
+                                    outcome
+                                } catch (c: CancellationException) {
+                                    throw c
+                                } catch (t: Throwable) {
+                                    ToolOutcome.Failure(
+                                        AgentError.ToolError(
+                                            toolName = current.name,
+                                            message = t.message ?: "tool hook failed",
+                                            retriable = false,
+                                            cause = t,
+                                        ),
+                                    )
                                 }
-                                var outcome = denied ?: agent.tools.call(
-                                    call = current,
-                                    execution = exec?.identity,
-                                    reportProgress = { progress ->
-                                        out(AgentEvent.ToolProgress(current.id, progress))
-                                    },
-                                    onSideEffect = { exec?.markSideEffect() },
-                                )
-                                for (hook in agent.hooks.take(entered).asReversed()) {
-                                    outcome = hook.onToolResult(ToolContext(current, state, exec?.identity), outcome)
-                                }
-                                outcome
-                            } catch (c: CancellationException) {
-                                throw c
-                            } catch (t: Throwable) {
-                                ToolOutcome.Failure(
-                                    AgentError.ToolError(
-                                        toolName = current.name,
-                                        message = t.message ?: "tool hook failed",
-                                        retriable = false,
-                                        cause = t,
-                                    ),
-                                )
                             }
+                            val complete: suspend () -> ToolOutcome = {
+                                val outcome = body()
+                                val result = when (outcome) {
+                                    is ToolOutcome.Success -> ModelItem.ToolResult(callRef = call.ref, output = outcome.output)
+                                    is ToolOutcome.Failure -> ModelItem.ToolResult(callRef = call.ref, output = outcome.error.message, isError = true)
+                                }
+                                persist(result)
+                                out(outcome.toEvent(call.id))
+                                if (outcome is ToolOutcome.Failure) out(AgentEvent.Failed(outcome.error, state.usage))
+                                outcome
+                            }
+                            if (branch != null) branch.run { complete() } else complete()
                         }
-                        if (branch != null) branch.run { body() } else body()
                     }
+                    if (exec != null) exec.waiting { deferreds.awaitAll() } else deferreds.awaitAll()
                 }
-                if (exec != null) exec.waiting { deferreds.awaitAll() } else deferreds.awaitAll()
+                outcomes.firstOrNull { it is ToolOutcome.Success && it.returnDirectly }?.let { direct ->
+                    val output = (direct as ToolOutcome.Success).output
+                    val message = ModelItem.assistant(output)
+                    persist(message)
+                    out(AgentEvent.Completed(message, state.usage))
+                    return LoopRun(state, snapshot())
+                }
             }
-            outcomes.forEachIndexed { i, o ->
-                val ev = o.toEvent(calls[i].id)
-                out(ev)
-                if (o is ToolOutcome.Failure) out(AgentEvent.Failed(o.error, state.usage))
+        } catch (cancelled: CancellationException) {
+            persistPartial()
+            withContext(NonCancellable) {
+                builder.lastResponseId()?.let { id -> runCatching { agent.model.abandon(id) } }
             }
-            state = state.appendToolResults(calls, outcomes)
-            state.items.takeLast(calls.size).forEach { turn.append(it) }
-
-            outcomes.firstOrNull { it is ToolOutcome.Success && it.returnDirectly }?.let { direct ->
-                val output = (direct as ToolOutcome.Success).output
-                val message = ModelItem.assistant(output)
-                state = state.append(message)
-                turn.append(message)
-                out(AgentEvent.Completed(message, state.usage))
-                return LoopRun(state)
-            }
+            throw cancelled
         }
     }
 
     suspend fun run(
-        initial: List<ModelItem>,
+        memory: ThreadMemory,
         instructions: String?,
-        turn: TurnBuilder,
-        checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null,
     ): AgentResult {
         val events = mutableListOf<AgentEvent>()
-        runLoop(initial, instructions, turn, checkpoint, EventDetail.SEMANTIC) { events += it }
+        runLoop(memory, instructions, EventDetail.SEMANTIC) { events += it }
         return resultFrom(events)
     }
 
@@ -283,27 +324,25 @@ internal class AgentRunner(private val agent: Agent) {
     }
 
     fun streamStructured(
-        initial: List<ModelItem>,
+        memory: ThreadMemory,
         instructions: String?,
         spec: OutputSpec,
-        turn: TurnBuilder,
-        checkpoint: org.koaks.framework.model.ProviderCheckpoint? = null,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
+        context: List<ModelItem> = emptyList(),
     ): Flow<AgentEvent> = flow {
-        runStructured(initial, instructions, spec, turn, checkpoint, eventDetail) { emit(it) }
+        runStructured(memory, instructions, spec, eventDetail, context) { emit(it) }
     }
 
     private suspend fun runStructured(
-        initial: List<ModelItem>,
+        memory: ThreadMemory,
         instructions: String?,
         spec: OutputSpec,
-        turn: TurnBuilder,
-        checkpoint: org.koaks.framework.model.ProviderCheckpoint?,
         eventDetail: EventDetail,
+        context: List<ModelItem>,
         emit: suspend (AgentEvent) -> Unit,
     ): AgentResult {
         val events = mutableListOf<AgentEvent>()
-        val loop = runLoop(initial, instructions, turn, checkpoint, eventDetail) { event ->
+        val loop = runLoop(memory, instructions, eventDetail, context = context) { event ->
             events += event
             when (event) {
                 is AgentEvent.TextDelta,
@@ -315,7 +354,10 @@ internal class AgentRunner(private val agent: Agent) {
             }
         }
         val base = resultFrom(events)
-        if (base !is AgentResult.Completed) return base
+        if (base !is AgentResult.Completed) {
+            events.filterIsInstance<AgentEvent.Incomplete>().lastOrNull()?.let { emit(it) }
+            return base
+        }
 
         val format = structuredFormat(spec)
         val formatInstruction = if (format is OutputFormat.JsonSchema) {
@@ -325,16 +367,20 @@ internal class AgentRunner(private val agent: Agent) {
                 "Return ONLY a JSON value matching this schema for '${spec.schemaName}', with no prose or code fences:\n${spec.schema}",
             )
         }
-        val convo = loop.state.items + listOfNotNull(formatInstruction)
-        formatInstruction?.let { turn.append(it) }
-        val finalizationState = loop.state.copy(items = convo)
-        val request = agent.toRequest(finalizationState, newIdempotencyKey(), format, eventDetail).copy(tools = emptyList())
+        val loaded = memory.load(emptyList()).forOnlineUse().transcript
+        val convo = context + loaded + listOfNotNull(formatInstruction)
+        val finalizationState = loop.state
+        val builder = TurnBuilder()
+        val request = agent.toRequest(finalizationState, convo, newIdempotencyKey(), format, eventDetail).copy(tools = emptyList())
 
         var finalizationResponse: ModelResponse? = null
         try {
             modelSource(finalizationState, request, ModelCallPhase.StructuredFinalization)
                 .collect { event ->
-                    turn.observe(event)
+                    builder.observe(event)
+                    withContext(NonCancellable) {
+                        builder.drainCompletedItems().forEach { memory.append(it) }
+                    }
                     agent.listeners.forEach { it.onModelEvent(event) }
                     when (event) {
                         is ModelEvent.TextDelta -> emitStructuredEvent(AgentEvent.TextDelta(event.text, event.itemRef), emit)
@@ -362,26 +408,35 @@ internal class AgentRunner(private val agent: Agent) {
                         }
                     }
                 }
+            checkNotNull(finalizationResponse) { "structured model stream ended without a terminal response" }
         } catch (c: CancellationException) {
+            withContext(NonCancellable) {
+                builder.flushPartial()
+                builder.drainCompletedItems().forEach { memory.append(it) }
+                builder.lastResponseId()?.let { runCatching { agent.model.abandon(it) } }
+            }
             throw c
         } catch (t: Throwable) {
+            withContext(NonCancellable) {
+                builder.flushPartial()
+                builder.drainCompletedItems().forEach { memory.append(it) }
+            }
             val error = if (t is ModelFailure) t.error else t.toAgentError()
             val usage = base.usage + (finalizationResponse?.usage ?: org.koaks.framework.model.Usage.ZERO)
             emitStructuredEvent(AgentEvent.Failed(error, usage), emit)
             return AgentResult.Failed(error, usage)
         }
         val finalResponse = checkNotNull(finalizationResponse) { "structured model stream ended without a terminal response" }
-        val finalAssistant = turn.reconciledOutput(finalResponse).filterIsInstance<ModelItem.Message>()
-            .lastOrNull { it.role == org.koaks.framework.model.Role.ASSISTANT }
-            ?: turn.assistantMessage()
+        val finalAssistant = builder.reconciledOutput(finalResponse).filterIsInstance<ModelItem.Message>()
+            .lastOrNull { it.role == Role.ASSISTANT }
+            ?: builder.assistantMessage()
         val usage = base.usage + finalResponse.usage
         emitStructuredEvent(AgentEvent.StepCompleted(loop.state.step + 1), emit)
         if (finalResponse is ModelResponse.Incomplete) {
             emitStructuredEvent(AgentEvent.Incomplete(finalAssistant, usage, finalResponse.reason), emit)
             return AgentResult.Incomplete(finalAssistant, usage, finalResponse.reason)
         }
-        val message = ModelItem.assistant(finalAssistant.text)
-        turn.collapseToFinalAssistant(message, dropRefs = setOfNotNull(formatInstruction?.ref))
+        val message = finalAssistant
         emitStructuredEvent(AgentEvent.Completed(message, usage), emit)
         return AgentResult.Completed(message, usage)
     }

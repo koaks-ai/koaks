@@ -46,11 +46,6 @@ import org.koaks.runtime.acb.AgentHandle
 import org.koaks.runtime.acb.LifecycleState
 import org.koaks.runtime.acb.RunId
 import org.koaks.runtime.awaitAll
-import org.koaks.runtime.context.ContextAccessException
-import org.koaks.runtime.context.ContextRef
-import org.koaks.runtime.context.ContextScope
-import org.koaks.runtime.context.putContext
-import org.koaks.runtime.context.resolveContext
 import org.koaks.runtime.fault.CircuitBreakerPolicy
 import org.koaks.runtime.fault.SupervisionPolicy
 import org.koaks.runtime.ipc.RuntimeMessage
@@ -235,34 +230,7 @@ private suspend fun demonstrateSchedulerAndQuota() {
 }
 
 private suspend fun demonstrateContextManagement(runtime: AgentRuntime) {
-    Console.section("03", "上下文复用 / 压缩 / 隔离", "内容寻址 + Copy-on-Write + Summary Memory + PRIVATE ACL")
-
-    val background = (1..200).map { index ->
-        ModelItem.system("共享规范 #${index.toString().padStart(3, '0')}：所有模块遵循统一接口、审计和故障边界。")
-    }
-    val shared = runtime.context.put(background, scope = ContextScope.GLOBAL)
-    val deduplicated = runtime.context.put(background, scope = ContextScope.GLOBAL)
-    check(shared == deduplicated)
-    val agentRefs = (1..10).map { index ->
-        runtime.context.delta(
-            parent = shared,
-            added = listOf(ModelItem.user("Agent-$index 私有任务增量：只处理第 $index 个子域。")),
-        )
-    }
-
-    val backgroundChars = background.sumOf { it.displayText().length }
-    val deltaChars = agentRefs.sumOf { ref -> runtime.context.get(ref)!!.messages.sumOf { it.displayText().length } }
-    val fullCopyChars = backgroundChars * agentRefs.size + deltaChars
-    val sharedChars = backgroundChars + deltaChars
-    val ratio = sharedChars.toDouble() / fullCopyChars.toDouble()
-
-    Console.kv("共享根 ContextRef", shared.id)
-    Console.kv("内容寻址去重", "相同内容再次 put → 同一 ContextRef=${shared == deduplicated}")
-    Console.kv("任一 Agent 的解析视图", "${runtime.context.resolve(agentRefs.first(), requester = null).size} 条消息")
-    Console.kv("该 Agent 实际新增块", "${runtime.context.get(agentRefs.first())!!.messages.size} 条消息")
-    Console.bar("全量复制", 1.0, "$fullCopyChars chars")
-    Console.bar("引用共享", ratio, "$sharedChars chars (${(ratio * 100).toInt()}%)")
-    Console.success("结构共享承载量约降低 ${"%.1f".format(fullCopyChars.toDouble() / sharedChars)}×")
+    Console.section("03", "上下文传递与摘要", "消息列表 + Summary Memory")
 
     val summarizingMemory = SummarizingMemory(
         maxTokens = 64,
@@ -292,59 +260,13 @@ private suspend fun demonstrateContextManagement(runtime: AgentRuntime) {
     Console.result("摘要压缩", compacted.filterIsInstance<ModelItem.Message>().first().text.substringBefore('\n'))
     Console.kv("压缩后持久上下文", "${compacted.size} 条消息；仅保留最近 ${compacted.filterIsInstance<ModelItem.Message>().count { it.role == Role.USER }} 个原始 Turn")
 
-    var privateRef: ContextRef? = null
-    val contextReader = agent {
-        id = "private-context-reader"
-        name = "Untrusted Child"
-        model { custom(ToolThenAnswerModel("read_private_context", "Untrusted Child")) }
-        tools {
-            tool<ShowcaseNoInput>("read_private_context", "尝试按引用读取另一个 Run 的 PRIVATE 块") {
-                try {
-                    resolveContext(requireNotNull(privateRef))
-                    "denied=false"
-                } catch (_: ContextAccessException) {
-                    "denied=true"
-                }
-            }
-        }
-        terminateAfter(maxSteps = 4)
-    }
-    val contextOwner = agent {
-        id = "private-context-owner"
-        name = "Private Context Owner"
-        model { custom(ToolThenAnswerModel("verify_context_acl", "Context ACL")) }
-        tools {
-            tool<ShowcaseNoInput>("verify_context_acl", "创建私有块并让另一个 Agent 尝试读取") {
-                val ctx = requireNotNull(currentRuntimeContext())
-                val secret = putContext(
-                    listOf(ModelItem.system("私有凭据：仅 owner run=${ctx.runId.value} 可读")),
-                    scope = ContextScope.PRIVATE,
-                )
-                privateRef = secret
-                val ownerView = resolveContext(secret).single().displayText()
-                val childResult = spawnChild(
-                    agent = contextReader,
-                    input = "收到 ContextRef=${secret.id}，尝试主动解析",
-                    failurePolicy = ChildFailurePolicy.CAPTURE,
-                    conversation = ChildConversation.Ephemeral,
-                ).await()
-                "ownerRead=${ownerView.startsWith("私有凭据")}; ${childResult.text}"
-            }
-        }
-        terminateAfter(maxSteps = 4)
-    }
-    val isolationResult = runtime.run(contextOwner, "验证上下文 ACL")
-    Console.result("PRIVATE isolation", isolationResult.text)
 }
 
 private suspend fun demonstrateIpc(runtime: AgentRuntime) {
-    Console.section("04", "Agent IPC + 统一资源抽象", "Mailbox / Req-Resp / Pub-Sub / ContextRef / ResourceRegistry")
+    Console.section("04", "Agent IPC + 统一资源抽象", "Mailbox / Req-Resp / Pub-Sub / 消息列表 / ResourceRegistry")
 
     var reviewerRunId: RunId? = null
-    val reviewContext = runtime.context.put(
-        (1..80).map { ModelItem.system("架构附件 #$it：调度、上下文、IPC、容错证据。") },
-        scope = ContextScope.TASK,
-    )
+    val reviewContext = (1..80).map { ModelItem.system("架构附件 #$it：调度、上下文、IPC、容错证据。") }
     val reviewer = agent {
         id = "ipc-reviewer"
         name = "Reviewer"
@@ -353,9 +275,7 @@ private suspend fun demonstrateIpc(runtime: AgentRuntime) {
             tool<ShowcaseNoInput>("serve_review", "等待审查请求并回复") {
                 val request = receiveMessage()
                 val ctx = requireNotNull(currentRuntimeContext())
-                val attachedMessages = request.contextRefs.sumOf { ref ->
-                    ctx.context.resolve(ref, requester = ctx.runId).size
-                }
+                val attachedMessages = request.context.size
                 delay(100)
                 replyMessage(request, "审查通过：依赖边完整，失败边界清晰，引用附件=$attachedMessages 条。")
                 "已回复 request#${request.id}"
@@ -373,7 +293,7 @@ private suspend fun demonstrateIpc(runtime: AgentRuntime) {
                     to = requireNotNull(reviewerRunId),
                     type = "architecture.review",
                     payload = "请检查 DAG 和容错设计",
-                    contextRefs = listOf(reviewContext),
+                    context = reviewContext,
                 )
                 "收到 reply(correlation=${reply.correlationId})：${reply.payload}"
             }
@@ -387,7 +307,7 @@ private suspend fun demonstrateIpc(runtime: AgentRuntime) {
     val requesterHandle = runtime.spawn(requester, "发起审查", priority = 6)
     val results = awaitAll(requesterHandle, reviewerHandle)
     Console.result("Request/Response", results.first().text)
-    Console.kv("零拷贝式传递", "payload=${"请检查 DAG 和容错设计".length} chars；附件通过 1 个 ContextRef 携带 ${runtime.context.resolve(reviewContext, null).size} 条消息")
+    Console.kv("消息附件", "${reviewContext.size} 条上下文消息")
 
     val broadcast = coroutineScope {
         val subscriber = async { runtime.ipc.subscribe("build.status").first() }
@@ -444,7 +364,7 @@ private suspend fun demonstrateTaskGraph(runtime: AgentRuntime) {
         "前端：状态面板 + ACB 时间线（输入已含调研=${input.contains("调研") }）"
     }
     val backend = fixedAgent("dag-backend", "Backend", 280) { input ->
-        "后端：Scheduler + IPC + ContextStore（输入已含调研=${input.contains("调研") }）"
+        "后端：Scheduler + IPC + Context messages（输入已含调研=${input.contains("调研") }）"
     }
     val summarizer = fixedAgent("dag-summary", "Summarizer", 120) { input ->
         "汇总：前后端方案已合流，依赖结果数=${input.count { it == '：' }.coerceAtLeast(2)}。"
@@ -855,7 +775,7 @@ private object Console {
         coverage("已实现", "执行抽象", "Agent / RunId / ACB / Handle / 生命周期")
         coverage("已实现", "故障容错", "CAPTURE/PROPAGATE、重试、熔断、原子提交")
         coverage("已实现", "上下文管理", "去重、COW、PRIVATE ACL、摘要压缩")
-        coverage("已实现", "Agent 通信", "Mailbox、Req/Resp、Pub/Sub、ContextRef")
+        coverage("已实现", "Agent 通信", "Mailbox、Req/Resp、Pub/Sub、消息列表")
         coverage("已实现", "规模压力", "独立 runRuntimeStressTest：默认 10,000 Runs")
         coverage("已实现", "国产 OS", "可在 openEuler/openKylin 等所有支持 JVM 的国产/开源操作系统中运行")
         println()

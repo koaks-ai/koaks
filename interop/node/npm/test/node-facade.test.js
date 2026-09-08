@@ -212,14 +212,10 @@ test("ESM facade runs, streams, reuses thread memory, and closes idempotently", 
   const secondRequest = requests.find((entry) => entry.messages.at(-1)?.content === "second");
   assert.ok(secondRequest.messages.some((message) => message.role === "assistant" && message.content === "reply:first"));
 
-  const ref = await runtime.putContext([{ type: "message", role: "user", content: [{ type: "text", text: "context" }] }]);
-  const resolved = await runtime.resolveContext(ref);
-  assert.equal(resolved[0].type, "message");
-  assert.equal(resolved[0].content[0].text, "context");
-  const delta = await runtime.deltaContext(ref, [
-    { type: "message", role: "assistant", content: [{ type: "text", text: "delta" }] },
-  ]);
-  assert.equal((await runtime.resolveContext(delta)).length, 2);
+  const context = [{ type: "message", role: "user", content: [{ type: "text", text: "context" }] }];
+  await agent.run("with context", { context });
+  const contextRequest = requests.find((entry) => entry.messages.at(-1)?.content === "with context");
+  assert.ok(contextRequest.messages.some((message) => message.content === "context"));
 
   const structured = await agent.runStructured("Return an answer", {
     name: "answer",
@@ -368,9 +364,9 @@ test("stopping agent.stream cancels its active Handle without execution backpres
   await runtime.close();
 });
 
-test("summarizing memory keeps raw turns and persists only its projection checkpoint", async () => {
+test("summarizing memory keeps raw items and persists only its projection checkpoint", async () => {
   const runtime = createRuntime();
-  const rawTurns = [];
+  const rawItems = [];
   let summaryState;
   const compactionEvents = [];
   const memory = {
@@ -383,8 +379,11 @@ test("summarizing memory keeps raw turns and persists only its projection checkp
       type: "custom",
       id: "raw-history",
       open: async () => ({
-        load: async () => ({ transcript: rawTurns.flatMap((turn) => turn.items) }),
-        commit: async (turn) => { rawTurns.push(turn); },
+        load: async () => ({ transcript: rawItems.slice() }),
+        append: async (item) => {
+            const index = rawItems.findIndex((stored) => stored.ref === item.ref);
+            if (index < 0) rawItems.push(item); else rawItems[index] = item;
+          },
       }),
     },
     stateStore: {
@@ -403,7 +402,7 @@ test("summarizing memory keeps raw turns and persists only its projection checkp
   await agent.run("memory one", { threadId: "summary-thread" });
   await agent.run("memory two", { threadId: "summary-thread" });
 
-  assert.equal(rawTurns.length, 2);
+  assert.equal(rawItems.length, 4);
   assert.equal(typeof summaryState.basis.digest, "string");
   assert.equal(summaryState.summary.role, "system");
   assert.ok(compactionEvents.some((event) => event.type === "started"));
@@ -411,7 +410,7 @@ test("summarizing memory keeps raw turns and persists only its projection checkp
   await runtime.close();
 });
 
-test("summarizing state Store errors retain their JS type and do not duplicate raw turns", async () => {
+test("summarizing state Store errors retain their JS type and do not duplicate raw items", async () => {
   class SummaryStoreError extends Error {
     constructor(message) {
       super(message);
@@ -420,7 +419,7 @@ test("summarizing state Store errors retain their JS type and do not duplicate r
   }
 
   const runtime = createRuntime();
-  const rawTurns = [];
+  const rawItems = [];
   const agent = await runtime.createAgent({
     id: "summary-store-error",
     model: { type: "openai", apiKey: "test", model: "fixture", baseUrl },
@@ -434,8 +433,11 @@ test("summarizing state Store errors retain their JS type and do not duplicate r
         type: "custom",
         id: "raw-before-summary-failure",
         open: async () => ({
-          load: async () => ({ transcript: rawTurns.flatMap((turn) => turn.items) }),
-          commit: async (turn) => { rawTurns.push(turn); },
+          load: async () => ({ transcript: rawItems.slice() }),
+          append: async (item) => {
+            const index = rawItems.findIndex((stored) => stored.ref === item.ref);
+            if (index < 0) rawItems.push(item); else rawItems[index] = item;
+          },
         }),
       },
       stateStore: {
@@ -451,7 +453,8 @@ test("summarizing state Store errors retain their JS type and do not duplicate r
     agent.run("summary error two", { threadId: "summary-error-thread" }),
     (error) => error?.code === "SummaryStoreError" && /summary store unavailable/.test(error.message),
   );
-  assert.equal(rawTurns.length, 2);
+  assert.equal(rawItems.length, 3);
+  assert.equal(new Set(rawItems.map((item) => item.ref)).size, 3);
   await runtime.close();
 });
 
@@ -551,10 +554,9 @@ test("JS tools receive parsed arguments and cancellation through AbortSignal", a
   await runtime.close();
 });
 
-test("Tool RuntimeContext serializes resources, scopes private context, and expires after callback", async () => {
+test("Tool RuntimeContext serializes resources and expires after callback", async () => {
   const runtime = createRuntime({ maxConcurrency: 2 });
   let counter = 0;
-  let privateRef;
   let capturedRuntime;
   const agent = await runtime.createAgent({
     id: "runtime-context",
@@ -579,11 +581,7 @@ test("Tool RuntimeContext serializes resources, scopes private context, and expi
           capturedRuntime = toolRuntime;
           assert.ok(toolRuntime.runId);
           assert.equal(toolRuntime.agentId, "runtime-context");
-          privateRef = await toolRuntime.context.put([
-            { type: "message", role: "user", content: [{ type: "text", text: "private" }] },
-          ]);
-          const resolved = await toolRuntime.context.resolve(privateRef);
-          return resolved[0].content[0].text;
+          return "runtime available";
         },
       },
       {
@@ -607,9 +605,8 @@ test("Tool RuntimeContext serializes resources, scopes private context, and expi
   assert.equal(counter, 3);
 
   assert.equal((await agent.run("runtime context")).status, "completed");
-  await assert.rejects(runtime.resolveContext(privateRef), (error) => error?.code === "context_access");
   await assert.rejects(
-    capturedRuntime.context.resolve(privateRef),
+    capturedRuntime.resources.withResource("expired", async () => {}),
     (error) => error?.code === "tool_context_expired",
   );
   await runtime.close();
@@ -637,13 +634,13 @@ test("child Agents preserve parent semantics and saved handles remain usable acr
         name: "spawn_child",
         inputSchema: { type: "object" },
         execute: async (_arguments, { runtime: toolRuntime }) => {
-          const contextRef = await toolRuntime.context.put([
+          const context = [
             { type: "message", role: "user", content: [{ type: "text", text: "child context" }] },
-          ]);
+          ];
           spawnedHandle = await toolRuntime.spawnChild(child, "child input", {
             failurePolicy: "capture",
             conversation: { type: "ephemeral" },
-            contextRefs: [contextRef],
+            context,
           });
           const result = await spawnedHandle.result();
           return result.text;
@@ -999,13 +996,13 @@ test("provider unions, callbacks, skills, custom memory, and MCP gateway adapt c
   assert.equal(loaded, 1);
   await skilled.close();
 
-  let committed = 0;
+  const appended = [];
   const sharedMemory = {
     type: "custom",
     id: "custom",
     open: async () => ({
-      load: async () => ({ transcript: [] }),
-      commit: async () => { committed++; },
+      load: async () => ({ transcript: appended.slice() }),
+      append: async (item) => { appended.push(item); },
     }),
   };
   const customMemory = await runtime.createAgent({
@@ -1014,7 +1011,7 @@ test("provider unions, callbacks, skills, custom memory, and MCP gateway adapt c
     memory: sharedMemory,
   });
   assert.equal((await customMemory.run("custom-memory", { threadId: "custom-thread" })).status, "completed");
-  assert.equal(committed, 1);
+  assert.equal(appended.length, 2);
   await customMemory.close();
   const sharedMemoryAgent = await runtime.createAgent({
     id: "custom-memory-2",
@@ -1022,7 +1019,7 @@ test("provider unions, callbacks, skills, custom memory, and MCP gateway adapt c
     memory: sharedMemory,
   });
   assert.equal((await sharedMemoryAgent.run("shared-memory", { threadId: "custom-thread" })).status, "completed");
-  assert.equal(committed, 2);
+  assert.equal(appended.length, 4);
   await sharedMemoryAgent.close();
 
   let listed = 0;

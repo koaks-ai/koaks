@@ -7,9 +7,7 @@ import org.koaks.framework.loop.AgentId
 import org.koaks.framework.memory.ThreadId
 import org.koaks.runtime.acb.AgentHandle
 import org.koaks.runtime.acb.RunId
-import org.koaks.runtime.acb.TurnId
-import org.koaks.runtime.context.ContextRef
-import org.koaks.runtime.context.ContextStore
+import org.koaks.framework.model.ModelItem
 import org.koaks.runtime.ipc.IpcHub
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
@@ -18,7 +16,7 @@ import kotlin.coroutines.CoroutineContext
  * Spawns a child instance on the same runtime. Bound into [RuntimeContext] so tools can
  * create children without holding the full [org.koaks.runtime.AgentRuntime] (no close /
  * reap / metrics). The current instance is always recorded as the child's parent; when
- * the parent belongs to a Thread, the child inherits the same ThreadId and TurnId.
+ * the parent belongs to a Thread, the child inherits the same ThreadId.
  */
 fun interface AgentSpawner {
     fun spawn(
@@ -26,7 +24,7 @@ fun interface AgentSpawner {
         input: String,
         priority: Int,
         quota: Quota?,
-        contextRefs: List<ContextRef>,
+        context: List<ModelItem>,
         failurePolicy: ChildFailurePolicy,
         conversation: ChildConversation,
     ): AgentHandle
@@ -34,7 +32,7 @@ fun interface AgentSpawner {
 
 /**
  * A [CoroutineContext] element the runtime attaches to every spawned instance's coroutine.
- * Tools reach [ResourceRegistry], [IpcHub], [ContextStore], and a restricted [spawn] via
+ * Tools reach [ResourceRegistry], [IpcHub], and a restricted [spawn] via
  * [coroutineContext]. Public `Agent.run/stream/spawn` calls install this context via the
  * process-wide default Runtime.
  *
@@ -48,10 +46,8 @@ class RuntimeContext internal constructor(
     val runId: RunId,
     val agentId: AgentId,
     val threadId: ThreadId?,
-    val turnId: TurnId?,
     val correlationId: String?,
     val ipc: IpcHub,
-    val context: ContextStore,
     private val spawner: AgentSpawner,
 ) : AbstractCoroutineContextElement(Key) {
     companion object Key : CoroutineContext.Key<RuntimeContext>
@@ -68,10 +64,10 @@ class RuntimeContext internal constructor(
         input: String,
         priority: Int = 0,
         quota: Quota? = null,
-        contextRefs: List<ContextRef> = emptyList(),
+        context: List<ModelItem> = emptyList(),
         failurePolicy: ChildFailurePolicy = ChildFailurePolicy.PROPAGATE,
         conversation: ChildConversation = ChildConversation.Inherit,
-    ): AgentHandle = spawner.spawn(agent, input, priority, quota, contextRefs, failurePolicy, conversation)
+    ): AgentHandle = spawner.spawn(agent, input, priority, quota, context, failurePolicy, conversation)
 }
 
 /** The current runtime context, or `null` when called outside runtime-managed execution. */
@@ -86,13 +82,13 @@ suspend fun spawnChild(
     input: String,
     priority: Int = 0,
     quota: Quota? = null,
-    contextRefs: List<ContextRef> = emptyList(),
+    context: List<ModelItem> = emptyList(),
     failurePolicy: ChildFailurePolicy = ChildFailurePolicy.PROPAGATE,
     conversation: ChildConversation = ChildConversation.Inherit,
 ): AgentHandle {
     val ctx = currentRuntimeContext()
         ?: error("spawnChild is only available inside a runtime-spawned agent")
-    return ctx.spawn(agent, input, priority, quota, contextRefs, failurePolicy, conversation)
+    return ctx.spawn(agent, input, priority, quota, context, failurePolicy, conversation)
 }
 
 /**

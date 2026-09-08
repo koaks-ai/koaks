@@ -31,19 +31,13 @@ import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.AgentId
 import org.koaks.framework.loop.AgentResult
 import org.koaks.framework.loop.OutputSpec
-import org.koaks.framework.memory.ConversationTurn
-import org.koaks.framework.memory.InterruptReason
 import org.koaks.framework.memory.MemoryProvider
 import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.memory.ThreadMemory
-import org.koaks.framework.memory.TurnRetention
-import org.koaks.framework.memory.TurnStatus
+import org.koaks.framework.memory.WindowMemory
 import org.koaks.framework.memory.WindowMemoryProvider
-import org.koaks.framework.memory.forOnlineUse
-import org.koaks.framework.memory.shouldRetain
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.AgentFrameworkException
-import org.koaks.framework.model.CheckpointScope
 import org.koaks.framework.model.EventDetail
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.Usage
@@ -59,9 +53,6 @@ import org.koaks.runtime.acb.RunId
 import org.koaks.runtime.acb.RunEventJournal
 import org.koaks.runtime.acb.RunEventHistoryGapException
 import org.koaks.runtime.acb.RunEventPayload
-import org.koaks.runtime.acb.TurnId
-import org.koaks.runtime.context.ContextRef
-import org.koaks.runtime.context.ContextStore
 import org.koaks.runtime.fault.SupervisedHandle
 import org.koaks.runtime.fault.SupervisionPolicy
 import org.koaks.runtime.fault.Supervisor
@@ -79,7 +70,6 @@ import org.koaks.runtime.sched.Scheduler
 import org.koaks.runtime.sched.TaskGraph
 import org.koaks.runtime.thread.ThreadRegistry
 import org.koaks.runtime.thread.ThreadSnapshot
-import org.koaks.runtime.thread.TurnContext
 import kotlin.time.Duration.Companion.milliseconds
 
 private val logger = KotlinLogging.logger {}
@@ -152,21 +142,17 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
 
     val resources: ResourceRegistry = ResourceRegistry()
     val ipc: IpcHub = IpcHub()
-    val context: ContextStore = ContextStore()
 
     private val runSeq = MutableStateFlow(0L)
-    private val turnSeq = MutableStateFlow(0L)
     private val acbs = MutableStateFlow<Map<RunId, Acb>>(emptyMap())
     private val handles = MutableStateFlow<Map<RunId, AgentHandle>>(emptyMap())
     private val eventJournals = MutableStateFlow<Map<RunId, RunEventJournal>>(emptyMap())
     private val registrations = MutableStateFlow<Map<AgentId, AgentRegistration>>(emptyMap())
-    private val turnContexts = MutableStateFlow<Map<TurnId, TurnContext>>(emptyMap())
     private val closed = MutableStateFlow(false)
 
     init {
         job.invokeOnCompletion {
             threads.close()
-            turnContexts.value = emptyMap()
         }
     }
 
@@ -277,12 +263,12 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         input: String,
         priority: Int = 0,
         quota: Quota? = null,
-        contextRefs: List<ContextRef> = emptyList(),
+        context: List<ModelItem> = emptyList(),
         thread: ThreadId? = null,
         correlationId: String? = null,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): AgentResult {
-        val handle = spawn(agent, input, priority, quota, contextRefs, thread, correlationId, eventDetail)
+        val handle = spawn(agent, input, priority, quota, context, thread, correlationId, eventDetail)
         return try {
             handle.await()
         } catch (cancelled: CancellationException) {
@@ -304,12 +290,12 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         spec: OutputSpec,
         priority: Int = 0,
         quota: Quota? = null,
-        contextRefs: List<ContextRef> = emptyList(),
+        context: List<ModelItem> = emptyList(),
         thread: ThreadId? = null,
         correlationId: String? = null,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): AgentResult {
-        val handle = spawnStructured(agent, input, spec, priority, quota, contextRefs, thread, correlationId, eventDetail)
+        val handle = spawnStructured(agent, input, spec, priority, quota, context, thread, correlationId, eventDetail)
         return try {
             handle.await()
         } catch (cancelled: CancellationException) {
@@ -331,12 +317,12 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         input: String,
         priority: Int = 0,
         quota: Quota? = null,
-        contextRefs: List<ContextRef> = emptyList(),
+        context: List<ModelItem> = emptyList(),
         thread: ThreadId? = null,
         correlationId: String? = null,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): Flow<AgentEvent> = flow {
-        val handle = spawn(agent, input, priority, quota, contextRefs, thread, correlationId, eventDetail)
+        val handle = spawn(agent, input, priority, quota, context, thread, correlationId, eventDetail)
         try {
             handle.events().collect { envelope ->
                 when (val payload = envelope.payload) {
@@ -367,7 +353,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         input: String,
         priority: Int = 0,
         quota: Quota? = null,
-        contextRefs: List<ContextRef> = emptyList(),
+        context: List<ModelItem> = emptyList(),
         thread: ThreadId? = null,
         correlationId: String? = null,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
@@ -377,7 +363,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         priority,
         quota,
         null,
-        contextRefs,
+        context,
         thread,
         null,
         correlationId = correlationId,
@@ -397,7 +383,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         spec: OutputSpec,
         priority: Int = 0,
         quota: Quota? = null,
-        contextRefs: List<ContextRef> = emptyList(),
+        context: List<ModelItem> = emptyList(),
         thread: ThreadId? = null,
         correlationId: String? = null,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
@@ -407,7 +393,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         priority,
         quota,
         parent = null,
-        contextRefs = contextRefs,
+        context = context,
         thread = thread,
         structuredSpec = spec,
         correlationId = correlationId,
@@ -419,7 +405,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         thread: ThreadId,
         priority: Int = 0,
         quota: Quota? = null,
-        contextRefs: List<ContextRef> = emptyList(),
+        context: List<ModelItem> = emptyList(),
         correlationId: String? = null,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): AgentHandle = spawnInternal(
@@ -428,7 +414,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         priority = priority,
         quota = quota,
         parent = null,
-        contextRefs = contextRefs,
+        context = context,
         thread = thread,
         structuredSpec = null,
         correlationId = correlationId,
@@ -441,11 +427,11 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         thread: ThreadId,
         priority: Int = 0,
         quota: Quota? = null,
-        contextRefs: List<ContextRef> = emptyList(),
+        context: List<ModelItem> = emptyList(),
         correlationId: String? = null,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): Flow<AgentEvent> = flow {
-        val handle = spawnResume(agent, thread, priority, quota, contextRefs, correlationId, eventDetail)
+        val handle = spawnResume(agent, thread, priority, quota, context, correlationId, eventDetail)
         try {
             handle.events().collect { envelope ->
                 when (val payload = envelope.payload) {
@@ -469,11 +455,11 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         thread: ThreadId,
         priority: Int = 0,
         quota: Quota? = null,
-        contextRefs: List<ContextRef> = emptyList(),
+        context: List<ModelItem> = emptyList(),
         correlationId: String? = null,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): AgentResult {
-        val handle = spawnResume(agent, thread, priority, quota, contextRefs, correlationId, eventDetail)
+        val handle = spawnResume(agent, thread, priority, quota, context, correlationId, eventDetail)
         return try {
             handle.await()
         } catch (cancelled: CancellationException) {
@@ -488,10 +474,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         priority: Int,
         quota: Quota?,
         parent: RunId?,
-        contextRefs: List<ContextRef>,
+        context: List<ModelItem>,
         thread: ThreadId?,
         structuredSpec: OutputSpec?,
-        inheritedTurnContext: TurnContext? = null,
         childConversation: ChildConversation? = null,
         failurePolicy: ChildFailurePolicy = ChildFailurePolicy.PROPAGATE,
         correlationId: String? = null,
@@ -501,6 +486,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         check(!closed.value) { "AgentRuntime is closed" }
         require(correlationId == null || correlationId.isNotBlank()) { "correlationId must not be blank" }
 
+        val contextSnapshot = context.toList()
         val parentAcb = parent?.let { parentId ->
             acbs.value[parentId]
                 ?: error("parent run '${parentId.value}' does not exist in this runtime")
@@ -524,43 +510,22 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             }
             else -> error("child spawn requires an explicit ChildConversation")
         }
-        val inheritsParentTurn = parentSnapshot != null &&
+        val inheritsParentRun = parentSnapshot != null &&
             childConversation == ChildConversation.Inherit &&
             effectiveThread != null &&
-            effectiveThread == parentSnapshot.threadId &&
-            parentSnapshot.turnId != null
-        val turnOwner = effectiveThread != null && !inheritsParentTurn
+            effectiveThread == parentSnapshot.threadId
+        val runOwner = effectiveThread != null && !inheritsParentRun
 
         val runId = RunId(runSeq.getAndUpdate { it + 1 })
-        val turnId = if (inheritsParentTurn) {
-            parentSnapshot!!.turnId
-        } else {
-            effectiveThread?.let { TurnId(turnSeq.getAndUpdate { value -> value + 1 }) }
-        }
-        val turnContext = when {
-            turnId == null -> null
-            inheritsParentTurn -> inheritedTurnContext
-                ?: turnContexts.value[turnId]
-                ?: error("turn '${turnId.value}' has no active context")
-            else -> TurnContext(effectiveThread!!, turnId, seedItems(input, resume))
-        }
         acquireRegistration(agent)
         var completionOwnsRegistration = false
-        var turnReservation: ThreadRegistry.TurnReservation? = null
-        var turnContextRegistered = false
+        var runReservation: ThreadRegistry.RunReservation? = null
         var childLinked = false
         try {
-            turnReservation = if (turnOwner) {
-                threads.reserve(effectiveThread!!, turnId!!, agent)
+            runReservation = if (runOwner) {
+                threads.reserve(effectiveThread!!, runId, agent)
             } else {
                 null
-            }
-            if (turnOwner && turnContext != null) {
-                turnContexts.update { current ->
-                    check(turnId !in current) { "turn '${turnId!!.value}' is already registered" }
-                    current + (turnId!! to turnContext)
-                }
-                turnContextRegistered = true
             }
             if (parentAcb != null) {
                 check(parentAcb.tryAddChild(runId, failurePolicy)) {
@@ -569,20 +534,19 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                 childLinked = true
             }
             val effectiveCorrelationId = correlationId ?: parentSnapshot?.correlationId
-            val acb = Acb(runId, agent.id, agent.name, effectiveThread, turnId, priority, parent, effectiveCorrelationId)
-            if (turnReservation != null) acb.setState(LifecycleState.THREAD_QUEUED)
+            val acb = Acb(runId, agent.id, agent.name, effectiveThread, priority, parent, effectiveCorrelationId)
+            if (runReservation != null) acb.setState(LifecycleState.THREAD_QUEUED)
             acbs.update { it + (runId to acb) }
             val eventJournal = RunEventJournal(
                 runId,
                 agent.id,
                 effectiveThread,
-                turnId,
                 effectiveCorrelationId,
                 runEventBufferCapacity,
             )
             eventJournals.update { it + (runId to eventJournal) }
             val sink = JournalEventSink(eventJournal)
-            emit(RuntimeEvent.Spawned(runId, agent.id, agent.name, effectiveThread, turnId, priority, parent))
+            emit(RuntimeEvent.Spawned(runId, agent.id, agent.name, effectiveThread, priority, parent))
 
             val effectiveQuota = quota ?: defaultQuota
             val control = InstanceControl()
@@ -597,10 +561,9 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                     priority = childPriority,
                     quota = childQuota,
                     parent = runId,
-                    contextRefs = childRefs,
+                    context = childRefs,
                     thread = null,
                     structuredSpec = null,
-                    inheritedTurnContext = turnContext,
                     childConversation = conversation,
                     failurePolicy = childFailurePolicy,
                     correlationId = effectiveCorrelationId,
@@ -612,17 +575,15 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                 runId,
                 agent.id,
                 effectiveThread,
-                turnId,
                 effectiveCorrelationId,
                 ipc,
-                context,
                 childSpawner,
             )
-            val gate = InstanceActivityGate(runId, acb, ::emit) { turnContext?.markSideEffect() }
+            val gate = InstanceActivityGate(runId, acb, ::emit)
 
             val deferred: Deferred<AgentResult> = scope.async(runtimeContext + gate) {
                 try {
-                    val refs = resolveContextPrefix(contextRefs, requester = parent ?: runId)
+                    val refs = contextSnapshot
                     runInstance(
                         gate,
                         agent,
@@ -634,10 +595,8 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                         effectiveQuota,
                         sink,
                         effectiveThread,
-                        turnId,
-                        turnContext,
-                        turnOwner,
-                        turnReservation,
+                        runOwner,
+                        runReservation,
                         structuredSpec,
                         resume,
                         eventDetail,
@@ -653,20 +612,19 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                             cause = failure,
                         )
                         acb.markFailed(error, snapshot.usage)
-                        emit(RuntimeEvent.Failed(runId, agent.id, effectiveThread, turnId, error))
+                        emit(RuntimeEvent.Failed(runId, agent.id, effectiveThread, error))
                         cancelDescendants(runId, "parent $runId failed")
                     }
                     throw failure
                 }
             }
             deferred.invokeOnCompletion { cause ->
-                turnReservation?.cancel()
-                if (turnOwner && turnId != null) turnContexts.update { it - turnId }
+                runReservation?.cancel()
                 releaseRegistration(agent)
                 if (cause is CancellationException) {
                     acb.markCancelled()
                     if (acb.snapshot.state == LifecycleState.CANCELLED && acb.claimCancellationEvent()) {
-                        emit(RuntimeEvent.Cancelled(runId, agent.id, effectiveThread, turnId))
+                        emit(RuntimeEvent.Cancelled(runId, agent.id, effectiveThread))
                     }
                 }
                 sink.close(cause)
@@ -676,7 +634,6 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                 runId,
                 agent.id,
                 effectiveThread,
-                turnId,
                 effectiveCorrelationId,
                 acb,
                 control,
@@ -698,8 +655,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         } finally {
             if (!completionOwnsRegistration) {
                 if (childLinked) parentAcb?.removeChild(runId)
-                turnReservation?.cancel()
-                if (turnContextRegistered && turnId != null) turnContexts.update { it - turnId }
+                runReservation?.cancel()
                 eventJournals.update { it - runId }
                 releaseRegistration(agent)
             }
@@ -717,59 +673,49 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         quota: Quota,
         sink: EventSink,
         thread: ThreadId?,
-        turnId: TurnId?,
-        turnContext: TurnContext?,
-        turnOwner: Boolean,
-        turnReservation: ThreadRegistry.TurnReservation?,
+        runOwner: Boolean,
+        runReservation: ThreadRegistry.RunReservation?,
         structuredSpec: OutputSpec?,
         resume: Boolean,
         eventDetail: EventDetail,
     ): AgentResult {
         var threadLease: ThreadRegistry.ThreadLease? = null
-        var threadMemory: ThreadMemory? = null
-        var terminalUsage = Usage.ZERO
-        var turnCommitted = false
         try {
-            val effectiveContext = if (thread != null && turnId != null && turnContext != null) {
-                val history = if (turnOwner) {
-                    val lease = requireNotNull(turnReservation).await().also { threadLease = it }
-                    val memory = lease.memory().also { threadMemory = it }
-                    val view = memory.load(seedItems(input, resume)).forOnlineUse()
-                    turnContext.checkpoint = view.checkpoint
-                    view.transcript.also(turnContext::publishHistory)
+            val memory = if (thread != null) {
+                if (runOwner) {
+                    val lease = requireNotNull(runReservation).await().also { threadLease = it }
+                    lease.memory().let { if (it === org.koaks.framework.memory.NoMemory) WindowMemory(Int.MAX_VALUE) else it }
                 } else {
-                    threads.joinActiveTurn(thread, turnId, agent)
-                    turnContext.historySnapshot()
+                    val owner = threadOwnerRunId(requireNotNull(acb.snapshot.parent), thread)
+                    threads.joinActiveRun(thread, owner, agent)
+                    threads.memory(thread)
                 }
-                history + contextPrefix
             } else {
-                contextPrefix
+                WindowMemory(Int.MAX_VALUE)
             }
 
             acb.markReady()
             val result = scheduler.withSlot(priority) { lease ->
                 gate.attachLease(lease)
                 acb.markRunning()
-                emit(RuntimeEvent.Running(acb.runId, agent.id, thread, turnId, agent.name))
+                emit(RuntimeEvent.Running(acb.runId, agent.id, thread, agent.name))
                 runWithQuota(
                     agent,
                     input.takeUnless { resume },
-                    effectiveContext,
+                    contextPrefix,
+                    memory,
                     acb,
                     control,
                     quota,
                     sink,
-                    turnContext,
                     structuredSpec,
                     eventDetail,
-                ) { usage ->
-                    terminalUsage = usage
-                }
+                ) {}
             }
             acb.sealChildren()
             if (!acb.snapshot.state.isTerminal && hasActiveChildren(acb.runId)) {
                 acb.setState(LifecycleState.WAITING)
-                emit(RuntimeEvent.Waiting(acb.runId, agent.id, thread, turnId))
+                emit(RuntimeEvent.Waiting(acb.runId, agent.id, thread))
             }
             val childFailure = awaitChildren(
                 acb.runId,
@@ -783,33 +729,25 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                     cause = childFailure.error.cause,
                 )
                 acb.markFailed(error, result.usage)
-                emit(RuntimeEvent.Failed(acb.runId, agent.id, thread, turnId, error))
+                emit(RuntimeEvent.Failed(acb.runId, agent.id, thread, error))
                 sink.emit(AgentEvent.Failed(error, result.usage))
                 return AgentResult.Failed(error, result.usage)
             }
             when (result) {
                 is AgentResult.Completed -> if (acb.beginCommitting()) {
                     withContext(NonCancellable) {
-                        turnCommitted = commitTurn(threadMemory, turnContext, completed = true)
                         acb.markFinished(result.usage)
-                        emit(RuntimeEvent.Finished(acb.runId, agent.id, thread, turnId, result.usage))
+                        emit(RuntimeEvent.Finished(acb.runId, agent.id, thread, result.usage))
                     }
                 }
                 is AgentResult.Incomplete -> if (acb.beginCommitting()) {
                     withContext(NonCancellable) {
-                        turnCommitted = commitTurn(
-                            threadMemory,
-                            turnContext,
-                            completed = false,
-                            InterruptReason.Incomplete(result.reason),
-                        )
                         acb.markFinished(result.usage)
                         emit(
                             RuntimeEvent.Incomplete(
                                 acb.runId,
                                 agent.id,
                                 thread,
-                                turnId,
                                 result.reason,
                                 result.usage,
                             ),
@@ -818,13 +756,11 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                 }
                 is AgentResult.Terminated -> if (acb.beginCommitting()) {
                     withContext(NonCancellable) {
-                        turnCommitted = commitTurn(threadMemory, turnContext, completed = false, InterruptReason.Policy(result.reason.toString()))
                         acb.markFinished(result.usage)
-                        emit(RuntimeEvent.Terminated(acb.runId, agent.id, thread, turnId, result.reason))
+                        emit(RuntimeEvent.Terminated(acb.runId, agent.id, thread, result.reason))
                     }
                 }
                 is AgentResult.Failed -> withContext(NonCancellable) {
-                    turnCommitted = commitTurn(threadMemory, turnContext, completed = false, InterruptReason.Failed)
                 }
             }
             return result
@@ -832,14 +768,10 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             acb.sealChildren()
             acb.markCancelled()
             if (acb.snapshot.state == LifecycleState.CANCELLED && acb.claimCancellationEvent()) {
-                emit(RuntimeEvent.Cancelled(acb.runId, agent.id, thread, turnId))
+                emit(RuntimeEvent.Cancelled(acb.runId, agent.id, thread))
             }
             cancelDescendants(acb.runId, "parent ${acb.runId} cancelled")
             withContext(NonCancellable) {
-                turnContext?.turnBuilder?.lastResponseId()?.let { id ->
-                    runCatching { agent.model.abandon(id) }
-                }
-                turnCommitted = commitTurn(threadMemory, turnContext, completed = false, InterruptReason.Cancelled)
                 awaitChildren(
                     acb.runId,
                     reportCapturedFailures = false,
@@ -851,7 +783,6 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             acb.sealChildren()
             cancelDescendants(acb.runId, "parent ${acb.runId} failed")
             withContext(NonCancellable) {
-                turnCommitted = commitTurn(threadMemory, turnContext, completed = false, InterruptReason.Failed)
                 awaitChildren(
                     acb.runId,
                     reportCapturedFailures = false,
@@ -861,22 +792,17 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             throw failure
         } finally {
             withContext(NonCancellable) {
-                val lease = threadLease
-                if (lease != null) {
-                    if (!turnCommitted && turnContext?.hasSideEffects == true) {
-                        logger.warn { "thread ${lease.threadId.value}: side-effecting turn was rolled back" }
-                        emit(
-                            RuntimeEvent.SideEffectRollback(
-                                runId = acb.runId,
-                                agentId = agent.id,
-                                threadId = lease.threadId,
-                                turnId = requireNotNull(turnId),
-                            ),
-                        )
-                    }
-                    lease.release()
-                }
+                threadLease?.release()
             }
+        }
+    }
+
+    private fun threadOwnerRunId(from: RunId, thread: ThreadId): RunId {
+        var current = from
+        while (true) {
+            val parent = acbs.value[current]?.snapshot?.parent ?: return current
+            if (acbs.value[parent]?.snapshot?.threadId != thread) return current
+            current = parent
         }
     }
 
@@ -884,11 +810,11 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         agent: Agent,
         input: String?,
         contextPrefix: List<ModelItem>,
+        memory: ThreadMemory,
         acb: Acb,
         control: InstanceControl,
         quota: Quota,
         sink: EventSink,
-        turnContext: TurnContext?,
         structuredSpec: OutputSpec?,
         eventDetail: EventDetail,
         terminalUsage: (Usage) -> Unit,
@@ -898,11 +824,11 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                 agent,
                 input,
                 contextPrefix,
+                memory,
                 acb,
                 control,
                 quota,
                 sink,
-                turnContext,
                 structuredSpec,
                 eventDetail,
                 terminalUsage,
@@ -913,11 +839,11 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                     agent,
                     input,
                     contextPrefix,
+                    memory,
                     acb,
                     control,
                     quota,
                     sink,
-                    turnContext,
                     structuredSpec,
                     eventDetail,
                     terminalUsage,
@@ -927,7 +853,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             val error = AgentError.Timeout("agent wall-clock", wall)
             val usage = acb.snapshot.usage
             acb.markFailed(error, usage)
-            emit(RuntimeEvent.Failed(acb.runId, acb.snapshot.agentId, acb.snapshot.threadId, acb.snapshot.turnId, error))
+            emit(RuntimeEvent.Failed(acb.runId, acb.snapshot.agentId, acb.snapshot.threadId, error))
             cancelDescendants(acb.runId, "parent ${acb.runId} timed out")
             sink.emit(AgentEvent.Failed(error, usage))
             AgentResult.Failed(error, usage)
@@ -938,11 +864,11 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         agent: Agent,
         input: String?,
         contextPrefix: List<ModelItem>,
+        memory: ThreadMemory,
         acb: Acb,
         control: InstanceControl,
         quota: Quota,
         sink: EventSink,
-        turnContext: TurnContext?,
         structuredSpec: OutputSpec?,
         eventDetail: EventDetail,
         terminalUsage: (Usage) -> Unit,
@@ -954,21 +880,20 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         var toolCalls = 0
         val stepText = StringBuilder()
         var lastAssistant = ""
-        val turn = turnContext?.turnBuilder ?: org.koaks.framework.loop.TurnBuilder("ephemeral")
 
         try {
             val events = if (structuredSpec == null) {
-                agent.executeStream(input, contextPrefix, turn, turnContext?.checkpoint, eventDetail)
+                agent.executeStream(input, memory, eventDetail, contextPrefix)
             } else {
-                agent.executeStructuredStream(input, contextPrefix, structuredSpec, turn, turnContext?.checkpoint, eventDetail)
+                agent.executeStructuredStream(input, memory, structuredSpec, eventDetail, contextPrefix)
             }
             events.collect { event ->
                 if (control.isPaused) {
                     acb.setState(LifecycleState.SUSPENDED)
-                    emit(RuntimeEvent.Suspended(acb.runId, agent.id, acb.snapshot.threadId, acb.snapshot.turnId))
+                    emit(RuntimeEvent.Suspended(acb.runId, agent.id, acb.snapshot.threadId))
                     control.awaitResumed()
                     acb.markRunning()
-                    emit(RuntimeEvent.Resumed(acb.runId, agent.id, acb.snapshot.threadId, acb.snapshot.turnId))
+                    emit(RuntimeEvent.Resumed(acb.runId, agent.id, acb.snapshot.threadId))
                 }
 
                 sink.emit(event)
@@ -1005,7 +930,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             val currentUsage = acb.snapshot.usage
             acb.markCancelled()
             if (acb.snapshot.state == LifecycleState.CANCELLED && acb.claimCancellationEvent()) {
-                emit(RuntimeEvent.Cancelled(acb.runId, agent.id, acb.snapshot.threadId, acb.snapshot.turnId))
+                emit(RuntimeEvent.Cancelled(acb.runId, agent.id, acb.snapshot.threadId))
             }
             cancelDescendants(acb.runId, "parent ${acb.runId} quota exceeded")
             val reason = TerminationReason.Custom("quota exceeded: ${quotaSignal.dimension}")
@@ -1017,7 +942,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             val error = failure.error
             val event = AgentEvent.Failed(error, currentUsage)
             acb.markFailed(error, currentUsage)
-            emit(RuntimeEvent.Failed(acb.runId, agent.id, acb.snapshot.threadId, acb.snapshot.turnId, error))
+            emit(RuntimeEvent.Failed(acb.runId, agent.id, acb.snapshot.threadId, error))
             cancelDescendants(acb.runId, "parent ${acb.runId} failed")
             agent.listeners.forEach { it.onAgentEvent(event) }
             sink.emit(event)
@@ -1031,7 +956,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
             null -> {
                 val error = lastFailure ?: AgentError.ModelError("agent produced no terminal event", retriable = false)
                 acb.markFailed(error, usage)
-                emit(RuntimeEvent.Failed(acb.runId, agent.id, acb.snapshot.threadId, acb.snapshot.turnId, error))
+                emit(RuntimeEvent.Failed(acb.runId, agent.id, acb.snapshot.threadId, error))
                 cancelDescendants(acb.runId, "parent ${acb.runId} failed")
                 AgentResult.Failed(error, usage)
             }
@@ -1044,7 +969,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         policy: SupervisionPolicy = SupervisionPolicy(),
         priority: Int = 0,
         quota: Quota? = null,
-        contextRefs: List<ContextRef> = emptyList(),
+        context: List<ModelItem> = emptyList(),
         thread: ThreadId? = null,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): SupervisedHandle {
@@ -1062,7 +987,6 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                             agentId = agent.id,
                             agentName = agent.name,
                             threadId = current?.threadId ?: thread,
-                            turnId = current?.turnId,
                             attempt = attempt,
                             delayMillis = delayMillis,
                         ),
@@ -1076,12 +1000,11 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                             agentId = agent.id,
                             agentName = agent.name,
                             threadId = current?.threadId ?: thread,
-                            turnId = current?.turnId,
                         ),
                     )
                 },
             ) { attemptInput ->
-                val handle = spawn(agent, attemptInput, priority, quota, contextRefs, thread, eventDetail = eventDetail)
+                val handle = spawn(agent, attemptInput, priority, quota, context, thread, eventDetail = eventDetail)
                 latest.value = handle
                 handle.await()
             }
@@ -1186,31 +1109,6 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
     private suspend fun cancelAndJoin(handle: AgentHandle, reason: String) {
         handle.cancel(reason)
         withContext(NonCancellable) { handle.join() }
-    }
-
-    private fun resolveContextPrefix(refs: List<ContextRef>, requester: RunId): List<ModelItem> =
-        refs.flatMap { context.resolve(it, requester) }
-
-    private fun seedItems(input: String, resume: Boolean): List<ModelItem> =
-        if (resume || input.isEmpty()) emptyList() else listOf(ModelItem.user(input))
-
-    private suspend fun commitTurn(
-        memory: ThreadMemory?,
-        turnContext: TurnContext?,
-        completed: Boolean,
-        reason: InterruptReason? = null,
-    ): Boolean {
-        if (memory == null || turnContext == null) return false
-        val builder = turnContext.turnBuilder
-        val raw = if (completed) {
-            builder.completedTurn()
-        } else {
-            builder.interruptedTurn(reason ?: InterruptReason.Cancelled)
-        }
-        val turn = raw.copy(checkpoint = raw.checkpoint?.takeIf { it.scope == CheckpointScope.CrossTurn })
-        if (!shouldRetain(turn, memory.retention, turnContext.hasSideEffects)) return false
-        memory.commit(turn)
-        return true
     }
 
     override fun close() {
@@ -1319,7 +1217,6 @@ private fun RuntimeEvent.runIdOrNull(): RunId? = when (this) {
     is RuntimeEvent.Failed -> runId
     is RuntimeEvent.Cancelled -> runId
     is RuntimeEvent.UnhandledChildFailure -> childRunId
-    is RuntimeEvent.SideEffectRollback -> runId
     is RuntimeEvent.Retrying -> runId
     is RuntimeEvent.CircuitOpen -> runId
 }

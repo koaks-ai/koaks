@@ -21,7 +21,6 @@ import type {
   AgentConfig,
   AgentEvent,
   AgentResult,
-  ContextScope,
   KoaksAgent,
   KoaksRuntime,
   ModelItem,
@@ -449,17 +448,8 @@ class KoaksRuntimeImpl implements KoaksRuntime, ToolRuntimeHost {
     return (await this.client.request<ThreadSnapshot | null>("runtime.thread_snapshot", { threadId })) ?? undefined;
   }
 
-  async putContext(items: ModelItem[], scope: ContextScope = { type: "global" }): Promise<string> {
-    return await this.client.request("runtime.put_context", { items, scope });
-  }
 
-  async deltaContext(parentRef: string, items: ModelItem[], scope: ContextScope = { type: "global" }): Promise<string> {
-    return await this.client.request("runtime.delta_context", { parentRef, items, scope });
-  }
 
-  async resolveContext(ref: string, requesterRunId?: string): Promise<ModelItem[]> {
-    return await this.client.request("runtime.resolve_context", { ref, requesterRunId });
-  }
 
   async submit(tasks: TaskDefinition[]): Promise<Record<string, AgentResult>> {
     this.assertOpen();

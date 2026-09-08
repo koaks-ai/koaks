@@ -4,7 +4,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import org.koaks.framework.loop.AgentExecutionContext
 import org.koaks.runtime.acb.RunId
-import org.koaks.runtime.context.ContextRef
+import org.koaks.framework.model.ModelItem
 import org.koaks.runtime.resource.RuntimeContext
 
 private suspend fun runtimeCtx(): RuntimeContext =
@@ -26,7 +26,7 @@ suspend fun sendMessage(
     to: RunId,
     type: String,
     payload: String = "",
-    contextRefs: List<ContextRef> = emptyList(),
+    context: List<ModelItem> = emptyList(),
     priority: Int = 0,
     deadlineMillis: Long? = null,
 ) {
@@ -38,7 +38,7 @@ suspend fun sendMessage(
             receiver = to,
             type = type,
             payload = payload,
-            contextRefs = contextRefs,
+            context = context,
             priority = priority,
             deadlineMillis = deadlineMillis,
         ),
@@ -62,7 +62,7 @@ suspend fun requestMessage(
     to: RunId,
     type: String,
     payload: String = "",
-    contextRefs: List<ContextRef> = emptyList(),
+    context: List<ModelItem> = emptyList(),
 ): RuntimeMessage {
     val ctx = runtimeCtx()
     val hub = ctx.ipc
@@ -74,19 +74,19 @@ suspend fun requestMessage(
                 receiver = to,
                 type = type,
                 payload = payload,
-                contextRefs = contextRefs,
+                context = context,
             ),
         )
     }
 }
 
 /** Replies to a request previously received via [receiveMessage]. */
-suspend fun replyMessage(to: RuntimeMessage, payload: String, contextRefs: List<ContextRef> = emptyList()) {
-    hub().reply(to, payload, contextRefs)
+suspend fun replyMessage(to: RuntimeMessage, payload: String, context: List<ModelItem> = emptyList()) {
+    hub().reply(to, payload, context)
 }
 
 /** Publishes a message to [topic]. */
-suspend fun publishMessage(topic: String, type: String, payload: String = "", contextRefs: List<ContextRef> = emptyList()) {
+suspend fun publishMessage(topic: String, type: String, payload: String = "", context: List<ModelItem> = emptyList()) {
     val hub = hub()
     hub.publish(
         topic,
@@ -96,7 +96,7 @@ suspend fun publishMessage(topic: String, type: String, payload: String = "", co
             receiver = null,
             type = type,
             payload = payload,
-            contextRefs = contextRefs,
+            context = context,
         ),
     )
 }

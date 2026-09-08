@@ -7,7 +7,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.koaks.runtime.acb.RunId
-import org.koaks.runtime.context.ContextRef
+import org.koaks.framework.model.ModelItem
 import org.koaks.runtime.ipc.RuntimeMessage
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -68,13 +68,13 @@ class IpcTest {
     }
 
     @Test
-    fun messages_carry_context_refs_not_copies() = runTest {
-        // Large context is referenced, not embedded in the payload.
+    fun messages_carry_context_items() = runTest {
+        // Structured context travels alongside the text payload.
         val runtime = AgentRuntime()
         runtime.use {
             val to = RunId(7)
             val box = it.ipc.mailbox(to)
-            val ref = ContextRef("ctx-123")
+            val item = ModelItem.user("attached context")
             it.ipc.send(
                 RuntimeMessage(
                     id = it.ipc.nextId(),
@@ -82,12 +82,12 @@ class IpcTest {
                     receiver = to,
                     type = "handoff",
                     payload = "see attached",
-                    contextRefs = listOf(ref),
+                    context = listOf(item),
                 ),
             )
             val got = box.receive()
-            assertEquals(listOf(ref), got.contextRefs)
-            assertTrue(got.payload.length < 50) // payload stays small; context travels by ref
+            assertEquals(listOf(item), got.context)
+            assertTrue(got.payload.length < 50)
         }
     }
 }

@@ -30,14 +30,13 @@ import org.koaks.framework.loop.Agent
 import org.koaks.framework.loop.AgentExecutionContext
 import org.koaks.framework.loop.AgentId
 import org.koaks.framework.memory.ThreadId
+import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.EventDetail
 import org.koaks.framework.tool.ToolOutputStream
 import org.koaks.framework.tool.ToolProgress
 import org.koaks.runtime.AgentRuntime
 import org.koaks.runtime.acb.AgentHandle
 import org.koaks.runtime.acb.RunId
-import org.koaks.runtime.context.List<ModelItem>
-import org.koaks.runtime.context.ContextScope
 import org.koaks.runtime.fault.CircuitBreakerPolicy
 import org.koaks.runtime.fault.SupervisedHandle
 import org.koaks.runtime.fault.SupervisionPolicy
@@ -106,9 +105,6 @@ class KoaksBridge internal constructor(
             "runtime.snapshot" -> runtime.snapshot(params.string("run_id").toRunId())?.toJson() ?: JsonNull
             "runtime.thread_snapshot" -> runtime.threadSnapshot(ThreadId(params.string("thread_id")))?.toJson() ?: JsonNull
             "runtime.reap" -> reap(params)
-            "runtime.put_context" -> putContext(params)
-            "runtime.delta_context" -> deltaContext(params)
-            "runtime.resolve_context" -> resolveContext(params)
             "runtime.submit" -> submit(params)
             "runtime.spawn_supervised" -> spawnSupervised(params)
             "runtime.ipc.send" -> runtimeIpcSend(params)
@@ -191,9 +187,6 @@ class KoaksBridge internal constructor(
 
             "tool.resource.with" -> toolWithResource(params)
             "tool.progress" -> toolProgress(params)
-            "tool.context.put" -> toolPutContext(params)
-            "tool.context.delta" -> toolDeltaContext(params)
-            "tool.context.resolve" -> toolResolveContext(params)
             "tool.spawn_child" -> toolSpawnChild(params)
             "tool.ipc.send" -> toolIpcSend(params)
             "tool.ipc.receive" -> toolIpcReceive(params)
@@ -446,25 +439,6 @@ class KoaksBridge internal constructor(
         return buildJsonObject { put("supervised_id", JsonPrimitive(id)) }
     }
 
-    private fun putContext(params: JsonObject): JsonPrimitive {
-        val (contextScope, owner) = params.contextScope()
-        val ref = runtime.context.put(params.items(), contextScope, owner)
-        return JsonPrimitive(ref.id)
-    }
-
-    private fun deltaContext(params: JsonObject): JsonPrimitive {
-        val (contextScope, owner) = params.contextScope()
-        val ref = runtime.context.delta(List<ModelItem>(params.string("parent_ref")), params.items(), contextScope, owner)
-        return JsonPrimitive(ref.id)
-    }
-
-    private fun resolveContext(params: JsonObject): JsonArray = buildJsonArray {
-        runtime.context.resolve(
-            List<ModelItem>(params.string("ref")),
-            params.stringOrNull("requester_run_id")?.toRunId(),
-        ).forEach { add(it.toJson()) }
-    }
-
     private fun reap(params: JsonObject): JsonPrimitive {
         val count = runtime.reap(params.longOrNull("older_than_ms") ?: 0L)
         handles.entries.removeAll { runtime.snapshot(it.value.handle.runId) == null }
@@ -496,37 +470,6 @@ class KoaksBridge internal constructor(
                 }
             }
             JsonNull
-        }
-
-    private suspend fun toolPutContext(params: JsonObject): JsonPrimitive =
-        toolExecutions.execute(params.string("execution_id")) { execution ->
-            val scope = params.toolContextScope()
-            val owner = execution.runtimeContext.runId.takeIf { scope == ContextScope.PRIVATE }
-            JsonPrimitive(execution.runtimeContext.context.put(params.items(), scope, owner).id)
-        }
-
-    private suspend fun toolDeltaContext(params: JsonObject): JsonPrimitive =
-        toolExecutions.execute(params.string("execution_id")) { execution ->
-            val scope = params.toolContextScope()
-            val owner = execution.runtimeContext.runId.takeIf { scope == ContextScope.PRIVATE }
-            JsonPrimitive(
-                execution.runtimeContext.context.delta(
-                    List<ModelItem>(params.string("parent_ref")),
-                    params.items(),
-                    scope,
-                    owner,
-                ).id,
-            )
-        }
-
-    private suspend fun toolResolveContext(params: JsonObject): JsonArray =
-        toolExecutions.execute(params.string("execution_id")) { execution ->
-            buildJsonArray {
-                execution.runtimeContext.context.resolve(
-                    List<ModelItem>(params.string("ref")),
-                    execution.runtimeContext.runId,
-                ).forEach { add(it.toJson()) }
-            }
         }
 
     private suspend fun toolSpawnChild(params: JsonObject): JsonObject =
@@ -840,8 +783,8 @@ private fun JsonObject.toToolProgress(): ToolProgress = when (string("type")) {
     else -> throw IllegalArgumentException("unknown tool progress type '${string("type")}'")
 }
 
-private fun JsonObject.context(): List<List<ModelItem>> =
-    arrayOrNull("context_refs").orEmpty().map { List<ModelItem>(it.jsonPrimitive.content) }
+private fun JsonObject.context(): List<ModelItem> =
+    arrayOrNull("context").orEmpty().map { it.jsonObject.toModelItem() }
 
 private fun JsonObject.eventDetail(): EventDetail = when (stringOrNull("event_detail") ?: "semantic") {
     "semantic" -> EventDetail.SEMANTIC
@@ -850,16 +793,6 @@ private fun JsonObject.eventDetail(): EventDetail = when (stringOrNull("event_de
 }
 
 private fun JsonObject.items() = arrayOrNull("items").orEmpty().map { it.jsonObject.toModelItem() }
-
-private fun JsonObject.contextScope(): Pair<ContextScope, RunId?> {
-    val scope = objectOrNull("scope") ?: return ContextScope.GLOBAL to null
-    return when (scope.stringOrNull("type") ?: "global") {
-        "global" -> ContextScope.GLOBAL to null
-        "task" -> ContextScope.TASK to null
-        "private" -> ContextScope.PRIVATE to scope.string("owner_run_id").toRunId()
-        else -> error("unknown context scope '${scope.string("type")}'")
-    }
-}
 
 private fun String.toRunId(): RunId = RunId(toLong())
 
@@ -876,13 +809,6 @@ private fun handleDescriptor(id: String, handle: AgentHandle, parentRunId: RunId
     handle.threadId?.let { put("thread_id", JsonPrimitive(it.value)) }
     handle.correlationId?.let { put("correlation_id", JsonPrimitive(it)) }
     parentRunId?.let { put("parent_run_id", JsonPrimitive(it.value.toString())) }
-}
-
-private fun JsonObject.toolContextScope(): ContextScope = when (stringOrNull("scope") ?: "private") {
-    "private" -> ContextScope.PRIVATE
-    "task" -> ContextScope.TASK
-    "global" -> ContextScope.GLOBAL
-    else -> throw IllegalArgumentException("unknown Tool Context scope '${string("scope")}'")
 }
 
 private fun JsonObject.toRuntimeMessage(id: Long, sender: RunId?, receiver: RunId?): RuntimeMessage = RuntimeMessage(
@@ -902,7 +828,7 @@ private fun RuntimeMessage.toJson(replyToken: String? = null): JsonObject = buil
     receiver?.let { put("receiver_run_id", JsonPrimitive(it.value.toString())) }
     put("type", JsonPrimitive(type))
     put("payload", JsonPrimitive(payload))
-    put("context_refs", buildJsonArray { context.forEach { add(JsonPrimitive(it.id)) } })
+    put("context", buildJsonArray { context.forEach { add(it.toJson()) } })
     put("priority", JsonPrimitive(priority))
     deadlineMillis?.let { put("deadline_epoch_ms", JsonPrimitive(it)) }
     replyToken?.let { put("reply_token", JsonPrimitive(it)) }

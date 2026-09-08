@@ -13,7 +13,6 @@ import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Usage
 import org.koaks.runtime.AgentRuntime
 import org.koaks.runtime.awaitAll
-import org.koaks.runtime.context.ContextScope
 import org.koaks.runtime.resource.quota
 import org.koaks.runtime.sched.taskGraph
 
@@ -69,14 +68,10 @@ fun main() = runBlocking {
         }
         rt.submit(graph).forEach { (id, result) -> println("  $id -> ${result.text}") }
 
-        println("\n== 3) Shared context by reference (no copying) ==")
-        val shared = rt.context.put(
-            (1..100).map { ModelItem.user("shared knowledge line $it") },
-            scope = ContextScope.GLOBAL,
-        )
-        val forAgentA = rt.context.delta(shared, listOf(ModelItem.user("private note for A")))
-        println("  shared block ref: ${shared.id}")
-        println("  A's view size: ${rt.context.resolve(forAgentA, requester = null).size} messages (100 shared + 1 delta)")
+        println("\n== 3) Direct context messages ==")
+        val shared = (1..100).map { ModelItem.user("shared knowledge line $it") }
+        val forAgentA = shared + ModelItem.user("note for A")
+        println("  A's context size: ${forAgentA.size} messages")
 
         println("\n== 4) Runtime metrics ==")
         val m = rt.metrics()

@@ -24,7 +24,6 @@ class AgentHandle internal constructor(
     val runId: RunId,
     val agentId: AgentId,
     val threadId: ThreadId?,
-    val turnId: TurnId?,
     val correlationId: String?,
     private val acb: Acb,
     private val control: InstanceControl,

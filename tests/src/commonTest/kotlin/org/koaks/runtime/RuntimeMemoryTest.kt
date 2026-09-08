@@ -80,7 +80,7 @@ class RuntimeMemoryTest {
     }
 
     @Test
-    fun structured_turn_commits_tool_trace_and_final_json_not_internal_draft() = runTest {
+    fun structured_output_persists_each_completed_assistant_message() = runTest {
         val model = FakeLanguageModel(
             listOf(ModelEvent.TextDelta("internal draft"), done(Usage.ZERO)),
             listOf(ModelEvent.TextDelta("{\"value\":1}"), done(Usage.ZERO)),
@@ -99,7 +99,7 @@ class RuntimeMemoryTest {
 
         val history = mem.stored()
         assertEquals(listOf("question"), history.filterIsInstance<org.koaks.framework.model.ModelItem.Message>().filter { it.role == Role.USER }.map { it.text })
-        assertEquals(listOf("{\"value\":1}"), history.filterIsInstance<org.koaks.framework.model.ModelItem.Message>().filter { it.role == Role.ASSISTANT }.map { it.text })
+        assertEquals(listOf("internal draft", "{\"value\":1}"), history.filterIsInstance<org.koaks.framework.model.ModelItem.Message>().filter { it.role == Role.ASSISTANT }.map { it.text })
     }
 
     @Test
