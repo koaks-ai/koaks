@@ -19,7 +19,7 @@ import org.koaks.framework.loop.done
 import org.koaks.framework.loop.tool
 import org.koaks.framework.model.*
 import org.koaks.runtime.AgentRuntime
-import org.koaks.runtime.resource.spawnChild
+import org.koaks.runtime.coordination.spawnChild
 import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)

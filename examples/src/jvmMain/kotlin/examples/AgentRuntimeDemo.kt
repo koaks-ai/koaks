@@ -13,12 +13,12 @@ import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Usage
 import org.koaks.runtime.AgentRuntime
 import org.koaks.runtime.awaitAll
-import org.koaks.runtime.resource.quota
-import org.koaks.runtime.sched.taskGraph
+import org.koaks.runtime.policy.quota
+import org.koaks.runtime.workflow.taskGraph
 
 /**
  * A self-contained tour of the Runtime built into `koaks-core` that runs WITHOUT any API keys: it uses a
- * trivial [EchoModel] so you can see the kernel's behavior (concurrent spawn, priority,
+ * trivial [EchoModel] so you can see the runtime's behavior (concurrent spawn, priority,
  * a task DAG, the context store, metrics) deterministically.
  *
  * For the **recommended real-model usage** (spawn / context / awaitAll / TaskGraph /

@@ -8,9 +8,9 @@ import org.koaks.framework.loop.AgentEvent
 import org.koaks.framework.loop.AgentResult
 import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.model.EventDetail
-import org.koaks.runtime.acb.AgentHandle
 import org.koaks.framework.model.ModelItem
-import org.koaks.runtime.resource.Quota
+import org.koaks.runtime.policy.Quota
+import org.koaks.runtime.run.RunHandle
 
 /**
  * Block-scoped runtime: creates a runtime, runs [block] with it as receiver, and closes
@@ -95,7 +95,7 @@ fun Agent.spawnIn(
     context: List<ModelItem> = emptyList(),
     thread: ThreadId? = null,
     eventDetail: EventDetail = EventDetail.SEMANTIC,
-): AgentHandle = runtime.spawn(this, input, priority, quota, context = context, thread = thread, eventDetail = eventDetail)
+): RunHandle = runtime.spawn(this, input, priority, quota, context = context, thread = thread, eventDetail = eventDetail)
 
 fun Agent.spawnIn(
     runtime: AgentRuntime,
@@ -105,10 +105,10 @@ fun Agent.spawnIn(
     context: List<ModelItem> = emptyList(),
     thread: String,
     eventDetail: EventDetail = EventDetail.SEMANTIC,
-): AgentHandle = spawnIn(runtime, input, priority, quota, context, ThreadId(thread), eventDetail)
+): RunHandle = spawnIn(runtime, input, priority, quota, context, ThreadId(thread), eventDetail)
 
 /** Awaits every handle's terminal result, preserving order. */
-suspend fun awaitAll(vararg handles: AgentHandle): List<AgentResult> = handles.map { it.await() }
+suspend fun awaitAll(vararg handles: RunHandle): List<AgentResult> = handles.map { it.await() }
 
 /** Awaits every handle's terminal result, preserving order. */
-suspend fun Collection<AgentHandle>.awaitAll(): List<AgentResult> = map { it.await() }
+suspend fun Collection<RunHandle>.awaitAll(): List<AgentResult> = map { it.await() }

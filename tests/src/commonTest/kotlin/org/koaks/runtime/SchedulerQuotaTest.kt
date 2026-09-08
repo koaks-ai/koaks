@@ -25,9 +25,9 @@ import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.TerminationReason
-import org.koaks.runtime.acb.LifecycleState
-import org.koaks.runtime.resource.quota
-import org.koaks.runtime.sched.taskGraph
+import org.koaks.runtime.run.RunState
+import org.koaks.runtime.policy.quota
+import org.koaks.runtime.workflow.taskGraph
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -145,7 +145,7 @@ class SchedulerQuotaTest {
             val reason = terminal.reason
             assertTrue(reason is TerminationReason.Custom && reason.message.contains("maxToolCalls"))
             assertEquals("current-step", terminal.message.text)
-            assertEquals(LifecycleState.CANCELLED, it.runs.single().state)
+            assertEquals(RunState.CANCELLED, it.runs.single().state)
         }
     }
 
@@ -163,7 +163,7 @@ class SchedulerQuotaTest {
             val terminal = collection.await().last()
             assertTrue(terminal is AgentEvent.Failed)
             assertTrue(terminal.error is AgentError.Timeout)
-            assertEquals(LifecycleState.FAILED, it.runs.single().state)
+            assertEquals(RunState.FAILED, it.runs.single().state)
         }
     }
 
@@ -235,7 +235,7 @@ class SchedulerQuotaTest {
             submission.cancelAndJoin()
             advanceUntilIdle()
 
-            assertEquals(LifecycleState.CANCELLED, it.runs.single().state)
+            assertEquals(RunState.CANCELLED, it.runs.single().state)
         }
     }
 }

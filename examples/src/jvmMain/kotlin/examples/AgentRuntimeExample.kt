@@ -9,9 +9,9 @@ import org.koaks.framework.model.ModelItem
 import org.koaks.provider.openai.openai
 import org.koaks.runtime.AgentRuntime
 import org.koaks.runtime.awaitAll
-import org.koaks.runtime.observe.RuntimeEvent
-import org.koaks.runtime.resource.quota
-import org.koaks.runtime.sched.taskGraph
+import org.koaks.runtime.observability.RuntimeEvent
+import org.koaks.runtime.policy.quota
+import org.koaks.runtime.workflow.taskGraph
 import org.koaks.runtime.spawnIn
 import org.koaks.runtime.withAgentRuntime
 
@@ -72,7 +72,7 @@ fun main() = runBlocking {
             wallClockMillis = 120_000
         }
     }.use { rt ->
-        // 可选：订阅内核事件（spawn / finish / fail …）
+        // 可选：订阅runtime事件（spawn / finish / fail …）
         val eventsJob = launch {
             rt.events.collect { event ->
                 when (event) {
@@ -100,7 +100,7 @@ fun main() = runBlocking {
         )
         println("context messages = ${brief.size}")
 
-        // 2) 串行：先调研。spawn 返回 AgentHandle，await() 拿终态结果。
+        // 2) 串行：先调研。spawn 返回 RunHandle，await() 拿终态结果。
         println("\n== research ==")
         val researchHandle = rt.spawn(
             agent = researcher,
@@ -144,7 +144,7 @@ fun main() = runBlocking {
         }
         rt.submit(graph).forEach { (id, result) -> printResult("graph/$id", result) }
 
-        // 5) 可观测：聚合指标 + 各实例 ACB 快照。
+        // 5) 可观测：聚合指标 + 各实例 Run snapshot。
         println("\n== metrics ==")
         val m = rt.metrics()
         println(

@@ -1,7 +1,7 @@
 import { createKoaksBridge } from "../internal/koaks-node-bridge.mjs";
 import { prepareAgentConfig, prepareRuntimeConfig } from "./config.js";
 import {
-  createRuntimeIpc,
+  createRuntimeCoordination,
   currentToolExecutionId,
 } from "./tool-runtime.js";
 import type { HandleDescriptor, ToolRuntimeHost } from "./tool-runtime.js";
@@ -33,14 +33,14 @@ import type {
   RunSnapshot,
   RuntimeEvent,
   RuntimeMetrics,
-  RuntimeIpc,
+  RuntimeCoordination,
   RuntimeOptions,
   StreamOptions,
   StructuredAgentResult,
   SupervisedHandle,
   SupervisionPolicy,
   TaskDefinition,
-  ThreadSnapshot,
+  ConversationSnapshot,
 } from "./types.js";
 
 export * from "./types.js";
@@ -376,7 +376,7 @@ class KoaksAgentImpl implements KoaksAgent {
 class KoaksRuntimeImpl implements KoaksRuntime, ToolRuntimeHost {
   readonly callbacks: CallbackRegistry;
   readonly client: BridgeClient;
-  readonly ipc: RuntimeIpc;
+  readonly coordination: RuntimeCoordination;
   private readonly agents = new Map<string, KoaksAgentImpl>();
   private readonly streams = new Set<BoundedAsyncIterable<unknown>>();
   private readonly deferredAgentCallbackIds = new Set<string>();
@@ -394,7 +394,7 @@ class KoaksRuntimeImpl implements KoaksRuntime, ToolRuntimeHost {
     runtimeCallbackIds.push(...prepared.callbackIds);
     const bridge = createKoaksBridge(JSON.stringify(prepared.value), callbacks.invoke, callbacks.notify);
     this.client = new BridgeClient(bridge);
-    this.ipc = createRuntimeIpc(this);
+    this.coordination = createRuntimeCoordination(this);
   }
 
   async createAgent(config: AgentConfig): Promise<KoaksAgent> {
@@ -444,8 +444,8 @@ class KoaksRuntimeImpl implements KoaksRuntime, ToolRuntimeHost {
     return (await this.client.request<RunSnapshot | null>("runtime.snapshot", { runId })) ?? undefined;
   }
 
-  async threadSnapshot(threadId: string): Promise<ThreadSnapshot | undefined> {
-    return (await this.client.request<ThreadSnapshot | null>("runtime.thread_snapshot", { threadId })) ?? undefined;
+  async conversationSnapshot(threadId: string): Promise<ConversationSnapshot | undefined> {
+    return (await this.client.request<ConversationSnapshot | null>("runtime.conversation_snapshot", { threadId })) ?? undefined;
   }
 
 

@@ -41,25 +41,22 @@ import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
 import org.koaks.memory.summarizing.SummarizingMemory
 import org.koaks.runtime.AgentRuntime
-import org.koaks.runtime.acb.AcbSnapshot
-import org.koaks.runtime.acb.AgentHandle
-import org.koaks.runtime.acb.LifecycleState
-import org.koaks.runtime.acb.RunId
+import org.koaks.runtime.run.RunSnapshot
+import org.koaks.runtime.run.RunHandle
+import org.koaks.runtime.run.RunState
+import org.koaks.runtime.run.RunId
 import org.koaks.runtime.awaitAll
-import org.koaks.runtime.fault.CircuitBreakerPolicy
-import org.koaks.runtime.fault.SupervisionPolicy
-import org.koaks.runtime.ipc.RuntimeMessage
-import org.koaks.runtime.ipc.receiveMessage
-import org.koaks.runtime.ipc.replyMessage
-import org.koaks.runtime.ipc.requestMessage
-import org.koaks.runtime.observe.RuntimeEvent
-import org.koaks.runtime.resource.ChildConversation
-import org.koaks.runtime.resource.ChildFailurePolicy
-import org.koaks.runtime.resource.currentRuntimeContext
-import org.koaks.runtime.resource.quota
-import org.koaks.runtime.resource.spawnChild
-import org.koaks.runtime.resource.withRuntimeResource
-import org.koaks.runtime.sched.taskGraph
+import org.koaks.runtime.policy.CircuitBreakerPolicy
+import org.koaks.runtime.policy.SupervisionPolicy
+import org.koaks.runtime.coordination.MessageEnvelope
+import org.koaks.runtime.observability.RuntimeEvent
+import org.koaks.runtime.policy.ChildConversation
+import org.koaks.runtime.policy.ChildFailurePolicy
+import org.koaks.runtime.coordination.currentAgentContext
+import org.koaks.runtime.policy.quota
+import org.koaks.runtime.coordination.spawnChild
+import org.koaks.runtime.coordination.withSharedResource
+import org.koaks.runtime.workflow.taskGraph
 
 fun main(args: Array<String>) = runBlocking {
     Console.colorEnabled = "--no-color" !in args && System.getenv("NO_COLOR") == null
@@ -80,7 +77,7 @@ fun main(args: Array<String>) = runBlocking {
     }.use { runtime ->
         runtime.withKernelEvents {
             demonstrateContextManagement(runtime)
-            demonstrateIpc(runtime)
+            demonstrateMessaging(runtime)
             demonstrateTaskGraph(runtime)
             demonstrateHandleControl(runtime)
             demonstrateFaultIsolationAndRecovery(runtime)
@@ -102,7 +99,7 @@ private fun demonstratePlatformProfile() {
 
     Console.kv("当前 OS", "$osName $osVersion ($architecture)")
     Console.kv("当前 JVM", javaVersion)
-    Console.kv("Runtime 实现", "Kotlin 协程 + 纯 Kotlin 调度/IPC/Context/ACB")
+    Console.kv("Runtime 实现", "Kotlin 协程 + 纯 Kotlin 调度/messaging/Context/Run record")
     Console.kv("Linux", "core 不依赖 macOS/Windows 专有 Runtime API")
     if (isLinux) {
         Console.success("当前运行环境是 Linux；可继续记录 /etc/os-release 与压力测试数据作为赛题实验材料。")
@@ -164,7 +161,7 @@ private suspend fun demonstrateSchedulerAndQuota() {
     val admissionOrder = mutableListOf<String>()
     val blocker = agent {
         id = "scheduler-blocker"
-        name = "Scheduler Blocker"
+        name = "ConcurrencyScheduler Blocker"
         model { custom(GateModel(blockerStarted, releaseBlocker, "blocker released")) }
         terminateAfter(maxSteps = 3)
     }
@@ -182,14 +179,14 @@ private suspend fun demonstrateSchedulerAndQuota() {
             val low = runtime.spawn(queuedAgent("priority-low", "LOW"), "低优先任务", priority = 1)
             val high = runtime.spawn(queuedAgent("priority-high", "HIGH"), "高优先任务", priority = 9)
             val mid = runtime.spawn(queuedAgent("priority-mid", "MID"), "中优先任务", priority = 5)
-            check(awaitState(low, LifecycleState.READY))
-            check(awaitState(high, LifecycleState.READY))
-            check(awaitState(mid, LifecycleState.READY))
+            check(awaitState(low, RunState.READY))
+            check(awaitState(high, RunState.READY))
+            check(awaitState(mid, RunState.READY))
             releaseBlocker.complete(Unit)
             awaitAll(blockerHandle, low, high, mid)
 
             check(admissionOrder == listOf("HIGH", "MID", "LOW")) { "优先级准入顺序异常：$admissionOrder" }
-            Console.result("Priority Scheduler", admissionOrder.joinToString(" → "))
+            Console.result("Priority ConcurrencyScheduler", admissionOrder.joinToString(" → "))
             Console.kv("maxConcurrency", "1（任意时刻仅一个 RUNNING 实例）")
 
             val firstTurnStarted = CompletableDeferred<Unit>()
@@ -203,8 +200,8 @@ private suspend fun demonstrateSchedulerAndQuota() {
             val firstHandle = runtime.spawn(firstTurn, "first", thread = "scheduler-thread")
             firstTurnStarted.await()
             val secondHandle = runtime.spawn(secondTurn, "second", thread = "scheduler-thread")
-            check(awaitState(secondHandle, LifecycleState.THREAD_QUEUED))
-            Console.kv("同 Thread 第二个 Turn", "${secondHandle.state}（FIFO，且不占 Scheduler 槽）")
+            check(awaitState(secondHandle, RunState.THREAD_QUEUED))
+            Console.kv("同 Thread 第二个 Turn", "${secondHandle.state}（FIFO，且不占 ConcurrencyScheduler 槽）")
             releaseFirstTurn.complete(Unit)
             awaitAll(firstHandle, secondHandle)
 
@@ -224,7 +221,7 @@ private suspend fun demonstrateSchedulerAndQuota() {
             )
             check(quotaResult is AgentResult.Terminated)
             Console.result("Quota preemption", quotaResult.reason.toString())
-            Console.kv("ACB 计数", "toolCalls=${runtime.runs.last().toolCalls}, state=${runtime.runs.last().state}")
+            Console.kv("Run record 计数", "toolCalls=${runtime.runs.last().toolCalls}, state=${runtime.runs.last().state}")
         }
     }
 }
@@ -262,34 +259,35 @@ private suspend fun demonstrateContextManagement(runtime: AgentRuntime) {
 
 }
 
-private suspend fun demonstrateIpc(runtime: AgentRuntime) {
-    Console.section("04", "Agent IPC + 统一资源抽象", "Mailbox / Req-Resp / Pub-Sub / 消息列表 / ResourceRegistry")
+private suspend fun demonstrateMessaging(runtime: AgentRuntime) {
+    Console.section("04", "Agent messaging + 统一资源抽象", "Inbox / Req-Resp / Pub-Sub / 消息列表 / SharedResourceCoordinator")
 
     var reviewerRunId: RunId? = null
-    val reviewContext = (1..80).map { ModelItem.system("架构附件 #$it：调度、上下文、IPC、容错证据。") }
+    val reviewContext = (1..80).map { ModelItem.system("架构附件 #$it：调度、上下文、messaging、容错证据。") }
     val reviewer = agent {
-        id = "ipc-reviewer"
+        id = "message-reviewer"
         name = "Reviewer"
         model { custom(ToolThenAnswerModel("serve_review", "Reviewer")) }
         tools {
             tool<ShowcaseNoInput>("serve_review", "等待审查请求并回复") {
-                val request = receiveMessage()
-                val ctx = requireNotNull(currentRuntimeContext())
+                val ctx = requireNotNull(currentAgentContext())
+                val request = ctx.receive()
                 val attachedMessages = request.context.size
                 delay(100)
-                replyMessage(request, "审查通过：依赖边完整，失败边界清晰，引用附件=$attachedMessages 条。")
+                ctx.reply(request, "审查通过：依赖边完整，失败边界清晰，引用附件=$attachedMessages 条。")
                 "已回复 request#${request.id}"
             }
         }
         terminateAfter(maxSteps = 4)
     }
     val requester = agent {
-        id = "ipc-requester"
+        id = "message-requester"
         name = "Architect"
         model { custom(ToolThenAnswerModel("ask_reviewer", "Architect")) }
         tools {
             tool<ShowcaseNoInput>("ask_reviewer", "向 Reviewer 发起带 correlationId 的请求") {
-                val reply = requestMessage(
+                val ctx = requireNotNull(currentAgentContext())
+                val reply = ctx.request(
                     to = requireNotNull(reviewerRunId),
                     type = "architecture.review",
                     payload = "请检查 DAG 和容错设计",
@@ -310,12 +308,12 @@ private suspend fun demonstrateIpc(runtime: AgentRuntime) {
     Console.kv("消息附件", "${reviewContext.size} 条上下文消息")
 
     val broadcast = coroutineScope {
-        val subscriber = async { runtime.ipc.subscribe("build.status").first() }
+        val subscriber = async { runtime.coordination.subscribe("build.status").first() }
         yield()
-        runtime.ipc.publish(
+        runtime.coordination.publish(
             topic = "build.status",
-            message = RuntimeMessage(
-                id = runtime.ipc.nextId(),
+            message = MessageEnvelope(
+                id = runtime.coordination.nextId(),
                 sender = null,
                 receiver = null,
                 type = "build.passed",
@@ -333,7 +331,7 @@ private suspend fun demonstrateIpc(runtime: AgentRuntime) {
         model { custom(ToolThenAnswerModel("write_ledger", label)) }
         tools {
             tool<ShowcaseNoInput>("write_ledger", "写入同一个共享账本") {
-                withRuntimeResource("contest-ledger") {
+                withSharedResource("contest-ledger") {
                     val observed = ledger
                     delay(120)
                     ledger = observed + 1
@@ -348,9 +346,9 @@ private suspend fun demonstrateIpc(runtime: AgentRuntime) {
         runtime.spawn(lockedWriter("resource-writer-b", "Writer-B"), "更新共享账本"),
     )
     check(ledger == 2) { "共享资源临界区失效，ledger=$ledger" }
-    Console.result("ResourceRegistry", writers.joinToString(" | ") { it.text })
+    Console.result("SharedResourceCoordinator", writers.joinToString(" | ") { it.text })
     Console.kv("最终账本值", "$ledger（两个并发写入均未丢失）")
-    Console.kv("受管资源", runtime.resources.trackedResources.joinToString())
+    Console.kv("受管资源", runtime.coordination.trackedResources.joinToString())
 }
 
 private suspend fun demonstrateTaskGraph(runtime: AgentRuntime) {
@@ -361,10 +359,10 @@ private suspend fun demonstrateTaskGraph(runtime: AgentRuntime) {
         "调研：采用本地优先架构，Runtime 统一管理执行实体。"
     }
     val frontend = fixedAgent("dag-frontend", "Frontend", 280) { input ->
-        "前端：状态面板 + ACB 时间线（输入已含调研=${input.contains("调研") }）"
+        "前端：状态面板 + Run record 时间线（输入已含调研=${input.contains("调研") }）"
     }
     val backend = fixedAgent("dag-backend", "Backend", 280) { input ->
-        "后端：Scheduler + IPC + Context messages（输入已含调研=${input.contains("调研") }）"
+        "后端：ConcurrencyScheduler + messaging + Context messages（输入已含调研=${input.contains("调研") }）"
     }
     val summarizer = fixedAgent("dag-summary", "Summarizer", 120) { input ->
         "汇总：前后端方案已合流，依赖结果数=${input.count { it == '：' }.coerceAtLeast(2)}。"
@@ -376,7 +374,7 @@ private suspend fun demonstrateTaskGraph(runtime: AgentRuntime) {
             "根据调研设计控制台：${deps.getValue("research").text}"
         }
         task("backend", backend, priority = 5, dependsOn = listOf("research")) { deps ->
-            "根据调研设计内核：${deps.getValue("research").text}"
+            "根据调研设计runtime：${deps.getValue("research").text}"
         }
         task("summary", summarizer, priority = 7, dependsOn = listOf("frontend", "backend")) { deps ->
             "合并：${deps.getValue("frontend").text} | ${deps.getValue("backend").text}"
@@ -388,7 +386,7 @@ private suspend fun demonstrateTaskGraph(runtime: AgentRuntime) {
     val elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000
     val sequentialBaselineMillis = 180L + 280L + 280L + 120L
     results.forEach { (id, result) -> Console.result(id.padEnd(8), result.text) }
-    Console.kv("DAG 总耗时", "${elapsedMillis}ms（frontend/backend 受同一 Scheduler 并行约束）")
+    Console.kv("DAG 总耗时", "${elapsedMillis}ms（frontend/backend 受同一 ConcurrencyScheduler 并行约束）")
     Console.kv("串行延迟基线", "约 ${sequentialBaselineMillis}ms（按各模拟模型延迟求和）")
     Console.kv("并行加速比", "约 ${"%.2f".format(sequentialBaselineMillis.toDouble() / elapsedMillis.coerceAtLeast(1))}×（演示值，正式实验应多轮统计）")
 }
@@ -403,7 +401,7 @@ private suspend fun demonstrateHandleControl(runtime: AgentRuntime) = coroutineS
         terminateAfter(maxSteps = 3)
     }
     val handle = runtime.spawn(worker, "生成一份运行时状态报告")
-    val lifecycle = mutableListOf<LifecycleState>()
+    val lifecycle = mutableListOf<RunState>()
     val lifecycleCollector = launch {
         handle.updates.collect { snapshot ->
             if (lifecycle.lastOrNull() != snapshot.state) lifecycle += snapshot.state
@@ -413,14 +411,14 @@ private suspend fun demonstrateHandleControl(runtime: AgentRuntime) = coroutineS
     Console.kv("handle", "runId=${handle.runId.value}, state=${handle.state}")
 
     handle.pause()
-    val paused = awaitState(handle, LifecycleState.SUSPENDED)
+    val paused = awaitState(handle, RunState.SUSPENDED)
     Console.kv("pause()", if (paused) "state=${handle.state}，实例已协作暂停" else "请求已发送，实例很快完成")
     delay(160)
     handle.resume()
     val result = handle.await()
     lifecycleCollector.cancelAndJoin()
     Console.result("resume() + await()", result.text)
-    Console.kv("ACB 生命周期", lifecycle.joinToString(" → "))
+    Console.kv("Run record 生命周期", lifecycle.joinToString(" → "))
 
     val streamer = agent {
         id = "streaming-worker"
@@ -439,14 +437,14 @@ private suspend fun demonstrateHandleControl(runtime: AgentRuntime) = coroutineS
         model { custom(PromptAwareModel(5_000) { "不应自然完成" }) }
     }
     val cancelled = runtime.spawn(cancellable, "执行一个可由控制面终止的长任务")
-    check(awaitState(cancelled, LifecycleState.RUNNING))
+    check(awaitState(cancelled, RunState.RUNNING))
     cancelled.cancel("operator requested stop")
     cancelled.join()
     Console.kv("cancel()", "runId=${cancelled.runId.value}, state=${cancelled.state}")
 }
 
 private suspend fun demonstrateFaultIsolationAndRecovery(runtime: AgentRuntime) {
-    Console.section("07", "故障隔离 / 恢复 / 熔断", "CAPTURE 边界 + Supervisor + checkpoint 输入 + 原子 commit")
+    Console.section("07", "故障隔离 / 恢复 / 熔断", "CAPTURE 边界 + RetrySupervisor + checkpoint 输入 + 原子 commit")
 
     val isolatedFailure = agent {
         id = "isolated-broken-child"
@@ -526,7 +524,7 @@ private suspend fun demonstrateFaultIsolationAndRecovery(runtime: AgentRuntime) 
 }
 
 private suspend fun demonstrateControlPlane(runtime: AgentRuntime) {
-    Console.section("08", "系统级可观测控制面", "RuntimeEvent / metrics / ACB snapshot / ThreadSnapshot / reap")
+    Console.section("08", "系统级可观测控制面", "RuntimeEvent / metrics / Run snapshot / ConversationSnapshot / reap")
 
     val metrics = runtime.metrics()
     Console.metric("TOTAL", metrics.total)
@@ -540,13 +538,13 @@ private suspend fun demonstrateControlPlane(runtime: AgentRuntime) {
     Console.note("FAILED / CANCELLED 均来自预期的故障注入、熔断或操作员取消；请结合下表右侧说明阅读。")
     Console.acbTable(runtime.runs)
 
-    val thread = runtime.threadSnapshot(ThreadId("contest-demo"))
+    val thread = runtime.conversationSnapshot(ThreadId("contest-demo"))
     Console.kv(
-        "ThreadSnapshot",
+        "ConversationSnapshot",
         "id=${thread?.id?.value}, provider=${thread?.memoryProviderId?.value}, participants=${thread?.participants?.size}",
     )
     val reaped = runtime.reap()
-    Console.kv("reap()", "回收 $reaped 个终态 ACB；当前 runs=${runtime.runs.size}")
+    Console.kv("reap()", "回收 $reaped 个终态 Run record；当前 runs=${runtime.runs.size}")
 }
 
 private fun fixedAgent(
@@ -678,7 +676,7 @@ private class ChunkedModel : LanguageModel {
     override val capabilities: ModelCapabilities = ModelCapabilities()
 
     override fun stream(request: ModelRequest): Flow<ModelEvent> = flow {
-        val chunks = listOf("调度正常；", "上下文已挂载；", "IPC 在线；", "监督器就绪；", "报告完成。")
+        val chunks = listOf("调度正常；", "上下文已挂载；", "messaging 在线；", "监督器就绪；", "报告完成。")
         for (chunk in chunks) {
             delay(90)
             emit(ModelEvent.TextDelta(chunk))
@@ -724,12 +722,12 @@ private fun usageFor(text: String): Usage {
     return Usage(promptTokens = 8, completionTokens = completion, totalTokens = 8 + completion)
 }
 
-private suspend fun awaitState(handle: AgentHandle, state: LifecycleState): Boolean =
+private suspend fun awaitState(handle: RunHandle, state: RunState): Boolean =
     withTimeoutOrNull(1_000) { handle.updates.first { it.state == state } } != null
 
 private suspend fun <T> AgentRuntime.withKernelEvents(block: suspend CoroutineScope.() -> T): T = coroutineScope {
     val collector = launch {
-        events.collect { Console.kernelEvent(it) }
+        events.collect { Console.runtimeEvent(it) }
     }
     yield()
     try {
@@ -758,12 +756,12 @@ private object Console {
                 """
                 ╔══════════════════════════════════════════════════════════════════════╗
                 ║  KOAKS · Agent Runtime Capability Showcase                           ║
-                ║  像操作进程一样操作 Agent —— 调度 / IPC / Context / Fault / Observe  ║
+                ║  Agent 运行与协作 —— Run / Conversation / Coordination / Policy  ║
                 ╚══════════════════════════════════════════════════════════════════════╝
                 """.trimIndent(),
             ),
         )
-        println(dim("  deterministic mock model · real Koaks runtime kernel · no API key required\n"))
+        println(dim("  deterministic mock model · real Koaks runtime runtime · no API key required\n"))
     }
 
     fun coverageMatrix() {
@@ -771,11 +769,11 @@ private object Console {
         coverage("已实现", "任务依赖", "TaskGraph DAG")
         coverage("已实现", "动态任务", "tool 内 spawnChild")
         coverage("已实现", "统一调度", "并发槽、优先级、Thread FIFO、等待让槽")
-        coverage("已实现", "资源管理", "Quota + ResourceRegistry；硬件负载遥测尚未展示")
-        coverage("已实现", "执行抽象", "Agent / RunId / ACB / Handle / 生命周期")
+        coverage("已实现", "资源管理", "Quota + SharedResourceCoordinator；硬件负载遥测尚未展示")
+        coverage("已实现", "执行抽象", "Agent / RunId / Run record / Handle / 生命周期")
         coverage("已实现", "故障容错", "CAPTURE/PROPAGATE、重试、熔断、取消时保留消息")
         coverage("已实现", "上下文管理", "去重、COW、PRIVATE ACL、摘要压缩")
-        coverage("已实现", "Agent 通信", "Mailbox、Req/Resp、Pub/Sub、消息列表")
+        coverage("已实现", "Agent 通信", "Inbox、Req/Resp、Pub/Sub、消息列表")
         coverage("已实现", "规模压力", "独立 runRuntimeStressTest：默认 10,000 Runs")
         coverage("已实现", "国产 OS", "可在 openEuler/openKylin 等所有支持 JVM 的国产/开源操作系统中运行")
         println()
@@ -830,7 +828,7 @@ private object Console {
         print("  ${blue("[$label]")} ${bold(value.toString())}")
     }
 
-    fun kernelEvent(event: RuntimeEvent) {
+    fun runtimeEvent(event: RuntimeEvent) {
         val rendered = when (event) {
             is RuntimeEvent.Spawned -> "SPAWN   run=${event.runId.value} agent=${event.agentName} parent=${event.parent?.value ?: "-"}"
             is RuntimeEvent.Running -> "RUN     run=${event.runId.value} agent=${event.agentName}"
@@ -852,24 +850,24 @@ private object Console {
             is RuntimeEvent.Finished -> ::green
             else -> ::magenta
         }
-        println("  ${dim("kernel") } ${color(rendered)}")
+        println("  ${dim("runtime") } ${color(rendered)}")
     }
 
-    fun acbTable(snapshots: List<AcbSnapshot>) {
+    fun acbTable(snapshots: List<RunSnapshot>) {
         println()
         println("  ${bold("RUN")}  ${bold("AGENT".padEnd(22))} ${bold("STATE".padEnd(11))} ${bold("PARENT".padEnd(7))} ${bold("TOKENS")}")
         println("  ${dim("─".repeat(64))}")
         snapshots.sortedBy { it.runId.value }.forEach { snapshot ->
             val note = when {
-                snapshot.agentName == "Cancellable Worker" && snapshot.state == LifecycleState.CANCELLED ->
+                snapshot.agentName == "Cancellable Worker" && snapshot.state == RunState.CANCELLED ->
                     "  ${yellow("← 刻意取消，验证 Handle.cancel 与控制面终止")}"
-                snapshot.agentName == "Broken Specialist" && snapshot.state == LifecycleState.FAILED ->
+                snapshot.agentName == "Broken Specialist" && snapshot.state == RunState.FAILED ->
                     "  ${yellow("← 刻意失败，CAPTURE 隔离；父 Agent 继续运行")}"
-                snapshot.agentName == "Supervised Writer" && snapshot.state == LifecycleState.FAILED ->
-                    "  ${yellow("← 刻意失败，Supervisor 将重试")}"
-                snapshot.agentName == "Supervised Writer" && snapshot.state == LifecycleState.FINISHED ->
-                    "  ${green("← Supervisor 重试成功")}"
-                snapshot.agentName == "Circuit Protected Model" && snapshot.state == LifecycleState.FAILED ->
+                snapshot.agentName == "Supervised Writer" && snapshot.state == RunState.FAILED ->
+                    "  ${yellow("← 刻意失败，RetrySupervisor 将重试")}"
+                snapshot.agentName == "Supervised Writer" && snapshot.state == RunState.FINISHED ->
+                    "  ${green("← RetrySupervisor 重试成功")}"
+                snapshot.agentName == "Circuit Protected Model" && snapshot.state == RunState.FAILED ->
                     "  ${yellow("← 刻意失败并触发熔断；后续请求未再调用模型")}"
                 else -> ""
             }
@@ -883,10 +881,10 @@ private object Console {
         }
     }
 
-    private fun stateColor(state: LifecycleState): (String) -> String = when (state) {
-        LifecycleState.FINISHED -> ::green
-        LifecycleState.FAILED, LifecycleState.CANCELLED -> ::red
-        LifecycleState.WAITING, LifecycleState.SUSPENDED -> ::yellow
+    private fun stateColor(state: RunState): (String) -> String = when (state) {
+        RunState.FINISHED -> ::green
+        RunState.FAILED, RunState.CANCELLED -> ::red
+        RunState.WAITING, RunState.SUSPENDED -> ::yellow
         else -> ::blue
     }
 

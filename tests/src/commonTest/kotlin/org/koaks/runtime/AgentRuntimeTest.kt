@@ -34,13 +34,13 @@ import org.koaks.framework.model.ProviderId
 import org.koaks.framework.middleware.ModelCallPhase
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
-import org.koaks.runtime.acb.AgentHandle
-import org.koaks.runtime.acb.LifecycleState
-import org.koaks.runtime.acb.RunEventPayload
-import org.koaks.runtime.observe.RuntimeEvent
-import org.koaks.runtime.resource.ChildConversation
-import org.koaks.runtime.resource.ChildFailurePolicy
-import org.koaks.runtime.resource.spawnChild
+import org.koaks.runtime.run.RunHandle
+import org.koaks.runtime.run.RunState
+import org.koaks.runtime.run.RunEventPayload
+import org.koaks.runtime.observability.RuntimeEvent
+import org.koaks.runtime.policy.ChildConversation
+import org.koaks.runtime.policy.ChildFailurePolicy
+import org.koaks.runtime.coordination.spawnChild
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -81,7 +81,7 @@ class AgentRuntimeTest {
     }
 
     @Test
-    fun spawns_multiple_agents_concurrently_and_tracks_each_acb() = runTest {
+    fun spawns_multiple_agents_concurrently_and_tracks_each_run() = runTest {
         val runtime = AgentRuntime()
         runtime.use {
             val handles = (0 until 5).map { i ->
@@ -94,9 +94,9 @@ class AgentRuntimeTest {
                 assertEquals("answer-$i", r.text)
                 assertEquals(2, r.usage.totalTokens)
             }
-            // Every ACB is FINISHED with the accumulated usage.
+            // Every run record is FINISHED with the accumulated usage.
             handles.forEach { h ->
-                assertEquals(LifecycleState.FINISHED, h.state)
+                assertEquals(RunState.FINISHED, h.state)
                 assertEquals(2, h.snapshot.usage.totalTokens)
             }
             // Distinct pids.
@@ -111,7 +111,7 @@ class AgentRuntimeTest {
             val h = spawn(sayAgent("solo", "done"), "hi")
             val result = h.await()
             assertTrue(result is AgentResult.Completed)
-            assertEquals(LifecycleState.FINISHED, h.state)
+            assertEquals(RunState.FINISHED, h.state)
             assertEquals(null, h.snapshot.parent) // spawned without a parent
         }
     }
@@ -163,7 +163,7 @@ class AgentRuntimeTest {
             h.cancel("operator stop")
             assertFailsWith<CancellationException> { h.await() }
             h.join()
-            assertEquals(LifecycleState.CANCELLED, h.state)
+            assertEquals(RunState.CANCELLED, h.state)
         }
     }
 
@@ -175,7 +175,7 @@ class AgentRuntimeTest {
     }
 
     @Test
-    fun unexpected_instance_failure_marks_the_acb_failed() = runTest {
+    fun unexpected_instance_failure_marks_the_run_failed() = runTest {
         val runtime = AgentRuntime()
         runtime.use {
             val h = it.spawn(
@@ -189,7 +189,7 @@ class AgentRuntimeTest {
             )
 
             assertFailsWith<IllegalStateException> { h.await() }
-            assertEquals(LifecycleState.FAILED, h.state)
+            assertEquals(RunState.FAILED, h.state)
             assertTrue(h.snapshot.error is AgentError.ModelError)
         }
     }
@@ -202,7 +202,7 @@ class AgentRuntimeTest {
         runtime.close()
 
         assertFailsWith<CancellationException> { h.await() }
-        assertEquals(LifecycleState.CANCELLED, h.state)
+        assertEquals(RunState.CANCELLED, h.state)
         assertFailsWith<IllegalStateException> {
             runtime.spawn(sayAgent("after-close", "never"), "hi")
         }
@@ -223,14 +223,14 @@ class AgentRuntimeTest {
     }
 
     @Test
-    fun stream_forwards_agent_events_and_finishes_the_acb() = runTest {
+    fun stream_forwards_agent_events_and_finishes_the_run() = runTest {
         withAgentRuntime {
             val events = stream(streamingAgent("streamer", listOf("Hello, ", "world", "!")), "hi").toList()
             val text = events.filterIsInstance<AgentEvent.TextDelta>().joinToString("") { it.text }
 
             assertEquals("Hello, world!", text)
             assertTrue(events.last() is AgentEvent.Completed)
-            assertEquals(LifecycleState.FINISHED, runs.single().state)
+            assertEquals(RunState.FINISHED, runs.single().state)
         }
     }
 
@@ -344,7 +344,7 @@ class AgentRuntimeTest {
             handle.events().take(1).toList()
 
             assertEquals("ab", handle.await().text)
-            assertEquals(LifecycleState.FINISHED, handle.state)
+            assertEquals(RunState.FINISHED, handle.state)
         }
     }
 
@@ -368,7 +368,7 @@ class AgentRuntimeTest {
                 assertEquals("again", text)
             }
             assertEquals(2, it.runs.size)
-            assertTrue(it.runs.all { snapshot -> snapshot.state == LifecycleState.FINISHED })
+            assertTrue(it.runs.all { snapshot -> snapshot.state == RunState.FINISHED })
         }
     }
 
@@ -403,7 +403,7 @@ class AgentRuntimeTest {
             foreground.cancelAndJoin()
             advanceUntilIdle()
 
-            assertEquals(LifecycleState.CANCELLED, it.runs.single().state)
+            assertEquals(RunState.CANCELLED, it.runs.single().state)
         }
     }
 
@@ -429,7 +429,7 @@ class AgentRuntimeTest {
             }
             terminateAfter(maxSteps = 5)
         }
-        var childHandle: AgentHandle? = null
+        var childHandle: RunHandle? = null
         val parent = agent {
             id = "agent-41"
             name = "run-parent"
@@ -461,8 +461,8 @@ class AgentRuntimeTest {
             foreground.cancelAndJoin()
             advanceUntilIdle()
 
-            assertTrue(it.runs.all { snapshot -> snapshot.state == LifecycleState.CANCELLED })
-            assertEquals(LifecycleState.CANCELLED, childHandle?.state)
+            assertTrue(it.runs.all { snapshot -> snapshot.state == RunState.CANCELLED })
+            assertEquals(RunState.CANCELLED, childHandle?.state)
         }
     }
 
@@ -503,7 +503,7 @@ class AgentRuntimeTest {
             val events = collection.await()
 
             assertEquals(1, events.size)
-            assertEquals(LifecycleState.CANCELLED, it.runs.single().state)
+            assertEquals(RunState.CANCELLED, it.runs.single().state)
         }
     }
 
@@ -547,7 +547,7 @@ class AgentRuntimeTest {
             advanceUntilIdle()
             collection.await()
 
-            assertEquals(LifecycleState.CANCELLED, it.runs.single().state)
+            assertEquals(RunState.CANCELLED, it.runs.single().state)
         }
     }
 
@@ -567,7 +567,7 @@ class AgentRuntimeTest {
             advanceUntilIdle()
             collectorReceivedEvent.await()
 
-            assertEquals(LifecycleState.FINISHED, it.runs.single().state)
+            assertEquals(RunState.FINISHED, it.runs.single().state)
 
             releaseCollector.complete(Unit)
             collection.join()
@@ -605,7 +605,7 @@ class AgentRuntimeTest {
             collection.cancelAndJoin()
             advanceUntilIdle()
 
-            assertEquals(LifecycleState.CANCELLED, it.runs.single().state)
+            assertEquals(RunState.CANCELLED, it.runs.single().state)
         }
     }
 
@@ -744,7 +744,7 @@ class AgentRuntimeTest {
 
     @Test
     fun ephemeral_child_has_no_thread_binding_and_parks_at_concurrency_one() = runTest {
-        var childHandle: AgentHandle? = null
+        var childHandle: RunHandle? = null
         val child = sayAgent("ephemeral-child", "child-ok")
         val parent = agent {
             id = "ephemeral-parent"

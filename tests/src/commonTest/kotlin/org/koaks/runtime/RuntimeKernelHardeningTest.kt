@@ -18,11 +18,11 @@ import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
-import org.koaks.runtime.acb.RunId
-import org.koaks.runtime.acb.LifecycleState
-import org.koaks.runtime.ipc.RuntimeMessage
-import org.koaks.runtime.ipc.receiveMessage
-import org.koaks.runtime.resource.spawnChild
+import org.koaks.runtime.run.RunId
+import org.koaks.runtime.run.RunState
+import org.koaks.runtime.coordination.MessageEnvelope
+import org.koaks.runtime.coordination.receiveMessage
+import org.koaks.runtime.coordination.spawnChild
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -67,7 +67,7 @@ class RuntimeKernelHardeningTest {
     }
 
     @Test
-    fun reap_removes_terminal_acbs_but_handle_still_readable() = runTest {
+    fun reap_removes_terminal_runs_but_handle_still_readable() = runTest {
         val runtime = AgentRuntime()
         runtime.use {
             val h = it.spawn(sayAgent("solo", "done"), "hi")
@@ -80,7 +80,7 @@ class RuntimeKernelHardeningTest {
             assertNull(it.snapshot(h.runId))
             assertEquals(0, it.metrics().total)
 
-            assertEquals(LifecycleState.FINISHED, h.state)
+            assertEquals(RunState.FINISHED, h.state)
             assertEquals("done", h.await().text)
         }
     }
@@ -144,10 +144,10 @@ class RuntimeKernelHardeningTest {
         val runtime = AgentRuntime { dispatcher = UnconfinedTestDispatcher(testScheduler) }
         runtime.use { rt ->
             val h = rt.spawn(waiter, "go")
-            h.updates.first { snap -> snap.state == LifecycleState.WAITING }
-            rt.ipc.send(
-                RuntimeMessage(
-                    id = rt.ipc.nextId(),
+            h.updates.first { snap -> snap.state == RunState.WAITING }
+            rt.coordination.send(
+                MessageEnvelope(
+                    id = rt.coordination.nextId(),
                     sender = RunId(0),
                     receiver = h.runId,
                     type = "ping",
@@ -155,7 +155,7 @@ class RuntimeKernelHardeningTest {
                 ),
             )
             assertEquals("got-it", h.await().text)
-            assertEquals(LifecycleState.FINISHED, h.state)
+            assertEquals(RunState.FINISHED, h.state)
         }
     }
 
@@ -164,12 +164,12 @@ class RuntimeKernelHardeningTest {
         val runtime = AgentRuntime()
         runtime.use { rt ->
             val silent = RunId(1)
-            rt.ipc.mailbox(silent)
+            rt.coordination.inbox(silent)
             repeat(10) {
                 val job = async {
-                    rt.ipc.request(
-                        RuntimeMessage(
-                            id = rt.ipc.nextId(),
+                    rt.coordination.request(
+                        MessageEnvelope(
+                            id = rt.coordination.nextId(),
                             sender = RunId(2),
                             receiver = silent,
                             type = "ask",
@@ -182,13 +182,13 @@ class RuntimeKernelHardeningTest {
             }
 
             val server = RunId(99)
-            val box = rt.ipc.mailbox(server)
+            val box = rt.coordination.inbox(server)
             val responder = launch {
                 val req = box.receive()
-                rt.ipc.reply(req, "pong")
+                rt.coordination.reply(req, "pong")
             }
-            val response = rt.ipc.request(
-                RuntimeMessage(id = rt.ipc.nextId(), sender = RunId(3), receiver = server, type = "ask", payload = "y"),
+            val response = rt.coordination.request(
+                MessageEnvelope(id = rt.coordination.nextId(), sender = RunId(3), receiver = server, type = "ask", payload = "y"),
             )
             assertEquals("pong", response.payload)
             responder.join()

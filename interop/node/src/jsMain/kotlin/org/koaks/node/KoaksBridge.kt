@@ -35,22 +35,22 @@ import org.koaks.framework.model.EventDetail
 import org.koaks.framework.tool.ToolOutputStream
 import org.koaks.framework.tool.ToolProgress
 import org.koaks.runtime.AgentRuntime
-import org.koaks.runtime.acb.AgentHandle
-import org.koaks.runtime.acb.RunId
-import org.koaks.runtime.fault.CircuitBreakerPolicy
-import org.koaks.runtime.fault.SupervisedHandle
-import org.koaks.runtime.fault.SupervisionPolicy
-import org.koaks.runtime.ipc.RuntimeMessage
-import org.koaks.runtime.resource.AccessMode
-import org.koaks.runtime.resource.ChildConversation
-import org.koaks.runtime.resource.ChildFailurePolicy
-import org.koaks.runtime.resource.Quota
-import org.koaks.runtime.resource.withRuntimeResource
-import org.koaks.runtime.sched.taskGraph
+import org.koaks.runtime.run.RunHandle
+import org.koaks.runtime.run.RunId
+import org.koaks.runtime.policy.CircuitBreakerPolicy
+import org.koaks.runtime.run.SupervisedHandle
+import org.koaks.runtime.policy.SupervisionPolicy
+import org.koaks.runtime.coordination.MessageEnvelope
+import org.koaks.runtime.coordination.AccessMode
+import org.koaks.runtime.policy.ChildConversation
+import org.koaks.runtime.policy.ChildFailurePolicy
+import org.koaks.runtime.policy.Quota
+import org.koaks.runtime.coordination.withSharedResource
+import org.koaks.runtime.workflow.taskGraph
 import kotlin.js.Promise
 
 private data class AgentRecord(val key: String, val built: BuiltAgent)
-private data class HandleRecord(val agentKey: String, val handle: AgentHandle, val parentRunId: RunId? = null)
+private data class HandleRecord(val agentKey: String, val handle: RunHandle, val parentRunId: RunId? = null)
 private data class SupervisedRecord(val agentKey: String, val handle: SupervisedHandle)
 private data class SubscriptionRecord(val agentKey: String?, val job: Job)
 private data class OperationRecord(val agentKey: String?, val job: Job)
@@ -103,14 +103,14 @@ class KoaksBridge internal constructor(
             "runtime.metrics" -> runtime.metrics().toJson()
             "runtime.runs" -> buildJsonArray { runtime.runs.forEach { add(it.toJson()) } }
             "runtime.snapshot" -> runtime.snapshot(params.string("run_id").toRunId())?.toJson() ?: JsonNull
-            "runtime.thread_snapshot" -> runtime.threadSnapshot(ThreadId(params.string("thread_id")))?.toJson() ?: JsonNull
+            "runtime.conversation_snapshot" -> runtime.conversationSnapshot(ThreadId(params.string("thread_id")))?.toJson() ?: JsonNull
             "runtime.reap" -> reap(params)
             "runtime.submit" -> submit(params)
             "runtime.spawn_supervised" -> spawnSupervised(params)
-            "runtime.ipc.send" -> runtimeIpcSend(params)
-            "runtime.ipc.request" -> runtimeIpcRequest(params)
-            "runtime.ipc.publish" -> runtimeIpcPublish(params)
-            "runtime.ipc.subscribe" -> runtimeIpcSubscribe(params)
+            "runtime.coordination.send" -> runtimeMessagingSend(params)
+            "runtime.coordination.request" -> runtimeMessagingRequest(params)
+            "runtime.coordination.publish" -> runtimeMessagingPublish(params)
+            "runtime.coordination.subscribe" -> runtimeMessagingSubscribe(params)
             "runtime.events" -> startSubscription(
                 agentKey = null,
                 callbackId = params.string("callback_id"),
@@ -188,12 +188,12 @@ class KoaksBridge internal constructor(
             "tool.resource.with" -> toolWithResource(params)
             "tool.progress" -> toolProgress(params)
             "tool.spawn_child" -> toolSpawnChild(params)
-            "tool.ipc.send" -> toolIpcSend(params)
-            "tool.ipc.receive" -> toolIpcReceive(params)
-            "tool.ipc.request" -> toolIpcRequest(params)
-            "tool.ipc.reply" -> toolIpcReply(params)
-            "tool.ipc.publish" -> toolIpcPublish(params)
-            "tool.ipc.subscribe" -> toolIpcSubscribe(params)
+            "tool.coordination.send" -> toolMessagingSend(params)
+            "tool.coordination.receive" -> toolMessagingReceive(params)
+            "tool.coordination.request" -> toolMessagingRequest(params)
+            "tool.coordination.reply" -> toolMessagingReply(params)
+            "tool.coordination.publish" -> toolMessagingPublish(params)
+            "tool.coordination.subscribe" -> toolMessagingSubscribe(params)
 
             "subscription.cancel" -> {
                 subscriptions.remove(params.string("subscription_id"))?.job?.cancelAndJoin()
@@ -462,7 +462,7 @@ class KoaksBridge internal constructor(
                 "write" -> AccessMode.WRITE
                 else -> throw IllegalArgumentException("unknown resource access mode '${params.string("mode")}'")
             }
-            withRuntimeResource(params.string("resource_id"), mode) {
+            withSharedResource(params.string("resource_id"), mode) {
                 val executionContext = currentCoroutineContext()[AgentExecutionContext]
                     ?: throw NodeBridgeException("lifecycle_error", "Resource operation has no execution branch")
                 executionContext.waiting {
@@ -505,66 +505,59 @@ class KoaksBridge internal constructor(
             handleDescriptor(handleId, handle, execution.runtimeContext.runId)
         }
 
-    private suspend fun toolIpcSend(params: JsonObject): JsonElement =
+    private suspend fun toolMessagingSend(params: JsonObject): JsonElement =
         toolExecutions.execute(params.string("execution_id")) { execution ->
-            val target = requireIpcTarget(params.string("to_run_id"))
-            execution.runtimeContext.ipc.send(
-                params.toRuntimeMessage(execution.runtimeContext.ipc.nextId(), execution.runtimeContext.runId, target),
+            val target = requireMessagingTarget(params.string("to_run_id"))
+            execution.runtimeContext.send(
+                target, params.string("type"), params.stringOrNull("payload") ?: "", params.context(),
+                params.intOrNull("priority") ?: 0, params.longOrNull("deadline_epoch_ms"),
             )
             JsonNull
         }
 
-    private suspend fun toolIpcReceive(params: JsonObject): JsonObject =
+    private suspend fun toolMessagingReceive(params: JsonObject): JsonObject =
         toolExecutions.execute(params.string("execution_id")) { execution ->
-            val message = execution.executionContext.waiting {
-                execution.runtimeContext.ipc.mailbox(execution.runtimeContext.runId).receive()
-            }
+            val message = execution.runtimeContext.receive()
             val token = message.correlationId?.let { execution.issueReplyToken(message) }
             message.toJson(token)
         }
 
-    private suspend fun toolIpcRequest(params: JsonObject): JsonObject =
+    private suspend fun toolMessagingRequest(params: JsonObject): JsonObject =
         toolExecutions.execute(params.string("execution_id")) { execution ->
-            val target = requireIpcTarget(params.string("to_run_id"))
-            val message = params.toRuntimeMessage(
-                execution.runtimeContext.ipc.nextId(),
-                execution.runtimeContext.runId,
-                target,
-            )
-            execution.executionContext.waiting {
-                withIpcTimeout(params) { execution.runtimeContext.ipc.request(message) }
+            val target = requireMessagingTarget(params.string("to_run_id"))
+            withMessagingTimeout(params) {
+                execution.runtimeContext.request(
+                    target, params.string("type"), params.stringOrNull("payload") ?: "", params.context(),
+                    params.intOrNull("priority") ?: 0, params.longOrNull("deadline_epoch_ms"),
+                )
             }.toJson()
         }
 
-    private suspend fun toolIpcReply(params: JsonObject): JsonElement =
+    private suspend fun toolMessagingReply(params: JsonObject): JsonElement =
         toolExecutions.execute(params.string("execution_id")) { execution ->
             val request = execution.takeReplyToken(params.string("reply_token"))
             if (request.receiver != execution.runtimeContext.runId) {
                 throw NodeBridgeException("ipc_reply_invalid", "IPC request does not belong to the current run")
             }
-            execution.runtimeContext.ipc.reply(request, params.stringOrNull("payload") ?: "", params.context())
+            execution.runtimeContext.reply(request, params.stringOrNull("payload") ?: "", params.context())
             JsonNull
         }
 
-    private suspend fun toolIpcPublish(params: JsonObject): JsonElement =
+    private suspend fun toolMessagingPublish(params: JsonObject): JsonElement =
         toolExecutions.execute(params.string("execution_id")) { execution ->
-            execution.runtimeContext.ipc.publish(
-                params.string("topic"),
-                params.toRuntimeMessage(
-                    execution.runtimeContext.ipc.nextId(),
-                    execution.runtimeContext.runId,
-                    receiver = null,
-                ),
+            execution.runtimeContext.publish(
+                params.string("topic"), params.string("type"), params.stringOrNull("payload") ?: "", params.context(),
+                params.intOrNull("priority") ?: 0, params.longOrNull("deadline_epoch_ms"),
             )
             JsonNull
         }
 
-    private suspend fun toolIpcSubscribe(params: JsonObject): JsonPrimitive =
+    private suspend fun toolMessagingSubscribe(params: JsonObject): JsonPrimitive =
         toolExecutions.execute(params.string("execution_id")) { execution ->
             startSubscription(
                 agentKey = agentKeysById[execution.runtimeContext.agentId],
                 callbackId = params.string("callback_id"),
-                events = execution.runtimeContext.ipc.subscribe(params.string("topic")).map { it.toJson() },
+                events = execution.runtimeContext.subscribe(params.string("topic")).map { it.toJson() },
                 toolExecutionId = execution.id,
             )
         }
@@ -577,36 +570,36 @@ class KoaksBridge internal constructor(
             JsonNull
         }
 
-    private suspend fun runtimeIpcSend(params: JsonObject): JsonElement {
-        val target = requireIpcTarget(params.string("to_run_id"))
-        runtime.ipc.send(params.toRuntimeMessage(runtime.ipc.nextId(), sender = null, receiver = target))
+    private suspend fun runtimeMessagingSend(params: JsonObject): JsonElement {
+        val target = requireMessagingTarget(params.string("to_run_id"))
+        runtime.coordination.send(params.toMessageEnvelope(runtime.coordination.nextId(), sender = null, receiver = target))
         return JsonNull
     }
 
-    private suspend fun runtimeIpcRequest(params: JsonObject): JsonObject =
+    private suspend fun runtimeMessagingRequest(params: JsonObject): JsonObject =
         withOperation(params.stringOrNull("operation_id"), agentKey = null) {
-            val target = requireIpcTarget(params.string("to_run_id"))
-            withIpcTimeout(params) {
-                runtime.ipc.request(params.toRuntimeMessage(runtime.ipc.nextId(), sender = null, receiver = target))
+            val target = requireMessagingTarget(params.string("to_run_id"))
+            withMessagingTimeout(params) {
+                runtime.coordination.request(params.toMessageEnvelope(runtime.coordination.nextId(), sender = null, receiver = target))
             }.toJson()
         }
 
-    private suspend fun runtimeIpcPublish(params: JsonObject): JsonElement {
-        runtime.ipc.publish(
+    private suspend fun runtimeMessagingPublish(params: JsonObject): JsonElement {
+        runtime.coordination.publish(
             params.string("topic"),
-            params.toRuntimeMessage(runtime.ipc.nextId(), sender = null, receiver = null),
+            params.toMessageEnvelope(runtime.coordination.nextId(), sender = null, receiver = null),
         )
         return JsonNull
     }
 
-    private fun runtimeIpcSubscribe(params: JsonObject): JsonPrimitive =
+    private fun runtimeMessagingSubscribe(params: JsonObject): JsonPrimitive =
         startSubscription(
             agentKey = null,
             callbackId = params.string("callback_id"),
-            events = runtime.ipc.subscribe(params.string("topic")).map { it.toJson() },
+            events = runtime.coordination.subscribe(params.string("topic")).map { it.toJson() },
         )
 
-    private fun requireIpcTarget(value: String): RunId {
+    private fun requireMessagingTarget(value: String): RunId {
         val runId = value.toRunId()
         val snapshot = runtime.snapshot(runId)
         if (snapshot == null || snapshot.state.isTerminal) {
@@ -615,7 +608,7 @@ class KoaksBridge internal constructor(
         return runId
     }
 
-    private suspend fun <T> withIpcTimeout(params: JsonObject, block: suspend () -> T): T {
+    private suspend fun <T> withMessagingTimeout(params: JsonObject, block: suspend () -> T): T {
         val timeout = params.longOrNull("timeout_ms") ?: return block()
         require(timeout > 0L) { "timeoutMs must be greater than zero" }
         return try {
@@ -802,7 +795,7 @@ private fun agentDescriptor(record: AgentRecord): JsonObject = buildJsonObject {
     put("name", JsonPrimitive(record.built.agent.name))
 }
 
-private fun handleDescriptor(id: String, handle: AgentHandle, parentRunId: RunId?): JsonObject = buildJsonObject {
+private fun handleDescriptor(id: String, handle: RunHandle, parentRunId: RunId?): JsonObject = buildJsonObject {
     put("handle_id", JsonPrimitive(id))
     put("run_id", JsonPrimitive(handle.runId.value.toString()))
     put("agent_id", JsonPrimitive(handle.agentId.value))
@@ -811,7 +804,7 @@ private fun handleDescriptor(id: String, handle: AgentHandle, parentRunId: RunId
     parentRunId?.let { put("parent_run_id", JsonPrimitive(it.value.toString())) }
 }
 
-private fun JsonObject.toRuntimeMessage(id: Long, sender: RunId?, receiver: RunId?): RuntimeMessage = RuntimeMessage(
+private fun JsonObject.toMessageEnvelope(id: Long, sender: RunId?, receiver: RunId?): MessageEnvelope = MessageEnvelope(
     id = id,
     sender = sender,
     receiver = receiver,
@@ -822,7 +815,7 @@ private fun JsonObject.toRuntimeMessage(id: Long, sender: RunId?, receiver: RunI
     deadlineMillis = longOrNull("deadline_epoch_ms"),
 )
 
-private fun RuntimeMessage.toJson(replyToken: String? = null): JsonObject = buildJsonObject {
+private fun MessageEnvelope.toJson(replyToken: String? = null): JsonObject = buildJsonObject {
     put("id", JsonPrimitive(id.toString()))
     sender?.let { put("sender_run_id", JsonPrimitive(it.value.toString())) }
     receiver?.let { put("receiver_run_id", JsonPrimitive(it.value.toString())) }

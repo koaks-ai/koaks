@@ -3,7 +3,7 @@ package org.koaks.java
 import java.time.Duration
 import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.model.EventDetail
-import org.koaks.runtime.resource.Quota
+import org.koaks.runtime.policy.Quota
 
 /** Per-run Java options without exposing Kotlin value classes or default arguments. */
 class RunOptions private constructor(

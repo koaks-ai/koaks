@@ -20,7 +20,7 @@ import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.ErrorPolicy
 import org.koaks.framework.policy.Recovery
 import org.koaks.runtime.AgentRuntime
-import org.koaks.runtime.observe.RuntimeEvent
+import org.koaks.runtime.observability.RuntimeEvent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

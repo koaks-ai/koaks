@@ -14,8 +14,8 @@ data class ExecutionIdentity(
  * A neutral hook, carried in the coroutine context, that lets whoever runs an agent
  * observe when an execution branch blocks and resumes. The agent loop itself has one
  * root branch, and it forks a branch per parallel tool call ([AgentRunner]'s tool step);
- * a runtime can use this to admit/park a concurrency slot so that "waiting" means "off
- * the CPU" without core ever depending on the runtime.
+ * a runtime can use this to release admission while branches wait, without coupling
+ * the loop to the concrete scheduler.
  *
  * The concrete implementation (e.g. a per-instance activity gate) is supplied by the
  * runtime. All methods must be safe to call from multiple branches concurrently.

@@ -4,14 +4,14 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
-import org.koaks.runtime.acb.AcbSnapshot
-import org.koaks.runtime.acb.RunEventEnvelope
-import org.koaks.runtime.acb.RunEventPayload
-import org.koaks.runtime.observe.RuntimeEvent
-import org.koaks.runtime.observe.RuntimeMetrics
-import org.koaks.runtime.thread.ThreadSnapshot
+import org.koaks.runtime.run.RunSnapshot
+import org.koaks.runtime.run.RunEventEnvelope
+import org.koaks.runtime.run.RunEventPayload
+import org.koaks.runtime.observability.RuntimeEvent
+import org.koaks.runtime.observability.RuntimeMetrics
+import org.koaks.runtime.conversation.ConversationSnapshot
 
-internal fun AcbSnapshot.toWireJson(): JsonObject = buildJsonObject {
+internal fun RunSnapshot.toWireJson(): JsonObject = buildJsonObject {
     put("run_id", JsonPrimitive(runId.value.toString()))
     put("agent_id", JsonPrimitive(agentId.value))
     put("agent_name", JsonPrimitive(agentName))
@@ -53,7 +53,7 @@ internal fun RunEventEnvelope.toWireJson(): JsonObject = buildJsonObject {
     }
 }
 
-internal fun ThreadSnapshot.toWireJson(): JsonObject = buildJsonObject {
+internal fun ConversationSnapshot.toWireJson(): JsonObject = buildJsonObject {
     put("id", JsonPrimitive(id.value))
     put("memory_provider_id", JsonPrimitive(memoryProviderId.value))
     put("participants", buildJsonArray { participants.forEach { add(JsonPrimitive(it.value)) } })

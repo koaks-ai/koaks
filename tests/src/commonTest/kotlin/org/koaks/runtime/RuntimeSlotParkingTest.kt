@@ -20,8 +20,8 @@ import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
-import org.koaks.runtime.acb.LifecycleState
-import org.koaks.runtime.resource.spawnChild
+import org.koaks.runtime.run.RunState
+import org.koaks.runtime.coordination.spawnChild
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -64,13 +64,13 @@ class RuntimeSlotParkingTest {
     @Test
     fun parent_awaiting_child_does_not_deadlock_at_concurrency_one() = runTest {
         var childText: String? = null
-        var parentStateWhileAwaiting: LifecycleState? = null
+        var parentStateWhileAwaiting: RunState? = null
 
         val parent = probeAgent("parent") {
             val handle = spawnChild(sayAgent("child", "child-answer"), "hi")
             // The child cannot be admitted unless the parent has released its only slot.
             childText = handle.await().text
-            parentStateWhileAwaiting = LifecycleState.RUNNING // reached only if await returned
+            parentStateWhileAwaiting = RunState.RUNNING // reached only if await returned
         }
 
         val runtime = AgentRuntime {
@@ -82,9 +82,9 @@ class RuntimeSlotParkingTest {
             val result = it.run(parent, "go")
             assertTrue(result is AgentResult.Completed)
             assertEquals("child-answer", childText)
-            assertEquals(LifecycleState.RUNNING, parentStateWhileAwaiting)
+            assertEquals(RunState.RUNNING, parentStateWhileAwaiting)
             // Both instances finished; nothing left stuck WAITING.
-            assertTrue(it.runs.all { a -> a.state == LifecycleState.FINISHED })
+            assertTrue(it.runs.all { a -> a.state == RunState.FINISHED })
         }
     }
 
@@ -112,7 +112,7 @@ class RuntimeSlotParkingTest {
             val handle = it.spawn(parent, "go")
             callbackStarted.await()
             operationCompleted.await()
-            assertEquals(LifecycleState.WAITING, handle.state)
+            assertEquals(RunState.WAITING, handle.state)
             releaseCallback.complete(Unit)
             assertTrue(handle.await() is AgentResult.Completed)
         }
@@ -153,7 +153,7 @@ class RuntimeSlotParkingTest {
             val result = parentHandle.await()
             assertTrue(result is AgentResult.Completed)
             assertEquals(4, it.runs.size)
-            assertTrue(it.runs.all { a -> a.state == LifecycleState.FINISHED })
+            assertTrue(it.runs.all { a -> a.state == RunState.FINISHED })
         }
     }
 
@@ -203,7 +203,7 @@ class RuntimeSlotParkingTest {
             assertTrue(result is AgentResult.Completed)
             assertEquals("parent-done", result.text)
             assertEquals(3, it.runs.size) // parent + 2 children
-            assertTrue(it.runs.all { a -> a.state == LifecycleState.FINISHED })
+            assertTrue(it.runs.all { a -> a.state == RunState.FINISHED })
         }
     }
 
@@ -224,7 +224,7 @@ class RuntimeSlotParkingTest {
             val result = it.run(parent, "go")
             assertTrue(result is AgentResult.Completed)
             assertTrue(joined)
-            assertTrue(it.runs.all { a -> a.state == LifecycleState.FINISHED })
+            assertTrue(it.runs.all { a -> a.state == RunState.FINISHED })
         }
     }
 
@@ -256,7 +256,7 @@ class RuntimeSlotParkingTest {
             }
             tools {
                 // This test-only barrier is intentionally not routed through the execution
-                // context, so branch A remains logically RUNNABLE while we inspect the ACB.
+                // context, so branch A remains logically RUNNABLE while we inspect the run record.
                 tool<NoArgs>(name = "busy", description = "runnable branch") {
                     bWaiting.await()
                     busyRelease.await()
@@ -284,7 +284,7 @@ class RuntimeSlotParkingTest {
             val h = it.spawn(parent, "go")
             bWaiting.await()
             // A runnable, B waiting → instance must be RUNNING, not WAITING.
-            assertEquals(LifecycleState.RUNNING, h.state)
+            assertEquals(RunState.RUNNING, h.state)
             busyRelease.complete(Unit)
             waitingRelease.complete(Unit)
             assertTrue(h.await() is AgentResult.Completed)
@@ -320,7 +320,7 @@ class RuntimeSlotParkingTest {
             childStarted.await()
             childRelease.complete(Unit)
             innerCompleted.await()
-            assertEquals(LifecycleState.WAITING, h.state)
+            assertEquals(RunState.WAITING, h.state)
             outerRelease.complete(Unit)
             assertTrue(h.await() is AgentResult.Completed)
         }
@@ -347,7 +347,7 @@ class RuntimeSlotParkingTest {
             val h = it.spawn(parent, "go")
             advanceUntilIdle()
             // Parent parked awaiting its child (which now holds the only slot).
-            assertEquals(LifecycleState.WAITING, h.state)
+            assertEquals(RunState.WAITING, h.state)
 
             h.cancel("test")
             advanceUntilIdle()

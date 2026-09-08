@@ -82,7 +82,7 @@ import org.koaks.provider.openai.openai
 import org.koaks.provider.openai.responses.ResponsesStateMode
 import org.koaks.provider.openai.responses.openaiResponses
 import org.koaks.provider.qwen.qwen
-import org.koaks.runtime.resource.RuntimeContext
+import org.koaks.runtime.coordination.AgentContext
 import kotlin.js.Promise
 
 internal class CallbackGateway(
@@ -328,7 +328,7 @@ private class NodeTool(
 
     private suspend fun executeNode(input: String, invocation: ToolInvocationContext?): String {
         val coroutineContext = currentCoroutineContext()
-        val runtimeContext = coroutineContext[RuntimeContext]
+        val runtimeContext = coroutineContext[AgentContext]
             ?: throw NodeBridgeException("lifecycle_error", "JS Tools require a runtime-managed execution")
         val executionContext = coroutineContext[AgentExecutionContext]
             ?: throw NodeBridgeException("lifecycle_error", "JS Tools require an Agent execution branch")

@@ -6,9 +6,9 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
-import org.koaks.runtime.acb.RunId
+import org.koaks.runtime.run.RunId
 import org.koaks.framework.model.ModelItem
-import org.koaks.runtime.ipc.RuntimeMessage
+import org.koaks.runtime.coordination.MessageEnvelope
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -21,8 +21,8 @@ class IpcTest {
         val runtime = AgentRuntime()
         runtime.use {
             val to = RunId(42)
-            val box = it.ipc.mailbox(to)
-            it.ipc.send(RuntimeMessage(id = it.ipc.nextId(), sender = RunId(1), receiver = to, type = "ping", payload = "hello"))
+            val box = it.coordination.inbox(to)
+            it.coordination.send(MessageEnvelope(id = it.coordination.nextId(), sender = RunId(1), receiver = to, type = "ping", payload = "hello"))
             val got = box.receive()
             assertEquals("hello", got.payload)
             assertEquals("ping", got.type)
@@ -33,9 +33,9 @@ class IpcTest {
     fun request_response_round_trips() = runTest {
         val runtime = AgentRuntime()
         runtime.use {
-            val hub = it.ipc
+            val hub = it.coordination
             val server = RunId(100)
-            val serverBox = hub.mailbox(server)
+            val serverBox = hub.inbox(server)
 
             val responder = launch {
                 val req = serverBox.receive()
@@ -43,7 +43,7 @@ class IpcTest {
             }
 
             val response = hub.request(
-                RuntimeMessage(id = hub.nextId(), sender = RunId(101), receiver = server, type = "ask", payload = "x"),
+                MessageEnvelope(id = hub.nextId(), sender = RunId(101), receiver = server, type = "ask", payload = "x"),
             )
             assertEquals("pong:x", response.payload)
             assertEquals("ask.reply", response.type)
@@ -55,13 +55,13 @@ class IpcTest {
     fun pub_sub_delivers_to_subscribers() = runTest {
         val runtime = AgentRuntime()
         runtime.use {
-            val hub = it.ipc
+            val hub = it.coordination
             val collected = launch(UnconfinedTestDispatcher(testScheduler)) {
                 hub.subscribe("news").take(2).toList()
             }
             // Subscriber is active (unconfined) before we publish.
-            hub.publish("news", RuntimeMessage(id = hub.nextId(), sender = null, receiver = null, type = "n", payload = "a"))
-            hub.publish("news", RuntimeMessage(id = hub.nextId(), sender = null, receiver = null, type = "n", payload = "b"))
+            hub.publish("news", MessageEnvelope(id = hub.nextId(), sender = null, receiver = null, type = "n", payload = "a"))
+            hub.publish("news", MessageEnvelope(id = hub.nextId(), sender = null, receiver = null, type = "n", payload = "b"))
             collected.join()
             assertTrue(collected.isCompleted)
         }
@@ -73,11 +73,11 @@ class IpcTest {
         val runtime = AgentRuntime()
         runtime.use {
             val to = RunId(7)
-            val box = it.ipc.mailbox(to)
+            val box = it.coordination.inbox(to)
             val item = ModelItem.user("attached context")
-            it.ipc.send(
-                RuntimeMessage(
-                    id = it.ipc.nextId(),
+            it.coordination.send(
+                MessageEnvelope(
+                    id = it.coordination.nextId(),
                     sender = RunId(1),
                     receiver = to,
                     type = "handoff",

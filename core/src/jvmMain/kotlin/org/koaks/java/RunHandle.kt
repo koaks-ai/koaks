@@ -4,17 +4,17 @@ import java.util.concurrent.CompletableFuture
 import kotlinx.coroutines.runBlocking
 import org.koaks.framework.loop.AgentResult
 import org.koaks.java.internal.virtualFuture
-import org.koaks.runtime.acb.AgentHandle as CoreAgentHandle
-import org.koaks.runtime.acb.LifecycleState
+import org.koaks.runtime.run.RunHandle as CoreRunHandle
+import org.koaks.runtime.run.RunState
 
 /** Java-friendly control handle for a spawned Agent execution. */
 class RunHandle private constructor(
-    private val delegate: CoreAgentHandle,
+    private val delegate: CoreRunHandle,
 ) {
     val runId: Long get() = delegate.runId.value
     val agentId: String get() = delegate.agentId.value
     val threadId: String? get() = delegate.threadId?.value
-    val state: LifecycleState get() = delegate.state
+    val state: RunState get() = delegate.state
     val isActive: Boolean get() = delegate.isActive
 
     @Volatile
@@ -41,9 +41,9 @@ class RunHandle private constructor(
 
     fun resume() = delegate.resume()
 
-    fun unwrap(): CoreAgentHandle = delegate
+    fun unwrap(): CoreRunHandle = delegate
 
     companion object {
-        internal fun from(delegate: CoreAgentHandle): RunHandle = RunHandle(delegate)
+        internal fun from(delegate: CoreRunHandle): RunHandle = RunHandle(delegate)
     }
 }

@@ -9,7 +9,7 @@ import org.koaks.java.internal.virtualFuture
 import org.koaks.java.json.JacksonType
 import org.koaks.runtime.AgentRuntime as CoreAgentRuntime
 import org.koaks.runtime.AgentRuntimeConfig
-import org.koaks.runtime.resource.Quota
+import org.koaks.runtime.policy.Quota
 import tools.jackson.core.type.TypeReference
 
 /** Java facade for an explicitly managed Koaks runtime. */

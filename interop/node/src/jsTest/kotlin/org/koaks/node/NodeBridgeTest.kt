@@ -108,7 +108,7 @@ class NodeBridgeTest {
     }
 
     @Test
-    fun runtimeIpcRejectsUnknownTargetsWithTypedError() = kotlinx.coroutines.test.runTest {
+    fun runtimeMessagingRejectsUnknownTargetsWithTypedError() = kotlinx.coroutines.test.runTest {
         val bridge = createKoaksBridge(
             configJson = "{}",
             invoke = { _, _ -> Promise.resolve("null") },
@@ -116,7 +116,7 @@ class NodeBridgeTest {
         )
         val response = nodeJson.parseToJsonElement(
             bridge.request(
-                "runtime.ipc.send",
+                "runtime.coordination.send",
                 """{"to_run_id":"999","type":"approval","payload":"allow"}""",
             ).await(),
         ).jsonObject

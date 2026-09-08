@@ -400,7 +400,7 @@ assistant messages and the final JSON. `none()` retains messages only during the
 
 Pass temporary background directly as `context = listOf(ModelItem.system("Background"))`
 to Runtime calls or child spawning. The Runtime snapshots the list when spawning and adds
-it to each model request for that run, without writing it to Memory. IPC messages carry
+it to each model request for that run, without writing it to Memory. Messages carry
 the same `context` list directly. Vector memory and shared context handles have been removed.
 
 ```kotlin
@@ -447,6 +447,13 @@ val result = spawnChild(
     conversation = ChildConversation.Ephemeral,
 ).await()
 ```
+
+The runtime API is organized around `RunHandle`, `RunSnapshot`, `RunState`, and
+`AgentContext`. Tools obtain the latter with `currentAgentContext()` and call
+`ctx.send/receive/request/reply/publish/subscribe`, `ctx.spawn`, or `ctx.withResource`.
+Application-level messaging is available through `runtime.coordination`; conversation
+inspection uses `runtime.conversationSnapshot(ThreadId(...))`. See the
+[runtime migration guide](docs/runtime-migration.md) for package and Node API changes.
 
 ### 8. Structured Output
 

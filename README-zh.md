@@ -376,7 +376,7 @@ Skill 资源保持延迟、只读。Koaks 通过一个受大小限制且支持�
 
 临时背景直接通过 `context = listOf(ModelItem.system("背景"))` 传给 Runtime 或子 Agent。
 Runtime 在 spawn 时复制列表，在该 run 的每次模型请求中加入背景，但不会把它写入 Memory。
-IPC 也直接携带 `context` 消息列表。向量 Memory 和共享上下文句柄已移除。
+运行间消息也直接携带 `context` 消息列表。向量 Memory 和共享上下文句柄已移除。
 
 ```kotlin
 val agent = agent {
@@ -418,6 +418,14 @@ val result = spawnChild(
     conversation = ChildConversation.Ephemeral,
 ).await()
 ```
+
+Runtime API 围绕 `RunHandle`、`RunSnapshot`、`RunState` 和 `AgentContext` 组织。
+工具通过 `currentAgentContext()` 获取当前运行上下文，直接调用
+`ctx.send/receive/request/reply/publish/subscribe`、`ctx.spawn` 和 `ctx.withResource`。
+应用层通过 `runtime.coordination` 访问消息协作，通过
+`runtime.conversationSnapshot(ThreadId(...))` 查看会话状态。
+本次为破坏性 API 变更，包名、Java 和 Node 的迁移方式见
+[Runtime 迁移说明](docs/runtime-migration.md)。
 
 ### 8. 结构化输出
 

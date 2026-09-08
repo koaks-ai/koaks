@@ -20,7 +20,9 @@ try {
     import {
       createRuntime,
       type AgentResult,
-      type IpcMessage,
+      type AgentContext,
+      type RunSnapshot,
+      type MessageEnvelope,
       type ModelProvider,
       type RunHandle,
       type ToolExecutionContext,
@@ -28,11 +30,14 @@ try {
     const provider: ModelProvider = { type: "openai", apiKey: "test", model: "fixture" };
     const runtime = createRuntime({ maxConcurrency: 1 });
     const result: Promise<AgentResult> | undefined = undefined;
-    async function useToolContext(context: ToolExecutionContext, handle: RunHandle, message: IpcMessage) {
+    async function useToolContext(context: ToolExecutionContext, handle: RunHandle, message: MessageEnvelope) {
+      const agentContext: AgentContext = context.runtime;
+      const snapshot: RunSnapshot = await handle.snapshot();
+      void agentContext; void snapshot;
       await context.runtime.resources.withResource("fixture", async () => undefined);
-      await context.runtime.ipc.reply(message, "ok", { context: [] });
+      await context.runtime.reply(message, "ok", { context: [] });
       await handle.release();
-      return runtime.ipc.request(context.runtime.runId, "approval", "allow", { timeoutMs: 100 });
+      return runtime.coordination.request(context.runtime.runId, "approval", "allow", { timeoutMs: 100 });
     }
     void provider; void runtime; void result; void useToolContext;
   `);

@@ -254,7 +254,7 @@ test("ESM facade runs, streams, reuses thread memory, and closes idempotently", 
   assert.ok(metrics.finished >= 1);
   assert.ok((await runtime.runs()).length >= 1);
   assert.equal((await runtime.snapshot(handle.runId)).runId, handle.runId);
-  assert.equal((await runtime.threadSnapshot("thread-1")).id, "thread-1");
+  assert.equal((await runtime.conversationSnapshot("thread-1")).id, "thread-1");
   assert.ok((await runtime.reap()) >= 1);
 
   const replacement = await runtime.replaceAgent({
@@ -554,7 +554,7 @@ test("JS tools receive parsed arguments and cancellation through AbortSignal", a
   await runtime.close();
 });
 
-test("Tool RuntimeContext serializes resources and expires after callback", async () => {
+test("Tool AgentContext serializes resources and expires after callback", async () => {
   const runtime = createRuntime({ maxConcurrency: 2 });
   let counter = 0;
   let capturedRuntime;
@@ -767,15 +767,15 @@ test("Agent IPC and Electron Runtime IPC exchange requests and progress events",
       name: "ipc_child",
       inputSchema: { type: "object" },
       execute: async (_arguments, { runtime: toolRuntime }) => {
-        const message = await toolRuntime.ipc.receive();
-        await toolRuntime.ipc.reply(message, `child:${message.payload}`);
+        const message = await toolRuntime.receive();
+        await toolRuntime.reply(message, `child:${message.payload}`);
         return "child replied";
       },
     }, {
       name: "ipc_silent",
       inputSchema: { type: "object" },
       execute: async (_arguments, { runtime: toolRuntime, signal }) => {
-        await toolRuntime.ipc.receive();
+        await toolRuntime.receive();
         return await new Promise((_resolve, reject) => {
           signal.addEventListener("abort", () => reject(new Error("silent child cancelled")), { once: true });
         });
@@ -794,7 +794,7 @@ test("Agent IPC and Electron Runtime IPC exchange requests and progress events",
             failurePolicy: "capture",
             conversation: { type: "ephemeral" },
           });
-          const response = await toolRuntime.ipc.request(handle.runId, "ping", "hello", { timeoutMs: 2_000 });
+          const response = await toolRuntime.request(handle.runId, "ping", "hello", { timeoutMs: 2_000 });
           await handle.result();
           return response.payload;
         },
@@ -804,10 +804,10 @@ test("Agent IPC and Electron Runtime IPC exchange requests and progress events",
         inputSchema: { type: "object" },
         execute: async (_arguments, { runtime: toolRuntime }) => {
           operatorRunResolve(toolRuntime.runId);
-          const message = await toolRuntime.ipc.receive();
-          await toolRuntime.ipc.reply(message, `approved:${message.payload}`);
+          const message = await toolRuntime.receive();
+          await toolRuntime.reply(message, `approved:${message.payload}`);
           try {
-            await toolRuntime.ipc.reply(message, "duplicate");
+            await toolRuntime.reply(message, "duplicate");
           } catch (error) {
             duplicateReplyCode = error?.code;
           }
@@ -823,7 +823,7 @@ test("Agent IPC and Electron Runtime IPC exchange requests and progress events",
             conversation: { type: "ephemeral" },
           });
           try {
-            await toolRuntime.ipc.request(handle.runId, "never_replied", "wait", { timeoutMs: 5 });
+            await toolRuntime.request(handle.runId, "never_replied", "wait", { timeoutMs: 5 });
             return "unexpected";
           } catch (error) {
             return error?.code ?? "unknown";
@@ -841,7 +841,7 @@ test("Agent IPC and Electron Runtime IPC exchange requests and progress events",
           ipcCancelSignal = signal;
           ipcCancelRunId = toolRuntime.runId;
           ipcCancelStartedResolve();
-          await toolRuntime.ipc.receive();
+          await toolRuntime.receive();
           return await new Promise((_resolve, reject) => {
             signal.addEventListener("abort", () => reject(new Error("IPC wait cancelled")), { once: true });
           });
@@ -853,7 +853,7 @@ test("Agent IPC and Electron Runtime IPC exchange requests and progress events",
         execute: async (_arguments, { runtime: toolRuntime, signal }) => {
           receiveCancelSignal = signal;
           receiveCancelStartedResolve();
-          await toolRuntime.ipc.receive();
+          await toolRuntime.receive();
           return "unexpected";
         },
       },
@@ -861,7 +861,7 @@ test("Agent IPC and Electron Runtime IPC exchange requests and progress events",
         name: "publish_progress",
         inputSchema: { type: "object" },
         execute: async (_arguments, { runtime: toolRuntime }) => {
-          await toolRuntime.ipc.publish("progress", "status", "halfway", { priority: 3 });
+          await toolRuntime.publish("progress", "status", "halfway", { priority: 3 });
           return "published";
         },
       },
@@ -869,7 +869,7 @@ test("Agent IPC and Electron Runtime IPC exchange requests and progress events",
         name: "subscribe_progress",
         inputSchema: { type: "object" },
         execute: async (_arguments, { runtime: toolRuntime }) => {
-          const iterator = toolRuntime.ipc.subscribe("operator:progress")[Symbol.asyncIterator]();
+          const iterator = toolRuntime.subscribe("operator:progress")[Symbol.asyncIterator]();
           const next = iterator.next();
           toolSubscriptionResolve();
           try {
@@ -888,7 +888,7 @@ test("Agent IPC and Electron Runtime IPC exchange requests and progress events",
 
   const operatorAgentRun = agent.run("ipc operator");
   const runId = await operatorRun;
-  const operatorResponse = await runtime.ipc.request(runId, "approval", "yes", { timeoutMs: 2_000 });
+  const operatorResponse = await runtime.coordination.request(runId, "approval", "yes", { timeoutMs: 2_000 });
   assert.equal(operatorResponse.payload, "approved:yes");
   assert.equal((await operatorAgentRun).status, "completed");
   assert.equal(duplicateReplyCode, "ipc_reply_invalid");
@@ -901,7 +901,7 @@ test("Agent IPC and Electron Runtime IPC exchange requests and progress events",
   const cancelled = agent.run("ipc cancel", { signal: cancelController.signal });
   await ipcCancelStarted;
   const requestController = new AbortController();
-  const cancelledRequest = runtime.ipc.request(ipcCancelRunId, "cancelled_request", "wait", {
+  const cancelledRequest = runtime.coordination.request(ipcCancelRunId, "cancelled_request", "wait", {
     signal: requestController.signal,
   });
   await new Promise((resolve) => setTimeout(resolve, 5));
@@ -918,7 +918,7 @@ test("Agent IPC and Electron Runtime IPC exchange requests and progress events",
   await assert.rejects(receiveCancelled, (error) => error?.code === "cancelled");
   assert.equal(receiveCancelSignal.aborted, true);
 
-  const progress = runtime.ipc.subscribe("progress", { highWaterMark: 1 });
+  const progress = runtime.coordination.subscribe("progress", { highWaterMark: 1 });
   const progressIterator = progress[Symbol.asyncIterator]();
   const progressNext = progressIterator.next();
   assert.equal((await agent.run("publish progress")).status, "completed");
@@ -930,11 +930,11 @@ test("Agent IPC and Electron Runtime IPC exchange requests and progress events",
   const subscribedRun = agent.run("subscribe progress");
   await toolSubscriptionReady;
   await new Promise((resolve) => setTimeout(resolve, 10));
-  await runtime.ipc.publish("operator:progress", "status", "operator update");
+  await runtime.coordination.publish("operator:progress", "status", "operator update");
   assert.match((await subscribedRun).text, /operator update/);
 
   await assert.rejects(
-    runtime.ipc.send("999999", "missing"),
+    runtime.coordination.send("999999", "missing"),
     (error) => error?.code === "ipc_target_unavailable",
   );
   await runtime.close();

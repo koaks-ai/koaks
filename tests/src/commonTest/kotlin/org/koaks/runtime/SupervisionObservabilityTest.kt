@@ -18,8 +18,8 @@ import org.koaks.framework.loop.done
 import org.koaks.framework.loop.fail
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Usage
-import org.koaks.runtime.fault.SupervisionPolicy
-import org.koaks.runtime.observe.RuntimeEvent
+import org.koaks.runtime.policy.SupervisionPolicy
+import org.koaks.runtime.observability.RuntimeEvent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

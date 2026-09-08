@@ -116,7 +116,7 @@ bounded run journal (1024 events by default), so lossless streams may produce a
 `history_gap` sooner. Text, reasoning, and completed tool calls are not duplicated in
 the nested `model` events.
 
-## JavaScript tools and RuntimeContext
+## JavaScript tools and AgentContext
 
 ```ts
 const controller = new AbortController();
@@ -140,7 +140,7 @@ const agent = await runtime.createAgent({
         const context = [
           { type: "message", role: "user", content: [{ type: "text", text: JSON.stringify(record) }] },
         ];
-        await toolRuntime.ipc.publish("desktop:progress", "record_loaded", id, {
+        await toolRuntime.publish("desktop:progress", "record_loaded", id, {
           context,
         });
         return record;
@@ -154,12 +154,12 @@ const result = await agent.run("Read record 42", { signal: controller.signal });
 
 Tool arguments are parsed from the model's JSON before `execute` is called. The
 execution context exposes both the model `callId` and Koaks `executionId`, while
-the Tool RuntimeContext exposes the current run metadata, shared resource locks,
-Agent IPC with directly attached context, and true child spawning. If the run
+the Tool AgentContext exposes the current run metadata, shared resource locks,
+run messaging with directly attached context, and true child spawning. If the run
 is cancelled, the tool's `AbortSignal` is aborted and pending runtime operations
 are cancelled.
 
-The Tool RuntimeContext expires when `execute` returns. Child `RunHandle` objects created by the callback remain valid. Release saved handles
+The Tool AgentContext expires when `execute` returns. Child `RunHandle` objects created by the callback remain valid. Release saved handles
 when the application no longer needs them:
 
 ```ts
@@ -214,28 +214,28 @@ hooks: [{
 Koaks does not persist approval requests or prescribe permission modes. The
 application owns those records, notifications, timeouts, and UI decisions.
 
-## Runtime IPC operator
+## Runtime coordination
 
 Electron Main can act as an external operator without pretending to be an
 Agent run. It can send or request messages and subscribe to progress topics:
 
 ```ts
-const progress = runtime.ipc.subscribe("desktop:progress");
+const progress = runtime.coordination.subscribe("desktop:progress");
 void (async () => {
   for await (const message of progress) {
     mainWindow.webContents.send("agent:progress", message);
   }
 })();
 
-const reply = await runtime.ipc.request(activeRunId, "approval", "allow", {
+const reply = await runtime.coordination.request(activeRunId, "approval", "allow", {
   timeoutMs: 30_000,
   signal: shutdownController.signal,
 });
 ```
 
-Inside a Tool, `ipc.receive()` returns an opaque request message that can be
-passed once to `ipc.reply()`. Correlation tokens are kept inside the SDK, so a
-caller cannot forge or reuse a reply. IPC is in-memory within one Koaks Runtime;
+Inside a Tool, `toolRuntime.receive()` returns an opaque request message that can be
+passed once to `toolRuntime.reply()`. Correlation tokens are kept inside the SDK, so a
+caller cannot forge or reuse a reply. Messaging is in-memory within one Koaks Runtime;
 applications still forward messages themselves when Electron Main and a
 `utilityProcess` use different processes.
 

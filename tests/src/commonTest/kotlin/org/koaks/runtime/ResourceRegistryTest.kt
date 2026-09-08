@@ -11,8 +11,8 @@ import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
-import org.koaks.runtime.resource.AccessMode
-import org.koaks.runtime.resource.withRuntimeResource
+import org.koaks.runtime.coordination.AccessMode
+import org.koaks.runtime.coordination.withSharedResource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -37,7 +37,7 @@ class ResourceRegistryTest {
         }
         tools {
             tool<NoArgs>(name = "incr", description = "increment the shared counter") {
-                withRuntimeResource("shared:counter", AccessMode.WRITE) {
+                withSharedResource("shared:counter", AccessMode.WRITE) {
                     val cur = Shared.counter
                     yield() // interleave point: unsafe without the lock
                     Shared.counter = cur + 1
@@ -66,7 +66,7 @@ class ResourceRegistryTest {
     fun standalone_resource_helper_runs_without_a_runtime_context() = runTest {
         // No runtime context: the helper still executes private, uncontended IO.
         Shared.counter = 0
-        org.koaks.runtime.resource.withRuntimeResource("standalone") {
+        org.koaks.runtime.coordination.withSharedResource("standalone") {
             Shared.counter++
         }
         assertEquals(1, Shared.counter)

@@ -221,7 +221,7 @@ export interface ToolExecutionContext {
   readonly toolName: string;
   readonly correlationId?: string;
   readonly signal: AbortSignal;
-  readonly runtime: ToolRuntimeContext;
+  readonly runtime: AgentContext;
   reportProgress(progress: ToolProgress): Promise<void>;
 }
 
@@ -230,13 +230,12 @@ export type ToolProgress =
   | { type: "status"; message: string }
   | { type: "custom"; kind: string; payload: JsonValue };
 
-export interface ToolRuntimeContext {
+export interface AgentContext extends RunMessaging {
   readonly runId: string;
   readonly agentId: string;
   readonly threadId?: string;
   readonly correlationId?: string;
   readonly resources: ToolResources;
-  readonly ipc: ToolIpc;
   spawnChild(agent: KoaksAgent, input: string, options?: ChildSpawnOptions): Promise<RunHandle>;
 }
 
@@ -260,7 +259,7 @@ export interface ChildSpawnOptions {
     | { type: "thread"; threadId: string };
 }
 
-export interface IpcMessage {
+export interface MessageEnvelope {
   readonly id: string;
   readonly senderRunId?: string;
   readonly receiverRunId?: string;
@@ -271,39 +270,39 @@ export interface IpcMessage {
   readonly deadlineEpochMs?: number;
 }
 
-export interface IpcSendOptions {
+export interface MessageSendOptions {
   context?: ModelItem[];
   priority?: number;
   deadlineEpochMs?: number;
 }
 
-export interface IpcRequestOptions extends IpcSendOptions {
+export interface MessageRequestOptions extends MessageSendOptions {
   timeoutMs?: number;
 }
 
-export interface RuntimeIpcRequestOptions extends IpcRequestOptions {
+export interface RuntimeMessageRequestOptions extends MessageRequestOptions {
   signal?: AbortSignal;
 }
 
-export interface IpcSubscriptionOptions {
+export interface MessageSubscriptionOptions {
   highWaterMark?: number;
   signal?: AbortSignal;
 }
 
-export interface ToolIpc {
-  send(toRunId: string, type: string, payload?: string, options?: IpcSendOptions): Promise<void>;
-  receive(): Promise<IpcMessage>;
-  request(toRunId: string, type: string, payload?: string, options?: IpcRequestOptions): Promise<IpcMessage>;
-  reply(message: IpcMessage, payload?: string, options?: Pick<IpcSendOptions, "context">): Promise<void>;
-  publish(topic: string, type: string, payload?: string, options?: IpcSendOptions): Promise<void>;
-  subscribe(topic: string, options?: IpcSubscriptionOptions): AsyncIterable<IpcMessage>;
+export interface RunMessaging {
+  send(toRunId: string, type: string, payload?: string, options?: MessageSendOptions): Promise<void>;
+  receive(): Promise<MessageEnvelope>;
+  request(toRunId: string, type: string, payload?: string, options?: MessageRequestOptions): Promise<MessageEnvelope>;
+  reply(message: MessageEnvelope, payload?: string, options?: Pick<MessageSendOptions, "context">): Promise<void>;
+  publish(topic: string, type: string, payload?: string, options?: MessageSendOptions): Promise<void>;
+  subscribe(topic: string, options?: MessageSubscriptionOptions): AsyncIterable<MessageEnvelope>;
 }
 
-export interface RuntimeIpc {
-  send(toRunId: string, type: string, payload?: string, options?: IpcSendOptions): Promise<void>;
-  request(toRunId: string, type: string, payload?: string, options?: RuntimeIpcRequestOptions): Promise<IpcMessage>;
-  publish(topic: string, type: string, payload?: string, options?: IpcSendOptions): Promise<void>;
-  subscribe(topic: string, options?: IpcSubscriptionOptions): AsyncIterable<IpcMessage>;
+export interface RuntimeCoordination {
+  send(toRunId: string, type: string, payload?: string, options?: MessageSendOptions): Promise<void>;
+  request(toRunId: string, type: string, payload?: string, options?: RuntimeMessageRequestOptions): Promise<MessageEnvelope>;
+  publish(topic: string, type: string, payload?: string, options?: MessageSendOptions): Promise<void>;
+  subscribe(topic: string, options?: MessageSubscriptionOptions): AsyncIterable<MessageEnvelope>;
 }
 
 export interface ToolDefinition<TArguments = Record<string, unknown>> {
@@ -541,7 +540,7 @@ export interface RunSnapshot {
   error?: AgentError;
 }
 
-export interface ThreadSnapshot {
+export interface ConversationSnapshot {
   id: string;
   memoryProviderId: string;
   participants: string[];
@@ -690,14 +689,14 @@ export interface KoaksAgent {
 }
 
 export interface KoaksRuntime {
-  readonly ipc: RuntimeIpc;
+  readonly coordination: RuntimeCoordination;
   createAgent(config: AgentConfig): Promise<KoaksAgent>;
   replaceAgent(config: AgentConfig): Promise<KoaksAgent>;
   events(options?: StreamOptions): AsyncIterable<RuntimeEvent>;
   metrics(): Promise<RuntimeMetrics>;
   runs(): Promise<RunSnapshot[]>;
   snapshot(runId: string): Promise<RunSnapshot | undefined>;
-  threadSnapshot(threadId: string): Promise<ThreadSnapshot | undefined>;
+  conversationSnapshot(threadId: string): Promise<ConversationSnapshot | undefined>;
   submit(tasks: TaskDefinition[]): Promise<Record<string, AgentResult>>;
   spawnSupervised(agent: KoaksAgent, input: string, policy?: SupervisionPolicy): Promise<SupervisedHandle>;
   reap(options?: ReapOptions): Promise<number>;

@@ -14,13 +14,13 @@ import org.koaks.framework.loop.done
 import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Usage
 import org.koaks.runtime.AgentRuntime
-import org.koaks.runtime.acb.RunEventPayload
+import org.koaks.runtime.run.RunEventPayload
 
 /**
  * Streaming the output of an AgentRuntime instance — WITHOUT any API keys.
  *
  * `run` is the foreground result path, `stream` is the foreground stdout path, and `spawn`
- * is the background process path returning an AgentHandle. The streaming flow is cold: each
+ * is the background process path returning an RunHandle. The streaming flow is cold: each
  * collection creates one runtime-managed instance, and stopping collection cancels its owned run.
  *
  * Consumer speed does not backpressure execution. For detached observation, use `spawn` and

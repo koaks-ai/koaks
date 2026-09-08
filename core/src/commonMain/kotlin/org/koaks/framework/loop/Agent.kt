@@ -28,7 +28,7 @@ import org.koaks.framework.skill.SkillDescriptor
 import org.koaks.framework.tool.ToolRegistry
 import org.koaks.framework.transport.ModelTransport
 import org.koaks.runtime.AgentRuntime
-import org.koaks.runtime.acb.AgentHandle
+import org.koaks.runtime.run.RunHandle
 
 class Agent internal constructor(
     val id: AgentId,
@@ -83,9 +83,9 @@ class Agent internal constructor(
         input: String,
         thread: ThreadId? = null,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
-    ): AgentHandle = AgentRuntime.default.spawn(this, input, thread = thread, eventDetail = eventDetail)
+    ): RunHandle = AgentRuntime.default.spawn(this, input, thread = thread, eventDetail = eventDetail)
 
-    fun spawn(input: String, thread: String, eventDetail: EventDetail = EventDetail.SEMANTIC): AgentHandle =
+    fun spawn(input: String, thread: String, eventDetail: EventDetail = EventDetail.SEMANTIC): RunHandle =
         spawn(input, ThreadId(thread), eventDetail)
 
     fun resume(thread: ThreadId, eventDetail: EventDetail = EventDetail.SEMANTIC): Flow<AgentEvent> =

@@ -27,11 +27,11 @@ import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.TerminationReason
 import org.koaks.framework.tool.ToolProgress
 import org.koaks.json.KoaksWireJson
-import org.koaks.runtime.acb.AcbSnapshot
-import org.koaks.runtime.acb.RunEventEnvelope
-import org.koaks.runtime.observe.RuntimeEvent
-import org.koaks.runtime.observe.RuntimeMetrics
-import org.koaks.runtime.thread.ThreadSnapshot
+import org.koaks.runtime.run.RunSnapshot
+import org.koaks.runtime.run.RunEventEnvelope
+import org.koaks.runtime.observability.RuntimeEvent
+import org.koaks.runtime.observability.RuntimeMetrics
+import org.koaks.runtime.conversation.ConversationSnapshot
 
 internal val nodeJson = KoaksWireJson.json
 
@@ -106,9 +106,9 @@ internal fun JsonObject.toCheckpoint(): ProviderCheckpoint = KoaksWireJson.decod
 internal fun MemoryView.toJson(): JsonObject = KoaksWireJson.encodeMemoryView(this)
 internal fun JsonObject.toMemoryView(): MemoryView = KoaksWireJson.decodeMemoryView(this)
 internal fun AgentState.toJson(): JsonObject = KoaksWireJson.encodeAgentState(this)
-internal fun AcbSnapshot.toJson(): JsonObject = KoaksWireJson.encodeAcbSnapshot(this)
+internal fun RunSnapshot.toJson(): JsonObject = KoaksWireJson.encodeRunSnapshot(this)
 internal fun RunEventEnvelope.toJson(): JsonObject = KoaksWireJson.encodeRunEvent(this)
-internal fun ThreadSnapshot.toJson(): JsonObject = KoaksWireJson.encodeThreadSnapshot(this)
+internal fun ConversationSnapshot.toJson(): JsonObject = KoaksWireJson.encodeConversationSnapshot(this)
 internal fun RuntimeMetrics.toJson(): JsonObject = KoaksWireJson.encodeRuntimeMetrics(this)
 internal fun RuntimeEvent.toJson(): JsonObject = KoaksWireJson.encodeRuntimeEvent(this)
 internal fun ModelEvent.toJson(): JsonObject = KoaksWireJson.encodeModelEvent(this)

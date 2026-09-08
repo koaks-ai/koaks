@@ -7,8 +7,8 @@ import kotlinx.coroutines.withContext
 import org.koaks.framework.loop.AgentExecutionContext
 import org.koaks.framework.loop.AgentId
 import org.koaks.framework.tool.ToolInvocationContext
-import org.koaks.runtime.ipc.RuntimeMessage
-import org.koaks.runtime.resource.RuntimeContext
+import org.koaks.runtime.coordination.MessageEnvelope
+import org.koaks.runtime.coordination.AgentContext
 
 internal class NodeBridgeException(
     val code: String,
@@ -23,12 +23,12 @@ internal class NodeBridgeException(
 internal class ToolExecutionRegistry {
     internal class Execution internal constructor(
         val id: String,
-        val runtimeContext: RuntimeContext,
+        val runtimeContext: AgentContext,
         val executionContext: AgentExecutionContext,
         val invocationContext: ToolInvocationContext?,
     ) {
         private val jobs = mutableSetOf<Job>()
-        private val replyTokens = mutableMapOf<String, RuntimeMessage>()
+        private val replyTokens = mutableMapOf<String, MessageEnvelope>()
         private var replySequence = 0L
         var active: Boolean = true
             private set
@@ -43,14 +43,14 @@ internal class ToolExecutionRegistry {
             jobs -= job
         }
 
-        fun issueReplyToken(message: RuntimeMessage): String {
+        fun issueReplyToken(message: MessageEnvelope): String {
             checkActive()
             val token = "reply-${id}-${++replySequence}"
             replyTokens[token] = message
             return token
         }
 
-        fun takeReplyToken(token: String): RuntimeMessage =
+        fun takeReplyToken(token: String): MessageEnvelope =
             replyTokens.remove(token)
                 ?: throw NodeBridgeException("ipc_reply_invalid", "IPC reply token is invalid or was already used")
 
@@ -65,7 +65,7 @@ internal class ToolExecutionRegistry {
 
         fun checkActive() {
             if (!active) {
-                throw NodeBridgeException("tool_context_expired", "Tool RuntimeContext '$id' has expired")
+                throw NodeBridgeException("tool_context_expired", "Tool AgentContext '$id' has expired")
             }
         }
     }
@@ -74,7 +74,7 @@ internal class ToolExecutionRegistry {
     private var sequence = 0L
 
     fun open(
-        runtimeContext: RuntimeContext,
+        runtimeContext: AgentContext,
         executionContext: AgentExecutionContext,
         invocationContext: ToolInvocationContext? = null,
     ): Execution {
@@ -122,5 +122,5 @@ internal class ToolExecutionRegistry {
 
     private fun execution(id: String): Execution =
         executions[id]
-            ?: throw NodeBridgeException("tool_context_expired", "Tool RuntimeContext '$id' has expired")
+            ?: throw NodeBridgeException("tool_context_expired", "Tool AgentContext '$id' has expired")
 }

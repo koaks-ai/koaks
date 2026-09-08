@@ -16,11 +16,11 @@ import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
 import org.koaks.framework.policy.TerminationReason
 import org.koaks.framework.tool.ToolProgress
-import org.koaks.runtime.acb.AcbSnapshot
-import org.koaks.runtime.acb.RunEventEnvelope
-import org.koaks.runtime.observe.RuntimeEvent
-import org.koaks.runtime.observe.RuntimeMetrics
-import org.koaks.runtime.thread.ThreadSnapshot
+import org.koaks.runtime.run.RunSnapshot
+import org.koaks.runtime.run.RunEventEnvelope
+import org.koaks.runtime.observability.RuntimeEvent
+import org.koaks.runtime.observability.RuntimeMetrics
+import org.koaks.runtime.conversation.ConversationSnapshot
 
 /**
  * Stable platform-neutral facade for the Koaks interop JSON wire format.
@@ -44,8 +44,8 @@ object KoaksWireJson {
 
     fun encodeRunEvent(envelope: RunEventEnvelope): JsonObject = envelope.toWireJson()
     fun encodeRuntimeEvent(event: RuntimeEvent): JsonObject = event.toWireJson()
-    fun encodeAcbSnapshot(snapshot: AcbSnapshot): JsonObject = snapshot.toWireJson()
-    fun encodeThreadSnapshot(snapshot: ThreadSnapshot): JsonObject = snapshot.toWireJson()
+    fun encodeRunSnapshot(snapshot: RunSnapshot): JsonObject = snapshot.toWireJson()
+    fun encodeConversationSnapshot(snapshot: ConversationSnapshot): JsonObject = snapshot.toWireJson()
     fun encodeRuntimeMetrics(metrics: RuntimeMetrics): JsonObject = metrics.toWireJson()
 
     fun encodeModelItem(item: ModelItem): JsonObject = item.toWireJson()

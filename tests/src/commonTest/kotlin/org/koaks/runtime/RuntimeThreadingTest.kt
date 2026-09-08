@@ -31,11 +31,11 @@ import org.koaks.framework.model.ModelEvent
 import org.koaks.framework.model.Role
 import org.koaks.framework.model.ToolCall
 import org.koaks.framework.model.Usage
-import org.koaks.runtime.acb.LifecycleState
-import org.koaks.runtime.observe.RuntimeEvent
-import org.koaks.runtime.resource.spawnChild
-import org.koaks.runtime.resource.ChildConversation
-import org.koaks.runtime.thread.ThreadMemoryPolicyConflictException
+import org.koaks.runtime.run.RunState
+import org.koaks.runtime.observability.RuntimeEvent
+import org.koaks.runtime.coordination.spawnChild
+import org.koaks.runtime.policy.ChildConversation
+import org.koaks.runtime.conversation.ThreadMemoryPolicyConflictException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -165,7 +165,7 @@ class RuntimeThreadingTest {
             )
             assertEquals(emptyList(), unusedMemory.stored())
 
-            val snapshot = runtime.threadSnapshot(ThreadId("shared-thread"))
+            val snapshot = runtime.conversationSnapshot(ThreadId("shared-thread"))
             assertEquals(setOf(first.id, second.id), snapshot?.participants)
         }
     }
@@ -204,8 +204,8 @@ class RuntimeThreadingTest {
                 runtime.run(first, "one", thread = "commit-failure-thread")
             }
             assertEquals("b", runtime.run(second, "two", thread = "commit-failure-thread").text)
-            assertEquals(LifecycleState.FAILED, runtime.runs.single { it.agentId == first.id }.state)
-            assertEquals(LifecycleState.FINISHED, runtime.runs.single { it.agentId == second.id }.state)
+            assertEquals(RunState.FAILED, runtime.runs.single { it.agentId == first.id }.state)
+            assertEquals(RunState.FINISHED, runtime.runs.single { it.agentId == second.id }.state)
         }
     }
 
@@ -236,14 +236,14 @@ class RuntimeThreadingTest {
 
             val queued = runtime.spawn(second, "two", thread = "queue-thread")
             runCurrent()
-            assertEquals(LifecycleState.THREAD_QUEUED, queued.state)
+            assertEquals(RunState.THREAD_QUEUED, queued.state)
 
             queued.cancel("not needed")
             runCurrent()
             queued.join()
 
             assertEquals(1, memory.loadCalls)
-            assertEquals(emptyList(), runtime.threadSnapshot(ThreadId("queue-thread"))?.queuedRuns)
+            assertEquals(emptyList(), runtime.conversationSnapshot(ThreadId("queue-thread"))?.queuedRuns)
 
             release.complete(Unit)
             advanceUntilIdle()
@@ -328,7 +328,7 @@ class RuntimeThreadingTest {
     }
 
     @Test
-    fun handle_acb_and_runtime_events_expose_all_identity_layers() = runTest {
+    fun handle_run_and_runtime_events_expose_all_identity_layers() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val seen = mutableListOf<RuntimeEvent>()
 
@@ -389,7 +389,7 @@ class RuntimeThreadingTest {
             id = "inherited-child"
             model { custom(blockingModel("child", childStarted, releaseChild)) }
         }
-        var childHandle: org.koaks.runtime.acb.AgentHandle? = null
+        var childHandle: org.koaks.runtime.run.RunHandle? = null
         val parent = agent {
             id = "inherited-parent"
             model {
@@ -420,8 +420,8 @@ class RuntimeThreadingTest {
 
             val queued = runtime.spawn(next, "next input", thread = "inherited-thread")
             runCurrent()
-            assertEquals(LifecycleState.WAITING, root.state)
-            assertEquals(LifecycleState.THREAD_QUEUED, queued.state)
+            assertEquals(RunState.WAITING, root.state)
+            assertEquals(RunState.THREAD_QUEUED, queued.state)
             assertFalse(nextStarted.isCompleted)
 
             val inherited = childHandle!!
@@ -521,7 +521,7 @@ class RuntimeThreadingTest {
     @Test
     fun child_can_switch_to_another_thread_and_gets_a_new_run() = runTest {
         val child = simpleAgent("cross-thread-child", "child-answer")
-        var childHandle: org.koaks.runtime.acb.AgentHandle? = null
+        var childHandle: org.koaks.runtime.run.RunHandle? = null
         val parent = agent {
             id = "cross-thread-parent"
             model {
