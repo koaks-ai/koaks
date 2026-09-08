@@ -7,6 +7,7 @@ data class ExecutionIdentity(
     val runId: String,
     val agentId: String,
     val threadId: String? = null,
+    val turnId: String? = null,
     val correlationId: String? = null,
 )
 

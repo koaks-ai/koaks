@@ -10,7 +10,7 @@ import org.koaks.framework.model.isSystem
 import org.koaks.framework.model.isUserTurnBoundary
 
 /**
- * Sliding-window memory (core default). Persists every appended item faithfully;
+ * Sliding-window memory (core default). Persists every committed turn faithfully;
  * trimming happens only on [load].
  *
  * **Turn-atomic trimming**: the window unit is a complete user-bounded turn, NOT a
@@ -19,17 +19,24 @@ import org.koaks.framework.model.isUserTurnBoundary
  */
 class WindowMemory(
     private val maxMessages: Int,
+    override val retention: TurnRetention = TurnRetention.Interrupted,
 ) : ThreadMemory {
 
     private val mutex = Mutex()
     private val items = mutableListOf<ModelItem>()
+    private var latestCheckpoint: org.koaks.framework.model.ProviderCheckpoint? = null
 
     override suspend fun load(query: List<ModelItem>): MemoryView = mutex.withLock {
-        MemoryView(transcript = dropTurnsToFit(items, maxMessages).toList())
+        MemoryView(
+            transcript = dropTurnsToFit(items, maxMessages),
+            checkpoint = latestCheckpoint,
+        )
     }
 
-    override suspend fun append(item: ModelItem): Unit = mutex.withLock {
-        items.upsert(item)
+    override suspend fun commit(turn: ConversationTurn): Unit = mutex.withLock {
+        if (!shouldRetain(turn, retention, sideEffects = turnHasSideEffects(turn))) return
+        items.addAll(turn.items)
+        latestCheckpoint = turn.checkpoint
     }
 
     internal companion object {
@@ -86,7 +93,8 @@ class WindowMemory(
 
 class WindowMemoryProvider(
     val maxMessages: Int,
+    val retention: TurnRetention = TurnRetention.Interrupted,
 ) : MemoryProvider {
     override val id: MemoryProviderId = MemoryProviderId("window:$maxMessages")
-    override suspend fun open(thread: ThreadId): ThreadMemory = WindowMemory(maxMessages)
+    override suspend fun open(thread: ThreadId): ThreadMemory = WindowMemory(maxMessages, retention)
 }
