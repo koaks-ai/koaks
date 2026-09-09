@@ -1,5 +1,21 @@
 # Runtime model and migration
 
+## Messaging and step-hook migration
+
+See [Agent messaging and step hooks](agent-messaging.md) for the new APIs.
+Children now default to `ChildConversation.Isolated`; explicitly request
+`Inherit` to retain shared parent memory. A parent cannot spawn a second active
+child with the same AgentId. New sealed variants are `ModelItem.IncomingMessage`,
+`ChildConversation.Isolated`, and `RunEventPayload.Message`. Run snapshots add
+`summary` and `acceptingMessages`.
+
+`RunHandle.send` and child `sendTo` automatically inject conversation input;
+existing `AgentContext.send/receive/request/reply` retain manual programmatic
+messaging semantics. Install `tools { childAgents() }` to expose child listing and
+sending to the model. `hook { onStep { ... } }` edits memory at loop boundaries.
+
+## Run model
+
 Koaks models an immutable `Agent` definition, individual runs, shared conversations,
 and collaboration between runs. `AgentRuntime` is the application entry point;
 `RunHandle` controls one execution and `RunSnapshot` describes it. An `AgentContext`

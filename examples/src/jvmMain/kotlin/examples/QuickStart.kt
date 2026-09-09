@@ -70,6 +70,7 @@ fun main() = runBlocking {
             printer.print(result)
         }
     }
+
 }
 
 private fun getWeather(city: String): String = "$city 天气: 晴天，适合出门。"

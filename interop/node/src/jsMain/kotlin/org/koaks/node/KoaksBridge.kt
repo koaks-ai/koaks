@@ -40,6 +40,7 @@ import org.koaks.runtime.run.RunId
 import org.koaks.runtime.policy.CircuitBreakerPolicy
 import org.koaks.runtime.run.SupervisedHandle
 import org.koaks.runtime.policy.SupervisionPolicy
+import org.koaks.runtime.coordination.SendResult
 import org.koaks.runtime.coordination.MessageEnvelope
 import org.koaks.runtime.coordination.AccessMode
 import org.koaks.runtime.policy.ChildConversation
@@ -80,6 +81,7 @@ class KoaksBridge internal constructor(
         runtime = AgentRuntime {
             maxConcurrency = config.intOrNull("max_concurrency") ?: Int.MAX_VALUE
             runEventBufferCapacity = config.intOrNull("run_event_buffer_capacity") ?: 1024
+            inboxCapacity = config.intOrNull("inbox_capacity") ?: 64
             defaultQuota = config.objectOrNull("default_quota")?.toQuota() ?: Quota.UNLIMITED
             config.objectOrNull("default_memory")?.let {
                 defaultMemoryProvider = buildMemory(it, callbacks, runtimeOwned)
@@ -138,6 +140,27 @@ class KoaksBridge internal constructor(
                 JsonNull
             }
 
+            "handle.send" -> {
+                val target = handle(params).handle
+                val execution = params.stringOrNull("execution_id")
+                val result = if (execution == null) target.send(params.string("message")) else
+                    toolExecutions.execute(execution) { target.send(params.string("message")) }
+                result.toJson()
+            }
+            "tool.list_children" -> toolExecutions.execute(params.string("execution_id")) { execution ->
+                buildJsonArray { execution.runtimeContext.listChildren().forEach { child ->
+                    add(buildJsonObject {
+                        put("agent_id", JsonPrimitive(child.agentId.value))
+                        put("name", JsonPrimitive(child.name))
+                        child.summary?.let { put("summary", JsonPrimitive(it)) }
+                        put("state", JsonPrimitive(child.state.name.lowercase()))
+                        put("accepting_messages", JsonPrimitive(child.acceptingMessages))
+                    })
+                } }
+            }
+            "tool.send_to_child" -> toolExecutions.execute(params.string("execution_id")) { execution ->
+                execution.runtimeContext.sendTo(AgentId(params.string("agent_id")), params.string("message")).toJson()
+            }
             "handle.result" -> handleResult(params)
             "handle.cancel" -> {
                 handle(params).handle.cancel(params.stringOrNull("reason"))
@@ -478,8 +501,9 @@ class KoaksBridge internal constructor(
                 ?: throw NodeBridgeException("cross_runtime_agent", "spawnChild requires an Agent from the same KoaksRuntime")
             val options = params.objectOrNull("options") ?: JsonObject(emptyMap())
             val conversation = when (val configured = options.objectOrNull("conversation")) {
-                null -> ChildConversation.Inherit
+                null -> ChildConversation.Isolated
                 else -> when (configured.stringOrNull("type") ?: "inherit") {
+                    "isolated" -> ChildConversation.Isolated
                     "inherit" -> ChildConversation.Inherit
                     "ephemeral" -> ChildConversation.Ephemeral
                     "thread" -> ChildConversation.Thread(ThreadId(configured.string("thread_id")))
@@ -499,6 +523,7 @@ class KoaksBridge internal constructor(
                 context = options.context(),
                 failurePolicy = failurePolicy,
                 conversation = conversation,
+                summary = options.stringOrNull("summary"),
             )
             val handleId = nextId("handle")
             handles[handleId] = HandleRecord(child.key, handle, execution.runtimeContext.runId)
@@ -832,4 +857,11 @@ private fun errorJson(error: Throwable): JsonObject = buildJsonObject {
     put("message", JsonPrimitive(error.message ?: error::class.simpleName ?: "unknown error"))
     val stack = (error as? NodeCallbackException)?.callbackStack
     stack?.takeIf { it.isNotBlank() }?.let { put("stack", JsonPrimitive(it)) }
+}
+
+private fun SendResult.toJson(): JsonObject = buildJsonObject {
+    when (val result = this@toJson) {
+        is SendResult.Accepted -> { put("status", JsonPrimitive("accepted")); put("message_id", JsonPrimitive(result.messageId.toString())) }
+        is SendResult.Rejected -> { put("status", JsonPrimitive("rejected")); put("reason", JsonPrimitive(result.reason)) }
+    }
 }

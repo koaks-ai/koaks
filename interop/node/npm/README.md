@@ -316,3 +316,22 @@ examples are included in `examples/electron-main.ts` and
 During shutdown, stop accepting application requests, cancel or await active
 handles, close agents, and finally close the runtime. `close()` is idempotent and
 cancels active streams, handles, tools, HTTP transports, memory, and MCP resources.
+# Messaging and step hooks
+
+`await handle.send(text)` queues input for the next model request. It returns
+`{ status: "accepted", messageId }` or `{ status: "rejected", reason }`.
+Agent configuration supports `summary` and `childAgentTools: true`, which installs
+`list_children` and `send_to_child`. Tool runtime contexts also expose
+`listChildren()` and `sendTo(agentId, text)`.
+
+Child conversations now default to isolated memory. Request
+`conversation: { type: "inherit" }` to explicitly share the parent conversation.
+Only one unfinished child per AgentId is allowed under each parent run.
+
+Use `hooks: [{ onStep(ctx) { ... } }]` for `before_model_request`,
+`after_model_response`, and `after_step` callbacks. A callback returns
+`{ append: ModelItem[], decision: { action: "continue" } }`; same-ref appends update
+items. Decisions may also be `{ action: "stop", reason }` or
+`{ action: "suspend", reason }`. Resume a suspended run with `handle.resume()`.
+`contextBudget: { maxInputTokens, count(request) }` checks the final request using
+a caller-provided token counter. Existing programmatic messaging stays separate.

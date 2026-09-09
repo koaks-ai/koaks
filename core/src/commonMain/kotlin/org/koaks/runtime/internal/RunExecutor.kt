@@ -68,7 +68,7 @@ internal class RunExecutor(
                 gate.attachLease(lease)
                 record.markRunning()
                 emit(RuntimeEvent.Running(record.runId, agent.id, thread, agent.name))
-                runWithQuota(
+                try { runWithQuota(
                     agent,
                     input.takeUnless { resume },
                     contextPrefix,
@@ -79,7 +79,9 @@ internal class RunExecutor(
                     sink,
                     structuredSpec,
                     eventDetail,
-                )
+                ) } finally {
+                    kotlinx.coroutines.currentCoroutineContext()[org.koaks.framework.loop.RunStepServices]?.close?.invoke()
+                }
             }
             record.sealChildren()
             if (!record.snapshot.state.isTerminal && tree.hasActiveChildren(record.runId)) {
@@ -246,7 +248,8 @@ internal class RunExecutor(
                 if (control.isPaused) {
                     record.markPaused()
                     emit(RuntimeEvent.Suspended(record.runId, agent.id, record.snapshot.threadId))
-                    control.awaitResumed()
+                    val exec = kotlinx.coroutines.currentCoroutineContext()[org.koaks.framework.loop.AgentExecutionContext]
+                    if (exec != null) exec.waiting { control.awaitResumed() } else control.awaitResumed()
                     record.markRunning()
                     emit(RuntimeEvent.Resumed(record.runId, agent.id, record.snapshot.threadId))
                 }

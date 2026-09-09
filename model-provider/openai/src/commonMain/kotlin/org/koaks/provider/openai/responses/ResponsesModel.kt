@@ -16,6 +16,7 @@ import org.koaks.framework.model.Annotation
 import org.koaks.framework.model.ContentPart
 import org.koaks.framework.model.ItemRef
 import org.koaks.framework.model.ModelCapabilities
+import org.koaks.framework.model.asMessage
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.OutputFormat
@@ -199,6 +200,7 @@ fun toInput(items: List<ModelItem>): JsonElement {
 }
 
 private fun ModelItem.toInputElement(calls: Map<ItemRef, ModelItem.ToolCall>): JsonElement = when (this) {
+    is ModelItem.IncomingMessage -> asMessage().toInputElement(calls)
     is ModelItem.Message -> buildJsonObject {
         put("type", JsonPrimitive(ResponsesItemTypes.MESSAGE))
         put("role", JsonPrimitive(role.wireName()))

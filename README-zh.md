@@ -18,6 +18,7 @@
 - **一等公民的工具**: 用带类型的输入内联定义工具，其 JSON Schema 由你的 `@Serializable` 类自动生成。同时支持类式工具、JVM 的 `@Tool` 注解，以及 **MCP** 工具的懒发现。
 - **可组合的 Skills**: 从 `SKILL.md` 目录或自定义来源加载可复用 instructions、只读资源和工具。
 - **可插拔的记忆**: 滑动窗口、摘要式或向量式记忆。每条完成的消息即时写入；取消会保留已经写出的内容。
+- **运行中通信**: `RunHandle.send()` 的消息在下次模型请求前自动写入 Memory；`tools { childAgents() }` 提供子 Agent 协作工具。step Hook 支持 Memory 编辑、停止和暂停。参见[使用说明](docs/agent-messaging.md)。
 - **结构化输出**: `agent.run<T>()` 直接返回解码后的强类型结果。
 - **天生健壮**: 模型回退（fallback）、重试/替换错误策略、步数与 token 预算，以及 Around 中间件（缓存、护栏、人工审批）。
 - **Kotlin Multiplatform**: 一套代码同时支持 JVM、JS 与 macOS（Apple Silicon）。

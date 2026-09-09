@@ -22,6 +22,19 @@ sealed interface ModelItem {
             get() = content.filterIsInstance<ContentPart.Text>().joinToString("") { it.text }
     }
 
+    /** A delivered runtime message, persisted independently of ordinary user turns. */
+    data class IncomingMessage(
+        override val ref: ItemRef,
+        override val nativeId: ProviderScopedId? = null,
+        val messageId: Long,
+        val sender: String?,
+        val receiver: String,
+        val text: String,
+        val timestampEpochMillis: Long,
+        val type: String = "message",
+        val correlationId: String? = null,
+    ) : ModelItem
+
     data class ToolCall(
         override val ref: ItemRef = ItemRef.generate("call"),
         override val nativeId: ProviderScopedId? = null,
@@ -83,6 +96,7 @@ sealed interface ModelItem {
 }
 
 fun ModelItem.displayText(): String = when (this) {
+    is ModelItem.IncomingMessage -> asMessage().text
     is ModelItem.Message -> text
     is ModelItem.ToolCall -> "tool call $name($arguments)"
     is ModelItem.ToolResult -> output
@@ -95,3 +109,13 @@ fun ModelItem.isUserTurnBoundary(): Boolean =
 
 fun ModelItem.isSystem(): Boolean =
     this is ModelItem.Message && role == Role.SYSTEM
+
+/** Shared provider projection. Runtime input never acquires system-level authority. */
+fun ModelItem.IncomingMessage.asMessage(): ModelItem.Message = ModelItem.user(
+    "[Message $messageId from ${sender ?: "external caller"} to $receiver; type=$type]\n$text",
+    ref = ref,
+)
+
+fun List<ModelItem>.projectIncomingMessages(): List<ModelItem> = map {
+    if (it is ModelItem.IncomingMessage) it.asMessage() else it
+}

@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -20,6 +21,13 @@ import org.koaks.framework.middleware.ModelCallPhase
 import org.koaks.framework.middleware.StepContext
 import org.koaks.framework.middleware.ToolContext
 import org.koaks.framework.middleware.ToolDecision
+import org.koaks.framework.middleware.StepHookContext
+import org.koaks.framework.middleware.StepMemory
+import org.koaks.framework.middleware.StepDecision
+import org.koaks.framework.middleware.StepPhase
+import org.koaks.framework.policy.StepPolicyEvaluator
+import org.koaks.framework.policy.TerminationReason
+import org.koaks.framework.model.takeIfValidFor
 import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.EventDetail
 import org.koaks.framework.model.ModelEvent
@@ -38,6 +46,37 @@ import org.koaks.framework.transport.StreamIdleTimeoutException
 import kotlin.time.Duration.Companion.milliseconds
 
 internal class AgentRunner(private val agent: Agent) {
+    private val policies = StepPolicyEvaluator(agent)
+
+    private suspend fun stepHooks(state: AgentState, memory: ThreadMemory, stage: StepPhase,
+        phase: ModelCallPhase = ModelCallPhase.Normal, retry: Int = 0,
+    ) {
+        val coroutine = currentCoroutineContext()
+        val services = coroutine[RunStepServices]
+        services?.pause?.invoke(null)
+        for (hook in services?.hooks.orEmpty() + agent.hooks) {
+            val access = StepMemory(memory)
+            val decision = try {
+                hook.onStep(StepHookContext(state, stage, phase, access, coroutine[AgentExecutionContext]?.identity, retry))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                if (hook in agent.hooks) throw StepHookFailed(failure)
+                throw failure
+            } finally { access.close() }
+            when (decision) {
+                StepDecision.Continue -> Unit
+                is StepDecision.Stop -> throw StepStopped(decision.reason)
+                is StepDecision.Suspend -> requireNotNull(services) { "step suspension requires runtime execution" }.pause(decision.reason)
+            }
+        }
+    }
+
+    private fun enforce(decision: TerminationDecision) {
+        if (decision is TerminationDecision.Stop) throw StepStopped(decision.reason)
+    }
+
+    private suspend fun finishIfEmpty(): Boolean = currentCoroutineContext()[RunStepServices]?.finishIfEmpty?.invoke() ?: true
 
     private val logger = KotlinLogging.logger {}
 
@@ -57,6 +96,8 @@ internal class AgentRunner(private val agent: Agent) {
         instructions: String?,
         eventDetail: EventDetail,
         context: List<ModelItem> = emptyList(),
+        initialState: AgentState? = null,
+        closeOnCompletion: Boolean = true,
         emit: suspend (AgentEvent) -> Unit,
     ): LoopRun {
         val outputMutex = Mutex()
@@ -70,9 +111,19 @@ internal class AgentRunner(private val agent: Agent) {
         val builder = TurnBuilder()
         var query: ModelItem? = null
         val persistenceMutex = Mutex()
-        var state = AgentState(instructions = instructions, activeAgentName = agent.name)
+        var state = initialState ?: AgentState(instructions = instructions, activeAgentName = agent.name)
         var retries = 0
         var stepKey = newIdempotencyKey()
+        var previousRequest: ModelRequest? = null
+
+        fun identifyRequest(request: ModelRequest): ModelRequest {
+            val previous = previousRequest
+            val next = if (previous != null && previous.idempotencyKey == request.idempotencyKey &&
+                previous != request) request.copy(idempotencyKey = newIdempotencyKey()) else request
+            stepKey = next.idempotencyKey
+            previousRequest = next
+            return next
+        }
 
         suspend fun snapshot(): List<ModelItem> =
             memory.load(listOfNotNull(query)).forOnlineUse().transcript
@@ -97,25 +148,19 @@ internal class AgentRunner(private val agent: Agent) {
 
         try {
             while (true) {
-                val items = snapshot()
-                when (val decision = agent.terminationDecision(state)) {
-                    TerminationDecision.Continue -> {}
-                    is TerminationDecision.Stop -> {
-                        out(AgentEvent.Terminated(items.lastAssistantOrEmpty(), state.usage, decision.reason))
-                        return LoopRun(state, items)
-                    }
-                }
-
-                agent.listeners.forEach { it.onStep(state) }
-
                 var emittedText = false
                 var terminalResponse: ModelResponse? = null
                 try {
+                    enforce(policies.beforeModel(state))
+                    stepHooks(state, memory, StepPhase.BeforeModelRequest, retry = retries)
+                    val items = snapshot()
+                    agent.listeners.forEach { it.onStep(state) }
                     val requestItems = agent.applyPrefill(context + items)
                     val source = modelSource(
                         state,
                         agent.toRequest(state, requestItems, stepKey, OutputFormat.Text, eventDetail),
                         ModelCallPhase.Normal,
+                        ::identifyRequest,
                     )
                     builder.reset()
                     source.collect { event ->
@@ -136,6 +181,7 @@ internal class AgentRunner(private val agent: Agent) {
                                 val response = event.response
                                 terminalResponse = response
                                 state = state.addUsage(response.usage).withCheckpoint(response.checkpoint)
+                                currentCoroutineContext()[RunStepServices]?.observeUsage?.invoke(state.usage)
                                 if (response is ModelResponse.Failed) {
                                     throw ModelFailure(response.error)
                                 }
@@ -150,6 +196,10 @@ internal class AgentRunner(private val agent: Agent) {
                         }
                     }
                     checkNotNull(terminalResponse) { "model stream ended without a terminal response" }
+                } catch (stopped: StepStopped) {
+                    throw stopped
+                } catch (failure: StepHookFailed) {
+                    throw failure
                 } catch (t: Throwable) {
                     val error: AgentError = when (t) {
                         is ModelFailure -> t.error
@@ -192,6 +242,9 @@ internal class AgentRunner(private val agent: Agent) {
                     ?: builder.assistantMessage()
                 out(AgentEvent.StepCompleted(state.step))
 
+                stepHooks(state, memory, StepPhase.AfterModelResponse)
+                enforce(policies.afterModel(state))
+
                 val calls = modelOutput.filterIsInstance<ModelItem.ToolCall>().map { it.toDispatchCall() }
                 val actionResults = dispatchClientActions(modelOutput)
 
@@ -199,15 +252,19 @@ internal class AgentRunner(private val agent: Agent) {
                 builder.reset()
 
                 if (response is ModelResponse.Incomplete) {
+                    stepHooks(state, memory, StepPhase.AfterStep)
                     out(AgentEvent.Incomplete(assistant, state.usage, response.reason))
                     return LoopRun(state, snapshot())
                 }
 
                 if (calls.isEmpty() && actionResults.isEmpty()) {
+                    stepHooks(state, memory, StepPhase.AfterStep)
+                    if (closeOnCompletion && !finishIfEmpty()) continue
                     out(AgentEvent.Completed(assistant, state.usage))
                     return LoopRun(state, snapshot())
                 }
                 if (calls.isEmpty()) {
+                    stepHooks(state, memory, StepPhase.AfterStep)
                     continue
                 }
 
@@ -284,10 +341,22 @@ internal class AgentRunner(private val agent: Agent) {
                     val output = (direct as ToolOutcome.Success).output
                     val message = ModelItem.assistant(output)
                     persist(message)
+                    stepHooks(state, memory, StepPhase.AfterStep)
+                    if (closeOnCompletion && !finishIfEmpty()) return@let
                     out(AgentEvent.Completed(message, state.usage))
                     return LoopRun(state, snapshot())
                 }
+                if (outcomes.none { it is ToolOutcome.Success && it.returnDirectly }) {
+                    stepHooks(state, memory, StepPhase.AfterStep)
+                }
             }
+        } catch (stopped: StepStopped) {
+            val items = snapshot()
+            out(AgentEvent.Terminated(items.lastAssistantOrEmpty(), state.usage, stopped.reason))
+            return LoopRun(state, items)
+        } catch (failure: StepHookFailed) {
+            out(AgentEvent.Failed(failure.cause!!.toAgentError(), state.usage))
+            return LoopRun(state, snapshot())
         } catch (cancelled: CancellationException) {
             persistPartial()
             withContext(NonCancellable) {
@@ -341,8 +410,10 @@ internal class AgentRunner(private val agent: Agent) {
         context: List<ModelItem>,
         emit: suspend (AgentEvent) -> Unit,
     ): AgentResult {
+        var accumulated: AgentState? = null
+        while (true) {
         val events = mutableListOf<AgentEvent>()
-        val loop = runLoop(memory, instructions, eventDetail, context = context) { event ->
+        val loop = runLoop(memory, instructions, eventDetail, context = context, initialState = accumulated, closeOnCompletion = false) { event ->
             events += event
             when (event) {
                 is AgentEvent.TextDelta,
@@ -367,14 +438,16 @@ internal class AgentRunner(private val agent: Agent) {
                 "Return ONLY a JSON value matching this schema for '${spec.schemaName}', with no prose or code fences:\n${spec.schema}",
             )
         }
-        val loaded = memory.load(emptyList()).forOnlineUse().transcript
-        val convo = context + loaded + listOfNotNull(formatInstruction)
-        val finalizationState = loop.state
+        var finalizationState = loop.state
         val builder = TurnBuilder()
-        val request = agent.toRequest(finalizationState, convo, newIdempotencyKey(), format, eventDetail).copy(tools = emptyList())
-
+        val buffered = mutableListOf<AgentEvent>()
         var finalizationResponse: ModelResponse? = null
         try {
+            enforce(policies.beforeModel(finalizationState))
+            stepHooks(finalizationState, memory, StepPhase.BeforeModelRequest, ModelCallPhase.StructuredFinalization)
+            val loaded = memory.load(emptyList()).forOnlineUse().transcript
+            val convo = context + loaded + listOfNotNull(formatInstruction)
+            val request = agent.toRequest(finalizationState, convo, newIdempotencyKey(), format, eventDetail).copy(tools = emptyList())
             modelSource(finalizationState, request, ModelCallPhase.StructuredFinalization)
                 .collect { event ->
                     builder.observe(event)
@@ -383,7 +456,7 @@ internal class AgentRunner(private val agent: Agent) {
                     }
                     agent.listeners.forEach { it.onModelEvent(event) }
                     when (event) {
-                        is ModelEvent.TextDelta -> emitStructuredEvent(AgentEvent.TextDelta(event.text, event.itemRef), emit)
+                        is ModelEvent.TextDelta -> buffered.add(AgentEvent.TextDelta(event.text, event.itemRef))
                         is ModelEvent.ReasoningDelta -> emitStructuredEvent(
                             AgentEvent.ReasoningDelta(event.text, event.itemRef, event.kind),
                             emit,
@@ -396,6 +469,8 @@ internal class AgentRunner(private val agent: Agent) {
                                 )
                             }
                             finalizationResponse = event.response
+                            finalizationState = finalizationState.addUsage(event.response.usage).withCheckpoint(event.response.checkpoint)
+                            currentCoroutineContext()[RunStepServices]?.observeUsage?.invoke(finalizationState.usage)
                             if (event.response is ModelResponse.Failed) {
                                 throw ModelFailure(event.response.error)
                             }
@@ -409,6 +484,15 @@ internal class AgentRunner(private val agent: Agent) {
                     }
                 }
             checkNotNull(finalizationResponse) { "structured model stream ended without a terminal response" }
+            finalizationState = finalizationState.advanceModelStep()
+            emitStructuredEvent(AgentEvent.StepCompleted(finalizationState.step), emit)
+            stepHooks(finalizationState, memory, StepPhase.AfterModelResponse, ModelCallPhase.StructuredFinalization)
+            enforce(policies.afterModel(finalizationState))
+            stepHooks(finalizationState, memory, StepPhase.AfterStep, ModelCallPhase.StructuredFinalization)
+        } catch (stopped: StepStopped) {
+            val message = memory.load(emptyList()).transcript.lastAssistantOrEmpty()
+            emitStructuredEvent(AgentEvent.Terminated(message, finalizationState.usage, stopped.reason), emit)
+            return AgentResult.Terminated(message, finalizationState.usage, stopped.reason)
         } catch (c: CancellationException) {
             withContext(NonCancellable) {
                 builder.flushPartial()
@@ -431,14 +515,19 @@ internal class AgentRunner(private val agent: Agent) {
             .lastOrNull { it.role == Role.ASSISTANT }
             ?: builder.assistantMessage()
         val usage = base.usage + finalResponse.usage
-        emitStructuredEvent(AgentEvent.StepCompleted(loop.state.step + 1), emit)
         if (finalResponse is ModelResponse.Incomplete) {
             emitStructuredEvent(AgentEvent.Incomplete(finalAssistant, usage, finalResponse.reason), emit)
             return AgentResult.Incomplete(finalAssistant, usage, finalResponse.reason)
         }
+        if (!finishIfEmpty()) {
+            accumulated = finalizationState
+            continue
+        }
+        buffered.forEach { emitStructuredEvent(it, emit) }
         val message = finalAssistant
         emitStructuredEvent(AgentEvent.Completed(message, usage), emit)
         return AgentResult.Completed(message, usage)
+        }
     }
 
     private fun structuredFormat(spec: OutputSpec): OutputFormat {
@@ -460,11 +549,24 @@ internal class AgentRunner(private val agent: Agent) {
         state: AgentState,
         request: ModelRequest,
         phase: ModelCallPhase,
+        identifyRequest: (ModelRequest) -> ModelRequest = { it },
     ): Flow<ModelEvent> {
         var currentRequest = request
         for (hook in agent.hooks) {
             currentRequest = hook.onModelRequest(StepContext(state, currentRequest, phase))
         }
+        val checkpoint = currentRequest.checkpoint
+        currentRequest = currentRequest.copy(checkpoint = checkpoint.takeIfValidFor(
+            currentRequest.items.take(checkpoint?.basis?.itemCount ?: 0),
+            kotlinx.datetime.Clock.System.now().toEpochMilliseconds(),
+        ))
+        agent.contextBudget?.let { budget ->
+            val tokens = budget.counter.count(currentRequest)
+            require(tokens >= 0) { "input token count must not be negative" }
+            if (tokens > budget.maxInputTokens) throw StepStopped(TerminationReason.Custom("context budget exceeded: $tokens > ${budget.maxInputTokens}"))
+        }
+        currentRequest = identifyRequest(currentRequest)
+        currentCoroutineContext().ensureActive()
         val ctx = StepContext(state, currentRequest, phase)
         var source = agent.model.stream(currentRequest)
         for (hook in agent.hooks.asReversed()) {
@@ -490,18 +592,15 @@ internal class AgentRunner(private val agent: Agent) {
     }
 }
 
+private class StepStopped(val reason: TerminationReason) : RuntimeException()
+private class StepHookFailed(cause: Throwable) : RuntimeException("step hook failed", cause)
+
 private val CLIENT_ACTION_KINDS = setOf(
     "computer_call",
     "mcp_approval_request",
     "local_shell_call",
     "custom_tool_call",
 )
-
-private suspend fun Agent.terminationDecision(state: AgentState): TerminationDecision =
-    when (val budgetDecision = runBudget.evaluate(state)) {
-        TerminationDecision.Continue -> suspendTermination?.evaluate(state) ?: termination.evaluate(state)
-        is TerminationDecision.Stop -> budgetDecision
-    }
 
 internal fun Throwable.toAgentError(): AgentError = when (this) {
     is org.koaks.framework.model.AgentFrameworkException -> error

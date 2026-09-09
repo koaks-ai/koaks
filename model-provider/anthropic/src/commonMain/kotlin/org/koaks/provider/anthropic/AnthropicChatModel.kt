@@ -5,6 +5,7 @@ import org.koaks.framework.model.AgentError
 import org.koaks.framework.model.AgentFrameworkException
 import org.koaks.framework.model.ContentPart
 import org.koaks.framework.model.ModelCapabilities
+import org.koaks.framework.model.projectIncomingMessages
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.ProviderId
@@ -85,10 +86,11 @@ data class AnthropicParams(
 
 fun toAnthropicMessages(items: List<ModelItem>): List<AnthropicMessage> {
     val out = mutableListOf<AnthropicMessage>()
-    val nonSystem = items.filterNot { it is ModelItem.Message && it.role == Role.SYSTEM }
+    val nonSystem = items.projectIncomingMessages().filterNot { it is ModelItem.Message && it.role == Role.SYSTEM }
     var i = 0
     while (i < nonSystem.size) {
         when (val item = nonSystem[i]) {
+            is ModelItem.IncomingMessage -> error("incoming message must be projected")
             is ModelItem.ToolResult -> {
                 val blocks = mutableListOf<AnthropicContentBlock>()
                 while (i < nonSystem.size && nonSystem[i] is ModelItem.ToolResult) {
@@ -166,6 +168,7 @@ private fun consumeAssistantTurn(
                 i++
             }
             is ModelItem.ReasoningSummary -> i++
+            is ModelItem.IncomingMessage -> error("incoming message must be projected")
             is ModelItem.ToolResult -> break
         }
     }

@@ -16,6 +16,7 @@ import org.koaks.runtime.internal.RunControl
 import org.koaks.runtime.internal.RunJournal
 import org.koaks.runtime.internal.RunRecord
 import org.koaks.runtime.policy.ChildFailurePolicy
+import org.koaks.runtime.coordination.SendResult
 
 /**
  * A handle to one run. Lets callers await the result, observe [RunSnapshot], and control execution
@@ -32,6 +33,7 @@ class RunHandle internal constructor(
     private val deferred: Deferred<AgentResult>,
     private val failurePolicy: ChildFailurePolicy,
     private val eventJournal: RunJournal,
+    private val sendMessage: (suspend (String) -> SendResult)? = null,
 ) {
     private val failureObserved = MutableStateFlow(false)
     private val unhandledFailureReported = MutableStateFlow(false)
@@ -50,6 +52,10 @@ class RunHandle internal constructor(
 
     /** Whether the underlying coroutine is still active. */
     val isActive: Boolean get() = deferred.isActive
+
+    /** Sends a message to this run's inbox. A null sender denotes an external caller. */
+    suspend fun send(message: String): SendResult =
+        sendMessage?.invoke(message) ?: SendResult.Rejected("message sending is unavailable")
 
     /**
      * Awaits the terminal [AgentResult]. Caller cancellation is always rethrown. When a

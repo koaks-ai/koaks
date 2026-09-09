@@ -205,6 +205,9 @@ function registerToolHook(
 
 function normalizeHook(hook: HookDefinition, registry: CallbackRegistry, lifetime: string[]): Record<string, unknown> {
   const value: Record<string, unknown> = {};
+  if (hook.onStep !== undefined) value.step_callback_id = registry.registerInvoke(
+    async (payload) => (await hook.onStep?.(payload as import("./types.js").StepHookContext)) ?? null, lifetime,
+  );
   if (hook.beforeModel !== undefined) value.before_model_callback_id = registry.registerInvoke(
     (payload) => hook.beforeModel?.(payload as Record<string, import("./types.js").JsonValue>) ?? null,
     lifetime,
@@ -267,6 +270,10 @@ export function prepareAgentConfig(
   }
   if (config.mcp !== undefined) value.mcp = config.mcp.map((entry) => normalizeMcp(entry, registry, callbackIds));
   if (config.hooks !== undefined) value.hooks = config.hooks.map((hook) => normalizeHook(hook, registry, callbackIds));
+  if (config.contextBudget !== undefined) value.context_budget = {
+    max_input_tokens: config.contextBudget.maxInputTokens,
+    counter_callback_id: registry.registerInvoke((payload) => config.contextBudget!.count(payload as Record<string, import("./types.js").JsonValue>), callbackIds),
+  };
   if (config.listeners !== undefined) {
     value.listeners = config.listeners.map((listener) => ({
       callback_id: registry.registerNotify((payload) => listener(payload as Record<string, import("./types.js").JsonValue>), callbackIds),

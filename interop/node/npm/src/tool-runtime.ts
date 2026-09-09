@@ -135,6 +135,16 @@ class AgentContextImpl implements AgentContext {
     return this.host.createRunHandle(descriptor);
   }
 
+  async listChildren(): Promise<import("./types.js").ChildAgentInfo[]> {
+    this.assertActive();
+    return this.host.client.request("tool.list_children", { executionId: this.executionId });
+  }
+
+  async sendTo(agentId: string, message: string): Promise<import("./types.js").SendResult> {
+    this.assertActive();
+    return this.host.client.request("tool.send_to_child", { executionId: this.executionId, agentId, message });
+  }
+
   expire(): void {
     this.active = false;
   }

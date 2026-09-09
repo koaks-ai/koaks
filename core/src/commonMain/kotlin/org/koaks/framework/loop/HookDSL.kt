@@ -1,6 +1,8 @@
 package org.koaks.framework.loop
 
 import kotlinx.coroutines.flow.Flow
+import org.koaks.framework.middleware.StepHookContext
+import org.koaks.framework.middleware.StepDecision
 import org.koaks.framework.middleware.Hook
 import org.koaks.framework.middleware.StepContext
 import org.koaks.framework.middleware.ToolContext
@@ -12,6 +14,10 @@ import org.koaks.framework.tool.ToolOutcome
 
 @AgentDSL
 class HookScope {
+    private val stepHooks = mutableListOf<suspend (StepHookContext) -> StepDecision>()
+
+    fun onStep(block: suspend (StepHookContext) -> StepDecision) { stepHooks += block }
+
     private val modelBefores = mutableListOf<suspend (StepContext) -> ModelRequest>()
     private val modelAfters = mutableListOf<(StepContext, Flow<ModelEvent>) -> Flow<ModelEvent>>()
     private val toolBefores = mutableListOf<suspend (ToolContext) -> ToolDecision>()
@@ -26,6 +32,19 @@ class HookScope {
     }
 
     internal fun build(): Hook = object : Hook {
+        override suspend fun onStep(ctx: StepHookContext): StepDecision {
+            for (hook in stepHooks) {
+                val decision = hook(ctx)
+                if (decision is StepDecision.Suspend) {
+                    val services = kotlinx.coroutines.currentCoroutineContext()[RunStepServices]
+                    requireNotNull(services) { "step suspension requires runtime execution" }.pause(decision.reason)
+                    continue
+                }
+                if (decision != StepDecision.Continue) return decision
+            }
+            return StepDecision.Continue
+        }
+
         override suspend fun onModelRequest(ctx: StepContext): ModelRequest {
             var current = ctx.request
             for (before in modelBefores) {

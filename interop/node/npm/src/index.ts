@@ -75,6 +75,9 @@ interface StreamMessage<T> {
 }
 
 class RunHandleImpl implements RunHandle {
+  async send(message: string): Promise<import("./types.js").SendResult> {
+    return this.runtime.client.request("handle.send", { handleId: this.handleId, message, executionId: currentToolExecutionId() });
+  }
   readonly runId: string;
   readonly agentId: string;
   readonly threadId?: string;

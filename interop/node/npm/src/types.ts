@@ -31,6 +31,7 @@ interface ModelItemBase {
 }
 
 export type ModelItem =
+  | (ModelItemBase & { type: "incoming_message"; messageId: string; sender?: string; receiver: string; text: string; timestampEpochMs: number; messageType: string; correlationId?: string })
   | (ModelItemBase & {
       type: "message";
       role: "system" | "user" | "assistant" | "tool";
@@ -231,6 +232,8 @@ export type ToolProgress =
   | { type: "custom"; kind: string; payload: JsonValue };
 
 export interface AgentContext extends RunMessaging {
+  listChildren(): Promise<ChildAgentInfo[]>;
+  sendTo(agentId: string, message: string): Promise<SendResult>;
   readonly runId: string;
   readonly agentId: string;
   readonly threadId?: string;
@@ -249,11 +252,13 @@ export interface ToolResources {
 
 
 export interface ChildSpawnOptions {
+  summary?: string;
   priority?: number;
   quota?: Quota;
   context?: ModelItem[];
   failurePolicy?: "propagate" | "capture";
   conversation?:
+    | { type: "isolated" }
     | { type: "inherit" }
     | { type: "ephemeral" }
     | { type: "thread"; threadId: string };
@@ -428,11 +433,30 @@ export type ToolDecision =
   | { action: "replace"; call: ToolCall };
 
 export interface HookDefinition {
+  onStep?(context: StepHookContext): StepHookResult | void | Promise<StepHookResult | void>;
   beforeModel?(context: Record<string, JsonValue>): Record<string, JsonValue> | null | Promise<Record<string, JsonValue> | null>;
   afterModelEvent?(context: ModelEventHookContext): ModelEventDecision | Promise<ModelEventDecision>;
   beforeTool?(context: Record<string, JsonValue>, execution: HookExecutionContext): ToolDecision | null | Promise<ToolDecision | null>;
   afterTool?(context: Record<string, JsonValue>, execution: HookExecutionContext): Record<string, JsonValue> | null | Promise<Record<string, JsonValue> | null>;
 }
+
+export interface StepHookContext {
+  state: Record<string, JsonValue>;
+  stage: "before_model_request" | "after_model_response" | "after_step";
+  phase: string;
+  retry: number;
+  memory: { transcript: ModelItem[]; checkpoint?: ProviderCheckpoint };
+  execution?: { runId: string; agentId: string; threadId?: string; correlationId?: string };
+}
+
+/** Appends are applied in order before the decision. Same-ref items update memory. */
+export interface StepHookResult {
+  append?: ModelItem[];
+  decision?: { action: "continue" } | { action: "stop" | "suspend"; reason: string };
+}
+
+export type SendResult = { status: "accepted"; messageId: string } | { status: "rejected"; reason: string };
+export interface ChildAgentInfo { agentId: string; name: string; summary?: string; state: string; acceptingMessages: boolean }
 
 export interface HookExecutionContext {
   readonly runId?: string;
@@ -447,6 +471,9 @@ export type InstructionSegment =
   | { type: "dynamic"; resolve(): string | null | Promise<string | null> };
 
 export interface AgentConfig {
+  summary?: string;
+  childAgentTools?: boolean;
+  contextBudget?: { maxInputTokens: number; count(request: Record<string, JsonValue>): number | Promise<number> };
   id: string;
   name?: string;
   instructions?: string | InstructionSegment[];
@@ -523,6 +550,8 @@ export type StructuredAgentResult<T> =
   | Exclude<AgentResult, { status: "completed" }>;
 
 export interface RunSnapshot {
+  summary?: string;
+  acceptingMessages: boolean;
   runId: string;
   agentId: string;
   agentName: string;
@@ -632,6 +661,7 @@ export interface RuntimeOptions {
   defaultMemory?: MemoryConfig;
   highWaterMark?: number;
   runEventBufferCapacity?: number;
+  inboxCapacity?: number;
 }
 
 interface RunEventBase {
@@ -644,6 +674,7 @@ interface RunEventBase {
 }
 
 export type RunEvent =
+  | (RunEventBase & { kind: "message"; status: "accepted" | "injected" | "unprocessed"; messageId: string; reason?: string })
   | (RunEventBase & { kind: "agent"; event: AgentEvent })
   | (RunEventBase & { kind: "lifecycle"; event: RuntimeEvent })
   | (RunEventBase & { kind: "history_gap"; requestedAfter: number; oldestAvailable: number });
@@ -653,6 +684,7 @@ export interface RunEventStreamOptions extends StreamOptions {
 }
 
 export interface RunHandle {
+  send(message: string): Promise<SendResult>;
   readonly runId: string;
   readonly agentId: string;
   readonly threadId?: string;

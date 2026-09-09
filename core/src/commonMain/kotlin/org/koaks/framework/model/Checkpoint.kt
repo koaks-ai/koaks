@@ -22,6 +22,16 @@ private fun Buffer.writeItem(item: ModelItem) {
     writeString(item.ref.value)
     writeNativeId(item.nativeId)
     when (item) {
+        is ModelItem.IncomingMessage -> {
+            writeString("incoming_message")
+            writeLong(item.messageId)
+            writeString(item.sender)
+            writeString(item.receiver)
+            writeString(item.text)
+            writeLong(item.timestampEpochMillis)
+            writeString(item.type)
+            writeString(item.correlationId)
+        }
         is ModelItem.Message -> {
             writeString("message")
             writeString(item.role.name)

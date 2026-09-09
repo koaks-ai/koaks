@@ -37,6 +37,11 @@ import org.koaks.runtime.run.RunHandle
 import org.koaks.runtime.run.RunId
 import org.koaks.runtime.run.RunSnapshot
 import org.koaks.runtime.run.RunState
+import org.koaks.runtime.coordination.SendResult
+import org.koaks.framework.loop.RunStepServices
+import org.koaks.framework.model.ItemRef
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.datetime.Clock
 
 /** Creates and registers runs and owns the runtime's coroutine and service lifetime. */
 internal class RunManager(config: AgentRuntimeConfig) : AutoCloseable {
@@ -72,6 +77,35 @@ internal class RunManager(config: AgentRuntimeConfig) : AutoCloseable {
 
     private val registrations = MutableStateFlow<Map<AgentId, AgentRegistration>>(emptyMap())
     private val closed = MutableStateFlow(false)
+    private val inboxCapacity = config.inboxCapacity.also { require(it > 0) }
+    private val inboxes = MutableStateFlow<Map<RunId, ConversationInbox>>(emptyMap())
+    private val childClaims = MutableStateFlow<Set<Pair<RunId, AgentId>>>(emptySet())
+
+    private fun claimChild(parent: RunId, agent: AgentId) {
+        val key = parent to agent
+        while (true) {
+            val current = childClaims.value
+            check(key !in current) { "child agent '${agent.value}' already has an active run under $parent" }
+            if (childClaims.compareAndSet(current, current + key)) return
+        }
+    }
+
+    fun handle(id: RunId): RunHandle? = handles.value[id]
+
+    private fun sendTo(sender: RunId?, target: RunId, message: String): SendResult {
+        if (closed.value) return SendResult.Rejected("runtime is closed")
+        val targetState = records.value[target]?.snapshot?.state
+        if (targetState == null || targetState.isTerminal || targetState == RunState.COMMITTING) {
+            return SendResult.Rejected("target is no longer accepting messages")
+        }
+        val inbox = inboxes.value[target] ?: return SendResult.Rejected("target does not exist")
+        val id = coordination.nextId()
+        return inbox.send(ModelItem.IncomingMessage(
+            ref = ItemRef.generate("incoming"), messageId = id,
+            sender = sender?.value?.toString(), receiver = target.value.toString(),
+            text = message, timestampEpochMillis = Clock.System.now().toEpochMilliseconds(),
+        ))
+    }
 
     init {
         job.invokeOnCompletion {
@@ -111,7 +145,8 @@ internal class RunManager(config: AgentRuntimeConfig) : AutoCloseable {
             snap.state.isTerminal && (olderThanMillis <= 0L || snap.elapsedMillis >= olderThanMillis)
         }.keys
         if (victims.isEmpty()) return 0
-        victims.forEach { coordination.remove(it) }
+        victims.forEach { coordination.remove(it); inboxes.value[it]?.close() }
+        inboxes.update { it - victims }
         records.update { it - victims }
         handles.update { it - victims }
         eventJournals.update { it - victims }
@@ -193,6 +228,7 @@ internal class RunManager(config: AgentRuntimeConfig) : AutoCloseable {
         childConversation: ChildConversation? = null,
         failurePolicy: ChildFailurePolicy = ChildFailurePolicy.PROPAGATE,
         correlationId: String? = null,
+        summary: String? = null,
         resume: Boolean = false,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
     ): RunHandle {
@@ -210,8 +246,10 @@ internal class RunManager(config: AgentRuntimeConfig) : AutoCloseable {
                 "cannot spawn a child from terminal parent run '${parentSnapshot.runId.value}'"
             }
         }
+        val runId = registry.nextId()
         val effectiveThread = when {
             parentSnapshot == null -> thread
+            childConversation == ChildConversation.Isolated -> ThreadId("child-${ItemRef.generate("conversation").value}")
             childConversation == ChildConversation.Inherit -> parentSnapshot.threadId
             childConversation == ChildConversation.Ephemeral -> null
             childConversation is ChildConversation.Thread -> {
@@ -229,12 +267,13 @@ internal class RunManager(config: AgentRuntimeConfig) : AutoCloseable {
             effectiveThread == parentSnapshot.threadId
         val runOwner = effectiveThread != null && !inheritsParentRun
 
-        val runId = registry.nextId()
         acquireRegistration(agent)
         var completionOwnsRegistration = false
         var runReservation: ConversationRegistry.RunReservation? = null
         var childLinked = false
+        var childClaimed = false
         try {
+            if (parent != null) { claimChild(parent, agent.id); childClaimed = true }
             runReservation = if (runOwner) {
                 threads.reserve(effectiveThread!!, runId, agent)
             } else {
@@ -247,7 +286,7 @@ internal class RunManager(config: AgentRuntimeConfig) : AutoCloseable {
                 childLinked = true
             }
             val effectiveCorrelationId = correlationId ?: parentSnapshot?.correlationId
-            val record = RunRecord(runId, agent.id, agent.name, effectiveThread, priority, parent, effectiveCorrelationId)
+            val record = RunRecord(runId, agent.id, agent.name, effectiveThread, priority, parent, effectiveCorrelationId, summary ?: agent.summary)
             if (runReservation != null) record.markThreadQueued()
             records.update { it + (runId to record) }
             val eventJournal = RunJournal(
@@ -263,11 +302,15 @@ internal class RunManager(config: AgentRuntimeConfig) : AutoCloseable {
 
             val effectiveQuota = quota ?: defaultQuota
             val control = RunControl()
+            val inbox = ConversationInbox(inboxCapacity, record::setAcceptingMessages) { status, message, reason ->
+                eventJournal.append(RunEventPayload.Message(status, message.messageId, reason))
+            }
+            inboxes.update { it + (runId to inbox) }
             coordination.inbox(runId)
 
             val childSpawner = AgentSpawner {
                     childAgent, childInput, childPriority, childQuota, childRefs,
-                    childFailurePolicy, conversation ->
+                    childFailurePolicy, conversation, childSummary ->
                 spawn(
                     agent = childAgent,
                     input = childInput,
@@ -278,6 +321,7 @@ internal class RunManager(config: AgentRuntimeConfig) : AutoCloseable {
                     thread = null,
                     structuredSpec = null,
                     childConversation = conversation,
+                    summary = childSummary,
                     failurePolicy = childFailurePolicy,
                     correlationId = effectiveCorrelationId,
                     eventDetail = eventDetail,
@@ -290,10 +334,30 @@ internal class RunManager(config: AgentRuntimeConfig) : AutoCloseable {
                 effectiveCorrelationId,
                 coordination,
                 childSpawner,
+                tree::children,
+                { target, message -> sendTo(runId, target, message) },
             )
             val gate = InstanceActivityGate(runId, record, ::emit)
 
-            val deferred: Deferred<AgentResult> = scope.async(runtimeContext + gate) {
+            val stepServices = RunStepServices(
+                hooks = listOf(inbox.injectionHook),
+                observeUsage = record::updateUsage,
+                pause = { reason ->
+                    if (reason != null) control.pause()
+                    if (control.isPaused) {
+                        gate.waiting {
+                            record.markPaused()
+                            emit(RuntimeEvent.Suspended(runId, agent.id, effectiveThread))
+                            control.awaitResumed()
+                        }
+                        record.markRunning()
+                        emit(RuntimeEvent.Resumed(runId, agent.id, effectiveThread))
+                    }
+                },
+                finishIfEmpty = inbox::finishIfEmpty,
+                close = { inbox.close() },
+            )
+            val deferred: Deferred<AgentResult> = scope.async(runtimeContext + gate + stepServices) {
                 try {
                     val refs = contextSnapshot
                     executor.execute(
@@ -331,6 +395,8 @@ internal class RunManager(config: AgentRuntimeConfig) : AutoCloseable {
                 }
             }
             deferred.invokeOnCompletion { cause ->
+                inbox.close()
+                if (parent != null) childClaims.update { it - (parent to agent.id) }
                 runReservation?.cancel()
                 releaseRegistration(agent)
                 if (cause is CancellationException) {
@@ -352,6 +418,10 @@ internal class RunManager(config: AgentRuntimeConfig) : AutoCloseable {
                 deferred,
                 failurePolicy,
                 eventJournal,
+                sendMessage = { message ->
+                    val sender = currentCoroutineContext()[AgentContext]?.takeIf { it.belongsTo(coordination) }?.runId
+                    sendTo(sender, runId, message)
+                },
             )
             handles.update { it + (runId to handle) }
 
@@ -366,6 +436,9 @@ internal class RunManager(config: AgentRuntimeConfig) : AutoCloseable {
             return handle
         } finally {
             if (!completionOwnsRegistration) {
+                if (childClaimed && parent != null) childClaims.update { it - (parent to agent.id) }
+                inboxes.value[runId]?.close()
+                inboxes.update { it - runId }
                 if (childLinked) parentRecord?.removeChild(runId)
                 runReservation?.cancel()
                 eventJournals.update { it - runId }
@@ -378,6 +451,8 @@ internal class RunManager(config: AgentRuntimeConfig) : AutoCloseable {
         if (!closed.compareAndSet(expect = false, update = true)) return
         handles.value.values.forEach { it.cancel("agent runtime closed") }
         job.cancel(CancellationException("agent runtime closed"))
+        inboxes.value.values.forEach { it.close("runtime closed") }
+        inboxes.value = emptyMap()
         coordination.close()
         handles.value = emptyMap()
         records.value = emptyMap()

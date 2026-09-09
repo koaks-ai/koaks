@@ -41,6 +41,11 @@ class RunHandle private constructor(
 
     fun resume() = delegate.resume()
 
+    fun send(message: String): org.koaks.runtime.coordination.SendResult = runBlocking { delegate.send(message) }
+
+    fun sendAsync(message: String): CompletableFuture<org.koaks.runtime.coordination.SendResult> =
+        virtualFuture(prefix = "koaks-send-$runId") { delegate.send(message) }
+
     fun unwrap(): CoreRunHandle = delegate
 
     companion object {

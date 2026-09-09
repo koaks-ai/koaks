@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import org.koaks.framework.model.ContentPart
 import org.koaks.framework.model.ModelCapabilities
+import org.koaks.framework.model.asMessage
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.OutputFormat
@@ -93,6 +94,7 @@ internal fun toOllamaMessages(req: ModelRequest): List<OllamaMessage> {
     }
     for (item in req.items) {
         when (item) {
+            is ModelItem.IncomingMessage -> out += OllamaMessage(role = "user", content = item.asMessage().text)
             is ModelItem.Message -> when (item.role) {
                 Role.SYSTEM -> out += OllamaMessage(role = "system", content = item.text)
                 Role.USER -> {

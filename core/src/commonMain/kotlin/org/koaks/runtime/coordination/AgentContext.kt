@@ -14,12 +14,12 @@ import org.koaks.runtime.policy.ChildFailurePolicy
 import org.koaks.runtime.policy.Quota
 import org.koaks.runtime.run.RunHandle
 import org.koaks.runtime.run.RunId
+import org.koaks.runtime.run.RunSnapshot
 
 /**
  * Spawns a child instance on the same runtime. Bound into [AgentContext] so tools can
  * create children without holding the full [org.koaks.runtime.AgentRuntime] (no close /
- * reap / metrics). The current instance is always recorded as the child's parent; when
- * the parent belongs to a Thread, the child inherits the same ThreadId.
+ * reap / metrics). The current instance is always recorded as the child's parent.
  */
 internal fun interface AgentSpawner {
     fun spawn(
@@ -30,6 +30,7 @@ internal fun interface AgentSpawner {
         context: List<ModelItem>,
         failurePolicy: ChildFailurePolicy,
         conversation: ChildConversation,
+        summary: String?,
     ): RunHandle
 }
 
@@ -50,14 +51,18 @@ class AgentContext internal constructor(
     val correlationId: String?,
     private val coordination: CoordinationFacade,
     private val spawner: AgentSpawner,
+    private val childLister: (RunId) -> List<RunSnapshot> = { emptyList() },
+    private val childSender: (suspend (RunId, String) -> SendResult)? = null,
 ) : AbstractCoroutineContextElement(Key) {
     companion object Key : CoroutineContext.Key<AgentContext>
 
+    internal fun belongsTo(facade: CoordinationFacade): Boolean = coordination === facade
+
     /**
      * Spawns [agent] as a **child** of this instance (parent = [runId]). Restricted:
-     * cannot close the runtime or mutate unrelated instances. By default the child joins
-     * this instance's Turn; [ChildConversation.Ephemeral] runs without a Thread binding,
-     * while [ChildConversation.Thread] starts an independent Turn. The parent cannot finish
+     * cannot close the runtime or mutate unrelated instances. By default the child gets
+     * an isolated conversation. [ChildConversation.Inherit] explicitly shares memory;
+     * [ChildConversation.Ephemeral] runs without a Thread binding. The parent cannot finish
      * until the child tree settles.
      */
     fun spawn(
@@ -67,8 +72,26 @@ class AgentContext internal constructor(
         quota: Quota? = null,
         context: List<ModelItem> = emptyList(),
         failurePolicy: ChildFailurePolicy = ChildFailurePolicy.PROPAGATE,
-        conversation: ChildConversation = ChildConversation.Inherit,
-    ): RunHandle = spawner.spawn(agent, input, priority, quota, context, failurePolicy, conversation)
+        conversation: ChildConversation = ChildConversation.Isolated,
+        summary: String? = null,
+    ): RunHandle = spawner.spawn(agent, input, priority, quota, context, failurePolicy, conversation, summary)
+
+    private fun childRuns(): List<RunSnapshot> = childLister(runId).groupBy { it.agentId }.values.map { runs ->
+        runs.firstOrNull { !it.state.isTerminal } ?: runs.last()
+    }
+
+    fun listChildren(): List<ChildAgentInfo> = childRuns().map {
+        ChildAgentInfo(it.agentId, it.agentName, it.summary, it.state, it.acceptingMessages)
+    }
+
+    suspend fun sendTo(agentId: AgentId, message: String): SendResult {
+        val matches = childRuns().filter { it.agentId == agentId && !it.state.isTerminal }
+        if (matches.size != 1) return SendResult.Rejected(
+            if (matches.isEmpty()) "child agent '${agentId.value}' is not active" else "child agent '${agentId.value}' is ambiguous",
+        )
+        return childSender?.invoke(matches.single().runId, message)
+            ?: SendResult.Rejected("message sending is unavailable")
+    }
 
     /** Sends a message using this run's identity. */
     suspend fun send(
@@ -150,11 +173,12 @@ suspend fun spawnChild(
     quota: Quota? = null,
     context: List<ModelItem> = emptyList(),
     failurePolicy: ChildFailurePolicy = ChildFailurePolicy.PROPAGATE,
-    conversation: ChildConversation = ChildConversation.Inherit,
+    conversation: ChildConversation = ChildConversation.Isolated,
+    summary: String? = null,
 ): RunHandle {
     val ctx = currentAgentContext()
         ?: error("spawnChild is only available inside a runtime-spawned agent")
-    return ctx.spawn(agent, input, priority, quota, context, failurePolicy, conversation)
+    return ctx.spawn(agent, input, priority, quota, context, failurePolicy, conversation, summary)
 }
 
 /**

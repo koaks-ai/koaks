@@ -38,6 +38,11 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class KoaksWireJsonTest {
+    @Test fun incomingMessageRoundTripsAndInvalidatesChangedBasis() {
+        val item = ModelItem.IncomingMessage(ItemRef("incoming"), messageId = 4, sender = "parent", receiver = "child", text = "hello", timestampEpochMillis = 123)
+        assertEquals(item, KoaksWireJson.decodeModelItem(KoaksWireJson.encodeModelItem(item)))
+        assertFalse(TranscriptBasis.of(listOf(item)) == TranscriptBasis.of(listOf(item.copy(text = "changed"))))
+    }
     @Test
     fun modelEventGoldenAndRoundTripPreserveLosslessMetadata() {
         val event = providerEventFixture()

@@ -17,6 +17,7 @@ data class RunEventEnvelope(
 )
 
 sealed interface RunEventPayload {
+    data class Message(val status: String, val messageId: Long, val reason: String? = null) : RunEventPayload
     data class Agent(val event: AgentEvent) : RunEventPayload
     data class Lifecycle(val event: RuntimeEvent) : RunEventPayload
     data class HistoryGap(val requestedAfter: Long, val oldestAvailable: Long) : RunEventPayload

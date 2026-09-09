@@ -167,6 +167,16 @@ internal fun ModelItem.toWireJson(): JsonObject = buildJsonObject {
     put("ref", JsonPrimitive(ref.value))
     nativeId?.let { put("native_id", it.toWireJson()) }
     when (this@toWireJson) {
+        is ModelItem.IncomingMessage -> {
+            put("type", JsonPrimitive("incoming_message"))
+            put("message_id", JsonPrimitive(messageId.toString()))
+            sender?.let { put("sender", JsonPrimitive(it)) }
+            put("receiver", JsonPrimitive(receiver))
+            put("text", JsonPrimitive(text))
+            put("timestamp_epoch_ms", JsonPrimitive(timestampEpochMillis))
+            put("message_type", JsonPrimitive(type))
+            correlationId?.let { put("correlation_id", JsonPrimitive(it)) }
+        }
         is ModelItem.Message -> {
             put("type", JsonPrimitive("message"))
             put("role", JsonPrimitive(role.name.lowercase()))
@@ -249,6 +259,13 @@ internal fun JsonObject.toModelItem(): ModelItem {
     val ref = optionalString("ref")?.let(::ItemRef) ?: ItemRef.generate()
     val nativeId = optionalObject("native_id")?.toProviderScopedId()
     return when (requiredString("type")) {
+        "incoming_message" -> ModelItem.IncomingMessage(
+            ref = ref, nativeId = nativeId,
+            messageId = requiredString("message_id").toLong(),
+            sender = optionalString("sender"), receiver = requiredString("receiver"),
+            text = requiredString("text"), timestampEpochMillis = requireNotNull(optionalLong("timestamp_epoch_ms")) { "timestamp_epoch_ms is required" },
+            type = requiredString("message_type"), correlationId = optionalString("correlation_id"),
+        )
         "message" -> ModelItem.Message(
             ref = ref,
             nativeId = nativeId,

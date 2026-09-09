@@ -13,6 +13,8 @@ enum class ChildFailurePolicy {
 
 /** Selects the conversation / memory binding used by a child run. */
 sealed interface ChildConversation {
+    /** Allocate an independent conversation using this agent's memory provider. */
+    data object Isolated : ChildConversation
     /** Join the parent's Thread and share its Memory. Each completed message is appended immediately. */
     data object Inherit : ChildConversation
 

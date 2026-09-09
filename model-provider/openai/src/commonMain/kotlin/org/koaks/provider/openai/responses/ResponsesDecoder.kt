@@ -343,6 +343,7 @@ class ResponsesDecoder(
         return when (item) {
             is ModelItem.ToolCall -> "call:${native ?: item.ref.value}"
             is ModelItem.ToolResult -> "result:${item.callRef.value}:${native ?: item.ref.value}"
+            is ModelItem.IncomingMessage -> "incoming:${item.messageId}"
             is ModelItem.Message -> "msg:${item.role}:${native ?: item.ref.value}"
             is ModelItem.ReasoningSummary -> "reason:${native ?: item.ref.value}"
             is ModelItem.ProviderItem -> "prov:${item.kind}:${native ?: item.ref.value}"

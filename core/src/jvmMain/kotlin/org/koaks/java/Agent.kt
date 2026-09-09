@@ -1,5 +1,6 @@
 package org.koaks.java
 
+import org.koaks.runtime.tools.childAgents
 import java.time.Duration
 import java.util.concurrent.CompletableFuture
 import kotlinx.coroutines.runBlocking
@@ -137,6 +138,22 @@ class Agent private constructor(
     class Builder private constructor() {
         private var id: String? = null
         private var name: String = "agent"
+        private var summary: String? = null
+        private var childTools = false
+        private val hooks = mutableListOf<org.koaks.framework.middleware.Hook>()
+        private var contextBudget: org.koaks.framework.policy.ContextBudget? = null
+
+        fun summary(summary: String): Builder = apply { this.summary = summary }
+        fun childAgentTools(): Builder = apply { childTools = true }
+        fun hook(hook: org.koaks.framework.middleware.Hook): Builder = apply { hooks += hook }
+        fun contextBudget(maxInputTokens: Int, counter: java.util.function.ToIntFunction<org.koaks.framework.model.ModelRequest>): Builder = apply {
+            contextBudget = org.koaks.framework.policy.ContextBudget(maxInputTokens) { counter.applyAsInt(it) }
+        }
+        fun stepHook(callback: java.util.function.Function<org.koaks.framework.middleware.StepHookContext, org.koaks.framework.middleware.StepDecision>): Builder = apply {
+            hooks += object : org.koaks.framework.middleware.Hook {
+                override suspend fun onStep(ctx: org.koaks.framework.middleware.StepHookContext) = callback.apply(ctx)
+            }
+        }
         private var instructions: String = ""
         private var model: ModelSpec? = null
         private val tools = mutableListOf<ToolSpec<*>>()
@@ -200,9 +217,13 @@ class Agent private constructor(
             val core = CoreAgentBuilder().apply {
                 id = agentId
                 name = this@Builder.name
+                summary = this@Builder.summary
+                contextBudget = this@Builder.contextBudget
+                this@Builder.hooks.forEach(::install)
                 instructions = this@Builder.instructions
                 model { modelSpec.select(this) }
                 tools {
+                    if (this@Builder.childTools) childAgents()
                     this@Builder.tools.forEach { tool(it.toCoreTool()) }
                     this@Builder.toolContainers
                         .flatMap(::scanAnnotatedTools)

@@ -36,7 +36,7 @@ fun repairTranscript(items: List<ModelItem>): List<ModelItem> {
     }
 
     for (item in items) {
-        if (item is ModelItem.Message && pending.isNotEmpty()) flushPending()
+        if ((item is ModelItem.Message || item is ModelItem.IncomingMessage) && pending.isNotEmpty()) flushPending()
         when (item) {
             is ModelItem.ToolCall -> pending[item.ref] = item
             is ModelItem.ToolResult -> {

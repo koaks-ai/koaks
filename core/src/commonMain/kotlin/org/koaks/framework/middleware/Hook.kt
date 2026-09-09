@@ -32,6 +32,7 @@ data class ToolContext(
  * Flow operators so the runner remains the single subscriber to the model stream.
  */
 interface Hook {
+    suspend fun onStep(ctx: StepHookContext): StepDecision = StepDecision.Continue
     suspend fun onModelRequest(ctx: StepContext): ModelRequest = ctx.request
     fun onModelStream(ctx: StepContext, events: Flow<ModelEvent>): Flow<ModelEvent> = events
     suspend fun onToolCall(ctx: ToolContext): ToolDecision = ToolDecision.Proceed

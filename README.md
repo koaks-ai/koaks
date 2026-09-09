@@ -18,6 +18,7 @@
 - **First-class tools**: define a tool inline with a typed input; its JSON Schema is derived from your `@Serializable` class. Class-based tools, JVM `@Tool` annotations, and lazy **MCP** discovery are all supported.
 - **Composable Skills**: load reusable instructions, read-only resources, and tools from `SKILL.md` directories or custom sources.
 - **Pluggable memory**: sliding-window, summarizing, or vector memory. Each completed message is appended as it happens; cancel keeps already-written content.
+- **Live run messaging**: `RunHandle.send()` injects input before the next model request; `tools { childAgents() }` adds child collaboration tools. Step hooks edit memory, stop or pause execution. See [messaging and hooks](docs/agent-messaging.md).
 - **Structured output**: `agent.run<T>()` returns a typed, decoded result.
 - **Resilient by design**: model fallbacks, retry/substitute error policies, step & token budgets, typed hooks, guardrails, and human approval.
 - **Kotlin Multiplatform**: JVM, JS, and macOS (Apple Silicon) from a single codebase.

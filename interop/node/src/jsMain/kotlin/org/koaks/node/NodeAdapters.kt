@@ -33,6 +33,11 @@ import org.koaks.framework.memory.ThreadId
 import org.koaks.framework.memory.ThreadMemory
 import org.koaks.framework.memory.WindowMemoryProvider
 import org.koaks.framework.middleware.AgentListener
+import org.koaks.runtime.tools.childAgents
+import org.koaks.framework.middleware.StepHookContext
+import org.koaks.framework.middleware.StepPhase
+import org.koaks.framework.middleware.StepDecision
+import org.koaks.framework.policy.ContextBudget
 import org.koaks.framework.middleware.Hook
 import org.koaks.framework.middleware.ModelCallPhase
 import org.koaks.framework.middleware.StepContext
@@ -124,6 +129,13 @@ internal fun buildAgent(
     val owned = mutableListOf<AutoCloseable>()
     val built = org.koaks.framework.loop.agent {
         id = config.string("id")
+        summary = config.stringOrNull("summary")
+        if (config.booleanOrNull("child_agent_tools") == true) tools { childAgents() }
+        config.objectOrNull("context_budget")?.let { budget ->
+            contextBudget = ContextBudget(budget.intOrNull("max_input_tokens") ?: error("max_input_tokens required")) { request ->
+                callbacks.call(budget.string("counter_callback_id"), request.toJson()).jsonPrimitive.content.toInt()
+            }
+        }
         name = config.stringOrNull("name") ?: config.string("id")
         configureInstructions(config["instructions"], callbacks)
         model {
@@ -539,6 +551,37 @@ private class NodeListener(config: JsonObject, private val callbacks: CallbackGa
 }
 
 private class NodeHook(config: JsonObject, private val callbacks: CallbackGateway) : Hook {
+    private val step = config.stringOrNull("step_callback_id")
+    override suspend fun onStep(ctx: StepHookContext): StepDecision {
+        val callback = step ?: return StepDecision.Continue
+        val response = callbacks.call(callback, buildJsonObject {
+            put("state", ctx.state.toJson())
+            put("stage", JsonPrimitive(when (ctx.stage) {
+                StepPhase.BeforeModelRequest -> "before_model_request"
+                StepPhase.AfterModelResponse -> "after_model_response"
+                StepPhase.AfterStep -> "after_step"
+            }))
+            put("phase", JsonPrimitive(ctx.phase.name))
+            put("retry", JsonPrimitive(ctx.retry))
+            put("memory", ctx.memory.load().toJson())
+            ctx.execution?.let { execution -> put("execution", buildJsonObject {
+                put("run_id", JsonPrimitive(execution.runId)); put("agent_id", JsonPrimitive(execution.agentId))
+                execution.threadId?.let { put("thread_id", JsonPrimitive(it)) }
+                execution.correlationId?.let { put("correlation_id", JsonPrimitive(it)) }
+            }) }
+        })
+        if (response is JsonNull) return StepDecision.Continue
+        val result = response.jsonObject
+        result.arrayOrNull("append").orEmpty().forEach { ctx.memory.append(it.jsonObject.toModelItem()) }
+        val decision = result.objectOrNull("decision") ?: return StepDecision.Continue
+        return when (decision.string("action")) {
+            "continue" -> StepDecision.Continue
+            "stop" -> StepDecision.Stop(TerminationReason.Custom(decision.string("reason")))
+            "suspend" -> StepDecision.Suspend(decision.string("reason"))
+            else -> error("unknown step decision")
+        }
+    }
+
     private val beforeModel = config.stringOrNull("before_model_callback_id")
     private val afterModelEvent = config.stringOrNull("after_model_event_callback_id")
     private val beforeTool = config.stringOrNull("before_tool_callback_id")

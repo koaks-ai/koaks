@@ -405,7 +405,7 @@ class RuntimeThreadingTest {
             }
             tools {
                 tool<NoArgs>("fork", "spawn without awaiting") {
-                    childHandle = spawnChild(child, "child input")
+                    childHandle = spawnChild(child, "child input", conversation = ChildConversation.Inherit)
                     "spawned"
                 }
             }
@@ -458,7 +458,7 @@ class RuntimeThreadingTest {
             memory { custom("shared-history") { RecordingMemory() } }
             tools {
                 tool<NoArgs>("delegate", "delegate to a child") {
-                    spawnChild(child, "child input").await().text
+                    spawnChild(child, "child input", conversation = ChildConversation.Inherit).await().text
                 }
             }
         }
@@ -502,7 +502,7 @@ class RuntimeThreadingTest {
             memory { custom("failed-child-memory") { memory } }
             tools {
                 tool<NoArgs>("fork", "spawn a failing child") {
-                    spawnChild(child, "fail")
+                    spawnChild(child, "fail", conversation = ChildConversation.Inherit)
                     "spawned"
                 }
             }
@@ -599,7 +599,7 @@ class RuntimeThreadingTest {
             memory { custom("side-effect-memory") { memory } }
             tools {
                 tool<NoArgs>("fork", "spawn side-effect child") {
-                    spawnChild(child, "charge")
+                    spawnChild(child, "charge", conversation = ChildConversation.Inherit)
                     "spawned"
                 }
             }

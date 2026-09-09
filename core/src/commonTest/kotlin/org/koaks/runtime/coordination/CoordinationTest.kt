@@ -128,6 +128,6 @@ class CoordinationTest {
 
     private fun context(id: RunId, facade: CoordinationFacade) = AgentContext(
         id, AgentId("agent-${id.value}"), null, null, facade,
-        AgentSpawner { _, _, _, _, _, _, _ -> error("unused in messaging tests") },
+        AgentSpawner { _, _, _, _, _, _, _, _ -> error("unused in messaging tests") },
     )
 }

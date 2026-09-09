@@ -30,6 +30,7 @@ internal class RunRecord(
     priority: Int,
     parent: RunId?,
     correlationId: String?,
+    summary: String? = null,
 ) {
     private val cancellationReported = MutableStateFlow(false)
     private val childFailurePolicies = MutableStateFlow<Map<RunId, ChildFailurePolicy>>(emptyMap())
@@ -50,6 +51,7 @@ internal class RunRecord(
             toolCalls = 0,
             elapsedMillis = 0,
             error = null,
+            summary = summary,
         ),
     )
 
@@ -79,6 +81,10 @@ internal class RunRecord(
     internal fun markRunning() { transition(RunState.RUNNING) }
     internal fun markWaiting() { transition(RunState.WAITING) }
     internal fun markPaused() { transition(RunState.SUSPENDED) }
+
+    internal fun setAcceptingMessages(value: Boolean) { _state.update { it.copy(acceptingMessages = value) } }
+
+    internal fun updateUsage(usage: Usage) { _state.update { it.copy(usage = usage) } }
 
     /** Folds one outward [AgentEvent] into the run's counters. */
     internal fun observe(event: AgentEvent) {

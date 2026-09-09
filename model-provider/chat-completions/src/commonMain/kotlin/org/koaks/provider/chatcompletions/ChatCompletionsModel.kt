@@ -4,6 +4,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import org.koaks.framework.model.ModelCapabilities
+import org.koaks.framework.model.asMessage
 import org.koaks.framework.model.ModelItem
 import org.koaks.framework.model.ModelRequest
 import org.koaks.framework.model.OutputFormat
@@ -98,6 +99,7 @@ fun ModelRequest.toChatMessages(providerId: ProviderId): List<ChatMessage> {
     }
     for (item in items) {
         when (item) {
+            is ModelItem.IncomingMessage -> out += ChatMessage(role = "user", content = item.asMessage().text)
             is ModelItem.Message -> when (item.role) {
                 Role.SYSTEM -> out += ChatMessage(role = "system", content = item.text)
                 Role.USER -> out += ChatMessage(role = "user", content = item.text.ifEmpty { null })

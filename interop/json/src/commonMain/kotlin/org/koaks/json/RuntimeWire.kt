@@ -15,6 +15,8 @@ internal fun RunSnapshot.toWireJson(): JsonObject = buildJsonObject {
     put("run_id", JsonPrimitive(runId.value.toString()))
     put("agent_id", JsonPrimitive(agentId.value))
     put("agent_name", JsonPrimitive(agentName))
+    summary?.let { put("summary", JsonPrimitive(it)) }
+    put("accepting_messages", JsonPrimitive(acceptingMessages))
     threadId?.let { put("thread_id", JsonPrimitive(it.value)) }
     put("state", JsonPrimitive(state.name.lowercase()))
     put("priority", JsonPrimitive(priority))
@@ -37,6 +39,12 @@ internal fun RunEventEnvelope.toWireJson(): JsonObject = buildJsonObject {
     put("sequence", JsonPrimitive(sequence))
     put("timestamp_epoch_ms", JsonPrimitive(timestampEpochMillis))
     when (val value = payload) {
+        is RunEventPayload.Message -> {
+            put("kind", JsonPrimitive("message"))
+            put("status", JsonPrimitive(value.status))
+            put("message_id", JsonPrimitive(value.messageId.toString()))
+            value.reason?.let { put("reason", JsonPrimitive(it)) }
+        }
         is RunEventPayload.Agent -> {
             put("kind", JsonPrimitive("agent"))
             put("event", value.event.toWireJson())

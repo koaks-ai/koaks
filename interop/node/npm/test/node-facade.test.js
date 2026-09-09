@@ -192,6 +192,46 @@ after(async () => {
   await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 });
 
+test("handle messages, step memory edits and built-in child tool registration", async () => {
+  const runtime = createRuntime({ maxConcurrency: 1, inboxCapacity: 4 });
+  let announce;
+  let release;
+  const entered = new Promise((resolve) => { announce = resolve; });
+  const gate = new Promise((resolve) => { release = resolve; });
+  let steps = 0;
+  const agent = await runtime.createAgent({
+    id: "message-hook-agent",
+    summary: "message fixture",
+    childAgentTools: true,
+    model: { type: "openai", apiKey: "test", model: "fixture", baseUrl },
+    hooks: [{
+      onStep: async (context) => {
+        if (context.stage !== "before_model_request") return;
+        steps++;
+        if (steps === 1) {
+          announce();
+          await gate;
+          return { append: [{ type: "message", role: "user", ref: "hook-input", content: [{ type: "text", text: "from step hook" }] }] };
+        }
+        assert.equal(context.memory.transcript.filter((item) => item.type === "incoming_message").length, 1);
+      },
+    }],
+  });
+  try {
+    const handle = await agent.spawn("start");
+    await entered;
+    assert.equal((await handle.send("follow-up")).status, "accepted");
+    release();
+    const result = await handle.result();
+    assert.match(result.text, /follow-up/);
+    assert.equal(steps, 2);
+    assert.equal((await handle.send("late")).status, "rejected");
+    assert.equal((await handle.snapshot()).summary, "message fixture");
+    const latest = requests.at(-1);
+    assert.deepEqual(latest.tools.map((tool) => tool.function.name), ["list_children", "send_to_child"]);
+  } finally { release(); await runtime.close(); }
+});
+
 test("ESM facade runs, streams, reuses thread memory, and closes idempotently", async () => {
   const runtime = createRuntime({ maxConcurrency: 2 });
   const agent = await runtime.createAgent({

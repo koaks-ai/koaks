@@ -153,13 +153,11 @@ class MessagePersistenceTest {
     @Test
     fun inherited_children_serialize_writes_to_custom_memory() = runTest {
         val memory = RecordingMemory()
-        val child = agent {
-            id = "child-writer"
-            model { custom(FakeLanguageModel(
-                listOf(ModelEvent.TextDelta("child one"), done(Usage.ZERO)),
-                listOf(ModelEvent.TextDelta("child two"), done(Usage.ZERO)),
-            )) }
-        }
+        val children = listOf("one", "two").map { label -> agent {
+            id = "child-writer-$label"
+            model { custom(FakeLanguageModel(listOf(ModelEvent.TextDelta("child $label"), done(Usage.ZERO)))) }
+        } }
+        var nextChild = 0
         val parent = agent {
             id = "parent-writer"
             memory { custom("recording") { memory } }
@@ -167,7 +165,7 @@ class MessagePersistenceTest {
                 listOf(ModelEvent.ToolCallCompleted(ToolCall("c1", "child", "{}")), ModelEvent.ToolCallCompleted(ToolCall("c2", "child", "{}")), done(Usage.ZERO)),
                 listOf(ModelEvent.TextDelta("parent done"), done(Usage.ZERO)),
             )) }
-            tools { tool<NoArgs>("child", "child") { spawnChild(child, "child input").await().text } }
+            tools { tool<NoArgs>("child", "child") { spawnChild(children[nextChild++], "child input", conversation = org.koaks.runtime.policy.ChildConversation.Inherit).await().text } }
         }
         AgentRuntime { dispatcher = StandardTestDispatcher(testScheduler); maxConcurrency = 2 }.use { runtime ->
             assertEquals("parent done", runtime.run(parent, "question", thread = "shared").text)

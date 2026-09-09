@@ -28,6 +28,8 @@ class AgentBuilder {
     var id: String? = null
 
     var name: String = "agent"
+    var summary: String? = null
+    var contextBudget: org.koaks.framework.policy.ContextBudget? = null
 
     /** Single-segment shorthand: `instructions = "..."`. Overridden by an `instructions { }` block. */
     var instructions: String? = null
@@ -142,6 +144,8 @@ class AgentBuilder {
         return Agent(
             id = agentId,
             name = name,
+            summary = summary,
+            contextBudget = contextBudget,
             instructions = resolvedInstructions,
             model = model,
             tools = tools,

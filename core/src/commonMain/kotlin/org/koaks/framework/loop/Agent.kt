@@ -33,6 +33,7 @@ import org.koaks.runtime.run.RunHandle
 class Agent internal constructor(
     val id: AgentId,
     val name: String,
+    val summary: String? = null,
     val instructions: Instructions,
     val model: LanguageModel,
     val tools: ToolRegistry,
@@ -43,6 +44,7 @@ class Agent internal constructor(
     val errorPolicy: ErrorPolicy,
     internal val suspendErrorPolicy: SuspendErrorPolicy?,
     val runBudget: RunBudget,
+    val contextBudget: org.koaks.framework.policy.ContextBudget? = null,
     private val preparation: AgentPreparation,
     internal val memoryProvider: MemoryProvider?,
     internal val clientActionHandlers: List<ClientActionHandler>,

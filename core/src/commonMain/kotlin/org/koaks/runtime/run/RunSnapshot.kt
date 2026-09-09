@@ -22,4 +22,6 @@ data class RunSnapshot(
     val toolCalls: Int,
     val elapsedMillis: Long,
     val error: AgentError?,
+    val summary: String? = null,
+    val acceptingMessages: Boolean = true,
 )

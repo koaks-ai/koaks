@@ -11,6 +11,7 @@ import org.koaks.runtime.observability.RuntimeEvent
 import org.koaks.runtime.policy.ChildFailurePolicy
 import org.koaks.runtime.run.RunHandle
 import org.koaks.runtime.run.RunId
+import org.koaks.runtime.run.RunSnapshot
 
 private val logger = KotlinLogging.logger {}
 
@@ -18,6 +19,9 @@ private val logger = KotlinLogging.logger {}
 internal class RunTreeCoordinator(private val registry: RunRegistry, private val emit: (RuntimeEvent) -> Unit) {
     private val records get() = registry.records
     private val handles get() = registry.handles
+
+    fun children(id: RunId): List<RunSnapshot> =
+        records.value[id]?.snapshot?.children.orEmpty().mapNotNull { records.value[it]?.snapshot }
 
     fun cancelDescendants(id: RunId, reason: String) {
         val record = records.value[id] ?: return

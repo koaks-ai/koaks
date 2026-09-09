@@ -46,6 +46,7 @@ class AgentRuntimeConfig {
     var defaultQuota: Quota = Quota.UNLIMITED
     var defaultMemoryProvider: MemoryProvider = WindowMemoryProvider(maxMessages = 40)
     var runEventBufferCapacity: Int = 1024
+    var inboxCapacity: Int = 64
 
     internal fun snapshot(): AgentRuntimeConfig = AgentRuntimeConfig().also {
         it.maxConcurrency = maxConcurrency
@@ -53,6 +54,7 @@ class AgentRuntimeConfig {
         it.defaultQuota = defaultQuota
         it.defaultMemoryProvider = defaultMemoryProvider
         it.runEventBufferCapacity = runEventBufferCapacity
+        it.inboxCapacity = inboxCapacity
     }
 }
 
@@ -88,6 +90,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
     val events: SharedFlow<RuntimeEvent> get() = manager.events
     val runs: List<RunSnapshot> get() = manager.runs
     fun snapshot(id: RunId): RunSnapshot? = manager.snapshot(id)
+    fun handle(runId: RunId): RunHandle? = manager.handle(runId)
     suspend fun conversationSnapshot(id: ThreadId): ConversationSnapshot? = manager.conversationSnapshot(id)
     fun metrics(): RuntimeMetrics = manager.metrics()
     fun reap(olderThanMillis: Long = 0L): Int = manager.reap(olderThanMillis)
@@ -168,6 +171,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                         payload.oldestAvailable,
                     )
                     is RunEventPayload.Lifecycle -> Unit
+                    is RunEventPayload.Message -> Unit
                 }
             }
         } finally {
@@ -193,6 +197,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         thread: ThreadId? = null,
         correlationId: String? = null,
         eventDetail: EventDetail = EventDetail.SEMANTIC,
+        summary: String? = null,
     ): RunHandle = manager.spawn(
         agent,
         input,
@@ -204,6 +209,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
         null,
         correlationId = correlationId,
         eventDetail = eventDetail,
+        summary = summary,
     )
 
     fun spawn(
@@ -277,6 +283,7 @@ class AgentRuntime internal constructor(config: AgentRuntimeConfig) : AutoClosea
                         payload.oldestAvailable,
                     )
                     is RunEventPayload.Lifecycle -> Unit
+                    is RunEventPayload.Message -> Unit
                 }
             }
         } finally {
